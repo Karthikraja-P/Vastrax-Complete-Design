@@ -1,19 +1,20 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { 
   Home, ChevronRight, Plus, LayoutGrid, Check, X as XIcon, Trash2, Boxes, 
-  Search, ChevronDown, Filter, RotateCcw, Image as ImageIcon, Eye, Edit2, AlertCircle
+  Search, ChevronDown, Filter, RotateCcw, Image as ImageIcon, Eye, Edit2, AlertCircle, Loader2
 } from "lucide-react";
+import { categoriesApi, CategoryItem } from "@/lib/api";
 
-const categoriesData = [
-  { name: "T-Shirts", desc: "Everyday tees in soft cotton — from clean...", status: "Active", products: "5", sort: "1" },
-  { name: "Hoodies & Sweatshirts", desc: "Heavyweight fleece, zip-ups and pullovers...", status: "Active", products: "5", sort: "2" },
-  { name: "Jackets & Outerwear", desc: "Leather, denim, wool — outerwear pieces ...", status: "Active", products: "5", sort: "3" },
-  { name: "Pants & Trousers", desc: "Denim, chinos, cargos, joggers and tailore...", status: "Active", products: "5", sort: "4" },
-  { name: "Shirts", desc: "Oxfords, flannels, linen and henleys — wo...", status: "Active", products: "5", sort: "5" },
-  { name: "Shoes & Sneakers", desc: "Low-tops, high-tops, leather boots and ru...", status: "Active", products: "5", sort: "6" },
-  { name: "Hats", desc: "Caps, beanies and brims in colours worth ...", status: "Active", products: "5", sort: "7" },
+const initialCategories = [
+  { id: "cat-1", name: "T-Shirts", slug: "t-shirts", desc: "Everyday tees in soft cotton", status: "Active", count: 45, sort: "1" },
+  { id: "cat-2", name: "Hoodies & Sweatshirts", slug: "hoodies-sweatshirts", desc: "Heavyweight fleece, zip-ups and pullovers", status: "Active", count: 32, sort: "2" },
+  { id: "cat-3", name: "Jackets & Outerwear", slug: "jackets-outerwear", desc: "Leather, denim, wool outerwear pieces", status: "Active", count: 18, sort: "3" },
+  { id: "cat-4", name: "Pants & Trousers", slug: "pants-trousers", desc: "Denim, chinos, cargos, joggers and tailored", status: "Active", count: 24, sort: "4" },
+  { id: "cat-5", name: "Shirts", slug: "shirts", desc: "Oxfords, flannels, linen and henleys", status: "Active", count: 15, sort: "5" },
+  { id: "cat-6", name: "Shoes & Sneakers", slug: "shoes-sneakers", desc: "Low-tops, high-tops, leather boots and runners", status: "Active", count: 28, sort: "6" },
+  { id: "cat-7", name: "Hats", slug: "hats", desc: "Caps, beanies and brims", status: "Active", count: 12, sort: "7" },
 ];
 
 const metrics = [
@@ -25,11 +26,46 @@ const metrics = [
 ];
 
 export default function CategoriesPage() {
-  const [openActionId, setOpenActionId] = useState<number | null>(null);
+  const [categories, setCategories] = useState<any[]>(initialCategories);
+  const [loading, setLoading] = useState(false);
+  const [openActionId, setOpenActionId] = useState<number | string | null>(null);
   const [isAddCategoryOpen, setIsAddCategoryOpen] = useState(false);
   const [isEditCategoryOpen, setIsEditCategoryOpen] = useState(false);
-  const [categoryToDelete, setCategoryToDelete] = useState<number | null>(null);
+  const [categoryToDelete, setCategoryToDelete] = useState<any | null>(null);
+  const [newCatName, setNewCatName] = useState("");
+  const [newCatDesc, setNewCatDesc] = useState("");
   const [isActiveStatus, setIsActiveStatus] = useState(true);
+
+  const loadCategories = async () => {
+    setLoading(true);
+    const data = await categoriesApi.list();
+    if (data && data.length > 0) {
+      setCategories(data);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    loadCategories();
+  }, []);
+
+  const handleCreateCategory = async () => {
+    if (!newCatName.trim()) return;
+    const slug = newCatName.toLowerCase().replace(/\s+/g, "-");
+    const created = await categoriesApi.create({ name: newCatName, slug });
+    setCategories(prev => [...prev, { ...created, count: 0, status: "Active", sort: String(prev.length + 1) }]);
+    setNewCatName("");
+    setNewCatDesc("");
+    setIsAddCategoryOpen(false);
+  };
+
+  const handleDeleteCategory = async (cat: any) => {
+    if (cat.id) {
+      await categoriesApi.delete(cat.id);
+    }
+    setCategories(prev => prev.filter(c => c.id !== cat.id && c.name !== cat.name));
+    setCategoryToDelete(null);
+  };
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-12">
@@ -165,29 +201,42 @@ export default function CategoriesPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {categoriesData.map((cat, index) => (
-                <tr key={index} className="hover:bg-surface-hover transition-colors group">
+              {loading ? (
+                <tr>
+                  <td colSpan={5} className="px-6 py-12 text-center text-muted-foreground">
+                    <div className="flex items-center justify-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin text-accent" />
+                      <span>Loading categories...</span>
+                    </div>
+                  </td>
+                </tr>
+              ) : categories.map((cat, index) => (
+                <tr key={cat.id || index} className="hover:bg-surface-hover transition-colors group">
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center gap-4">
                       <div className="w-10 h-10 rounded-md bg-background border border-border flex items-center justify-center text-muted-foreground overflow-hidden shadow-inner">
-                        <ImageIcon className="w-4 h-4 opacity-50" />
+                        {cat.image_url ? (
+                          <img src={cat.image_url} alt={cat.name} className="w-full h-full object-cover" />
+                        ) : (
+                          <ImageIcon className="w-4 h-4 opacity-50" />
+                        )}
                       </div>
                       <div className="flex flex-col">
                         <span className="font-bold text-foreground">{cat.name}</span>
-                        <span className="text-[11px] text-muted-foreground mt-0.5">{cat.desc}</span>
+                        <span className="text-[11px] text-muted-foreground mt-0.5">{cat.desc || `/${cat.slug}`}</span>
                       </div>
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className="px-3 py-1 rounded-full text-[10px] font-bold border inline-block min-w-[60px] text-center border-emerald-500/30 text-emerald-500 bg-emerald-500/10">
-                      {cat.status}
+                      {cat.status || "Active"}
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap font-bold text-foreground">
-                    {cat.products}
+                    {cat.count ?? cat.products ?? 0}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap font-medium text-muted-foreground">
-                    {cat.sort}
+                    {cat.sort || index + 1}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap relative">
                     <button 
@@ -212,7 +261,7 @@ export default function CategoriesPage() {
                           </button>
                           <button 
                             onClick={() => {
-                              setCategoryToDelete(index);
+                              handleDeleteCategory(cat);
                               setOpenActionId(null);
                             }}
                             className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-red-500 hover:bg-red-500/10 transition-colors rounded-b-lg"
@@ -246,24 +295,24 @@ export default function CategoriesPage() {
               
               <div className="space-y-3">
                 <label className="text-sm font-semibold text-white">Name <span className="text-red-500">*</span></label>
-                <input type="text" placeholder="Enter category name" className="w-full px-4 py-2.5 bg-black/40 border border-white/10 rounded-lg text-sm text-white placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-accent transition-all" />
-              </div>
-
-              <div className="space-y-3">
-                <label className="text-sm font-semibold text-white">Icon</label>
-                <div className="flex items-center gap-4">
-                  <div className="w-16 h-16 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-muted-foreground">
-                    <ImageIcon className="w-6 h-6" />
-                  </div>
-                  <button className="flex items-center gap-2 px-4 py-2 rounded-full border border-white/10 hover:bg-white/5 text-white font-medium text-xs transition-colors">
-                    <ImageIcon className="w-3.5 h-3.5" /> Upload Icon
-                  </button>
-                </div>
+                <input 
+                  type="text" 
+                  value={newCatName}
+                  onChange={(e) => setNewCatName(e.target.value)}
+                  placeholder="Enter category name" 
+                  className="w-full px-4 py-2.5 bg-black/40 border border-white/10 rounded-lg text-sm text-white placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-accent transition-all" 
+                />
               </div>
 
               <div className="space-y-3">
                 <label className="text-sm font-semibold text-white">Description</label>
-                <textarea rows={4} placeholder="Enter description" className="w-full px-4 py-3 bg-black/40 border border-white/10 rounded-lg text-sm text-white placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-accent transition-all resize-none" />
+                <textarea 
+                  rows={4} 
+                  value={newCatDesc}
+                  onChange={(e) => setNewCatDesc(e.target.value)}
+                  placeholder="Enter description" 
+                  className="w-full px-4 py-3 bg-black/40 border border-white/10 rounded-lg text-sm text-white placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-accent transition-all resize-none" 
+                />
               </div>
 
               <div className="space-y-3">
@@ -286,7 +335,12 @@ export default function CategoriesPage() {
             
             <div className="p-6 border-t border-white/5 flex items-center justify-end gap-3 bg-[#1a1a1a]">
               <button onClick={() => setIsAddCategoryOpen(false)} className="px-5 py-2.5 rounded-full border border-white/10 hover:bg-white/5 text-sm font-medium text-white transition-colors">Cancel</button>
-              <button className="px-5 py-2.5 rounded-full bg-accent hover:bg-accent/90 text-sm font-medium text-white transition-colors shadow-[0_0_15px_rgba(224,122,63,0.3)]">Create Category</button>
+              <button 
+                onClick={handleCreateCategory}
+                className="px-5 py-2.5 rounded-full bg-accent hover:bg-accent/90 text-sm font-medium text-white transition-colors shadow-[0_0_15px_rgba(224,122,63,0.3)]"
+              >
+                Create Category
+              </button>
             </div>
           </div>
         </>

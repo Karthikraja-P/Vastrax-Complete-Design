@@ -1,13 +1,15 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { 
   Home, ChevronRight, User, Shield, Settings as SettingsIcon, 
-  Edit3, Eye, EyeOff, ChevronDown, Lock, AlertTriangle, Upload, CheckCircle2, Loader2 
+  Edit3, Eye, EyeOff, ChevronDown, Lock, AlertTriangle, Upload, CheckCircle2, Loader2,
+  Store, Globe, Bell, DollarSign, Clock, ShieldAlert, Sparkles, Sliders
 } from "lucide-react";
+import { settingsApi } from "@/lib/api";
 
 export default function SettingsPage() {
-  const [activeTab, setActiveTab] = useState<'profile' | 'security'>('profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'app'>('profile');
   
   // Profile State
   const [isEditingProfile, setIsEditingProfile] = useState(false);
@@ -20,6 +22,61 @@ export default function SettingsPage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [passwordChanged, setPasswordChanged] = useState(false);
+
+  // App Settings State
+  const [storeName, setStoreName] = useState("VASTRAX Luxury Apparel");
+  const [supportEmail, setSupportEmail] = useState("concierge@vastrax.luxury");
+  const [supportPhone, setSupportPhone] = useState("+1 (800) 827-8729");
+  const [currency, setCurrency] = useState("USD ($)");
+  const [timezone, setTimezone] = useState("UTC-05:00 (Eastern Time)");
+  const [announcementText, setAnnouncementText] = useState("Complimentary Global Express Delivery on Orders Over $250");
+  const [enableGuestCheckout, setEnableGuestCheckout] = useState(true);
+  const [enableLowStockAlerts, setEnableLowStockAlerts] = useState(true);
+  const [lowStockThreshold, setLowStockThreshold] = useState("5");
+  const [autoArchiveOrders, setAutoArchiveOrders] = useState(false);
+  const [maintenanceMode, setMaintenanceMode] = useState(false);
+  const [isSavingAppSettings, setIsSavingAppSettings] = useState(false);
+  const [appSettingsSaved, setAppSettingsSaved] = useState(false);
+
+  useEffect(() => {
+    async function loadSettings() {
+      const data = await settingsApi.getApp();
+      if (data) {
+        if (data.storeName) setStoreName(data.storeName);
+        if (data.supportEmail) setSupportEmail(data.supportEmail);
+        if (data.supportPhone) setSupportPhone(data.supportPhone);
+        if (data.currency) setCurrency(data.currency);
+        if (data.timezone) setTimezone(data.timezone);
+        if (data.announcementText) setAnnouncementText(data.announcementText);
+        if (data.enableGuestCheckout !== undefined) setEnableGuestCheckout(data.enableGuestCheckout);
+        if (data.enableLowStockAlerts !== undefined) setEnableLowStockAlerts(data.enableLowStockAlerts);
+        if (data.lowStockThreshold !== undefined) setLowStockThreshold(String(data.lowStockThreshold));
+        if (data.autoArchiveOrders !== undefined) setAutoArchiveOrders(data.autoArchiveOrders);
+        if (data.maintenanceMode !== undefined) setMaintenanceMode(data.maintenanceMode);
+      }
+    }
+    loadSettings();
+  }, []);
+
+  const handleSaveAppSettings = async () => {
+    setIsSavingAppSettings(true);
+    await settingsApi.updateApp({
+      storeName,
+      supportEmail,
+      supportPhone,
+      currency,
+      timezone,
+      announcementText,
+      enableGuestCheckout,
+      enableLowStockAlerts,
+      lowStockThreshold: Number(lowStockThreshold),
+      autoArchiveOrders,
+      maintenanceMode
+    });
+    setIsSavingAppSettings(false);
+    setAppSettingsSaved(true);
+    setTimeout(() => setAppSettingsSaved(false), 3000);
+  };
 
   const handleSaveProfile = () => {
     setIsSavingProfile(true);
@@ -95,8 +152,12 @@ export default function SettingsPage() {
               Security
             </button>
             <button 
-              disabled
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium text-muted-foreground/50 cursor-not-allowed"
+              onClick={() => setActiveTab('app')}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${
+                activeTab === 'app' 
+                  ? 'bg-accent/10 text-accent relative before:absolute before:left-0 before:top-2 before:bottom-2 before:w-1 before:bg-accent before:rounded-r' 
+                  : 'text-muted-foreground hover:bg-surface-hover hover:text-foreground'
+              }`}
             >
               <SettingsIcon className="w-4 h-4" />
               App Settings
@@ -332,6 +393,206 @@ export default function SettingsPage() {
                       {isChangingPassword ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Change Password'}
                     </button>
                   </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'app' && (
+              <div className="space-y-8 animate-in fade-in zoom-in-95 duration-300">
+                {/* Header */}
+                <div className="flex items-center justify-between pb-6 border-b border-border">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-accent/10 flex items-center justify-center text-accent">
+                      <Store className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-bold text-foreground">App & Storefront Configuration</h2>
+                      <p className="text-sm text-muted-foreground mt-0.5">Control global store parameters, checkout behavior, and storefront rules</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Section 1: Store Information */}
+                <div className="space-y-4">
+                  <h3 className="text-sm font-semibold text-foreground uppercase tracking-wider flex items-center gap-2">
+                    <Globe className="w-4 h-4 text-accent" /> General Store Info
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium text-muted-foreground">Store Display Name</label>
+                      <input 
+                        type="text" 
+                        value={storeName}
+                        onChange={(e) => setStoreName(e.target.value)}
+                        className="w-full px-4 py-2.5 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-accent transition-all text-foreground"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium text-muted-foreground">Concierge Support Email</label>
+                      <input 
+                        type="email" 
+                        value={supportEmail}
+                        onChange={(e) => setSupportEmail(e.target.value)}
+                        className="w-full px-4 py-2.5 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-accent transition-all text-foreground"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium text-muted-foreground">Support Hotline</label>
+                      <input 
+                        type="text" 
+                        value={supportPhone}
+                        onChange={(e) => setSupportPhone(e.target.value)}
+                        className="w-full px-4 py-2.5 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-accent transition-all text-foreground"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium text-muted-foreground">Primary Operating Currency</label>
+                      <div className="relative">
+                        <select 
+                          value={currency}
+                          onChange={(e) => setCurrency(e.target.value)}
+                          className="w-full px-4 py-2.5 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-accent transition-all text-foreground appearance-none pr-10"
+                        >
+                          <option value="USD ($)">USD ($) - US Dollar</option>
+                          <option value="EUR (€)">EUR (€) - Euro</option>
+                          <option value="GBP (£)">GBP (£) - British Pound</option>
+                          <option value="SAR (﷼)">SAR (﷼) - Saudi Riyal</option>
+                          <option value="AED (د.إ)">AED (د.إ) - UAE Dirham</option>
+                        </select>
+                        <ChevronDown className="w-4 h-4 text-muted-foreground absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Section 2: Storefront Banner & Announcement */}
+                <div className="space-y-4 pt-4 border-t border-border">
+                  <h3 className="text-sm font-semibold text-foreground uppercase tracking-wider flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-accent" /> Storefront Announcement Marquee
+                  </h3>
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium text-muted-foreground">Header Announcement Text</label>
+                    <input 
+                      type="text" 
+                      value={announcementText}
+                      onChange={(e) => setAnnouncementText(e.target.value)}
+                      className="w-full px-4 py-2.5 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-accent transition-all text-foreground"
+                    />
+                    <p className="text-[11px] text-muted-foreground">Displays at the top banner across all storefront pages.</p>
+                  </div>
+                </div>
+
+                {/* Section 3: Checkout & Inventory Rules */}
+                <div className="space-y-4 pt-4 border-t border-border">
+                  <h3 className="text-sm font-semibold text-foreground uppercase tracking-wider flex items-center gap-2">
+                    <Sliders className="w-4 h-4 text-accent" /> Checkout & Inventory Rules
+                  </h3>
+                  <div className="space-y-3">
+                    {/* Toggle 1: Guest Checkout */}
+                    <div className="flex items-center justify-between p-4 bg-background rounded-xl border border-border">
+                      <div className="space-y-0.5">
+                        <p className="text-sm font-medium text-foreground">Allow Express Guest Checkout</p>
+                        <p className="text-xs text-muted-foreground">Customers can complete purchases without pre-registering an account</p>
+                      </div>
+                      <button 
+                        onClick={() => setEnableGuestCheckout(!enableGuestCheckout)}
+                        className={`w-12 h-6 rounded-full transition-colors relative flex items-center p-1 ${
+                          enableGuestCheckout ? 'bg-accent' : 'bg-muted-foreground/30'
+                        }`}
+                      >
+                        <div className={`w-4 h-4 rounded-full bg-white transition-transform ${
+                          enableGuestCheckout ? 'translate-x-6' : 'translate-x-0'
+                        }`} />
+                      </button>
+                    </div>
+
+                    {/* Toggle 2: Low Stock Notifications */}
+                    <div className="flex items-center justify-between p-4 bg-background rounded-xl border border-border">
+                      <div className="space-y-0.5">
+                        <p className="text-sm font-medium text-foreground">Low Stock Critical Alerts</p>
+                        <p className="text-xs text-muted-foreground">Flag products on the dashboard when inventory falls below threshold</p>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground">Threshold:</span>
+                          <input 
+                            type="number" 
+                            value={lowStockThreshold}
+                            onChange={(e) => setLowStockThreshold(e.target.value)}
+                            className="w-16 px-2 py-1 bg-surface border border-border rounded text-xs text-center text-foreground focus:outline-none focus:border-accent"
+                          />
+                        </div>
+                        <button 
+                          onClick={() => setEnableLowStockAlerts(!enableLowStockAlerts)}
+                          className={`w-12 h-6 rounded-full transition-colors relative flex items-center p-1 ${
+                            enableLowStockAlerts ? 'bg-accent' : 'bg-muted-foreground/30'
+                          }`}
+                        >
+                          <div className={`w-4 h-4 rounded-full bg-white transition-transform ${
+                            enableLowStockAlerts ? 'translate-x-6' : 'translate-x-0'
+                          }`} />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Toggle 3: Auto Archive Fulfilled Orders */}
+                    <div className="flex items-center justify-between p-4 bg-background rounded-xl border border-border">
+                      <div className="space-y-0.5">
+                        <p className="text-sm font-medium text-foreground">Auto-Archive Fulfilled Orders</p>
+                        <p className="text-xs text-muted-foreground">Move orders to archived state 30 days after marked delivered</p>
+                      </div>
+                      <button 
+                        onClick={() => setAutoArchiveOrders(!autoArchiveOrders)}
+                        className={`w-12 h-6 rounded-full transition-colors relative flex items-center p-1 ${
+                          autoArchiveOrders ? 'bg-accent' : 'bg-muted-foreground/30'
+                        }`}
+                      >
+                        <div className={`w-4 h-4 rounded-full bg-white transition-transform ${
+                          autoArchiveOrders ? 'translate-x-6' : 'translate-x-0'
+                        }`} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Section 4: Maintenance Mode */}
+                <div className="space-y-4 pt-4 border-t border-border">
+                  <h3 className="text-sm font-semibold text-foreground uppercase tracking-wider flex items-center gap-2">
+                    <ShieldAlert className="w-4 h-4 text-amber-500" /> Maintenance & VIP Lock
+                  </h3>
+                  <div className="flex items-center justify-between p-4 bg-background rounded-xl border border-border">
+                    <div className="space-y-0.5">
+                      <p className="text-sm font-medium text-foreground">Enable Storefront Maintenance Mode</p>
+                      <p className="text-xs text-muted-foreground">Only authorized admins can preview the storefront; visitors see private landing</p>
+                    </div>
+                    <button 
+                      onClick={() => setMaintenanceMode(!maintenanceMode)}
+                      className={`w-12 h-6 rounded-full transition-colors relative flex items-center p-1 ${
+                        maintenanceMode ? 'bg-amber-500' : 'bg-muted-foreground/30'
+                      }`}
+                    >
+                      <div className={`w-4 h-4 rounded-full bg-white transition-transform ${
+                        maintenanceMode ? 'translate-x-6' : 'translate-x-0'
+                      }`} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Save Action */}
+                <div className="pt-4 flex items-center justify-end gap-4 border-t border-border">
+                  {appSettingsSaved && (
+                    <span className="flex items-center gap-2 text-sm text-green-500 animate-in fade-in zoom-in duration-300">
+                      <CheckCircle2 className="w-4 h-4" />
+                      App preferences updated successfully
+                    </span>
+                  )}
+                  <button 
+                    onClick={handleSaveAppSettings}
+                    disabled={isSavingAppSettings}
+                    className="flex items-center justify-center min-w-[160px] px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-medium text-sm rounded-full transition-colors shadow-[0_0_15px_rgba(224,122,63,0.3)] disabled:opacity-70"
+                  >
+                    {isSavingAppSettings ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save App Settings'}
+                  </button>
                 </div>
               </div>
             )}

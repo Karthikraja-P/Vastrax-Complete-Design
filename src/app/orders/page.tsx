@@ -1,23 +1,20 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { 
   Home, ChevronRight, ShoppingCart, Clock, Truck, 
-  CheckCircle2, Ban, Search, ChevronDown, Filter, RotateCcw
+  CheckCircle2, Ban, Search, ChevronDown, Filter, RotateCcw, Loader2
 } from "lucide-react";
+import { ordersApi, OrderItemRecord } from "@/lib/api";
 
-// Mock Data matching the screenshot
-const ordersData = [
-  { customer: "James Garcia", email: "james.garcia@example.com", id: "#ORD-2026-1030", items: 2, total: "$811.65", progress: 20, status: "Confirmed", statusColor: "text-accent border-accent", date: "Aug 17, 2026" },
-  { customer: "James Garcia", email: "james.garcia@example.com", id: "#ORD-2026-1000", items: 4, total: "$1095.15", progress: 55, status: "Processing", statusColor: "text-accent border-accent", date: "Aug 17, 2026" },
-  { customer: "John Doe", email: "john.doe@example.com", id: "#ORD-2026-1031", items: 4, total: "$639.45", progress: 80, status: "Shipped", statusColor: "text-accent border-accent", date: "Aug 16, 2026" },
-  { customer: "John Doe", email: "john.doe@example.com", id: "#ORD-2026-1001", items: 1, total: "$77.19", progress: 100, status: "Delivered", statusColor: "text-emerald-500 border-emerald-500", date: "Aug 16, 2026" },
-  { customer: "Jane Smith", email: "jane.smith@example.com", id: "#ORD-2026-1032", items: 1, total: "$138.24", progress: 55, status: "Processing", statusColor: "text-accent border-accent", date: "Aug 15, 2026" },
-  { customer: "Jane Smith", email: "jane.smith@example.com", id: "#ORD-2026-1002", items: 4, total: "$582.75", progress: 20, status: "Confirmed", statusColor: "text-accent border-accent", date: "Aug 15, 2026" },
-  { customer: "Emily Davis", email: "emily.davis@example.com", id: "#ORD-2026-1033", items: 1, total: "$196.65", progress: 20, status: "Confirmed", statusColor: "text-accent border-accent", date: "Aug 14, 2026" },
-  { customer: "Emily Davis", email: "emily.davis@example.com", id: "#ORD-2026-1003", items: 1, total: "$245.10", progress: 100, status: "Delivered", statusColor: "text-emerald-500 border-emerald-500", date: "Aug 14, 2026" },
-  { customer: "Charles Wilson", email: "charles.wilson@example.com", id: "#ORD-2026-1034", items: 1, total: "$110.79", progress: 80, status: "Shipped", statusColor: "text-accent border-accent", date: "Aug 13, 2026" },
-  { customer: "Charles Wilson", email: "charles.wilson@example.com", id: "#ORD-2026-1004", items: 2, total: "$257.25", progress: 100, status: "Delivered", statusColor: "text-emerald-500 border-emerald-500", date: "Aug 13, 2026" },
+const initialOrders = [
+  { id: "#ORD-2026-1030", customer: "James Garcia", email: "james.garcia@example.com", items: 2, total: "$811.65", progress: 20, status: "Confirmed", statusColor: "text-accent border-accent", date: "Aug 17, 2026" },
+  { id: "#ORD-2026-1000", customer: "James Garcia", email: "james.garcia@example.com", items: 4, total: "$1095.15", progress: 55, status: "Processing", statusColor: "text-accent border-accent", date: "Aug 17, 2026" },
+  { id: "#ORD-2026-1031", customer: "John Doe", email: "john.doe@example.com", items: 4, total: "$639.45", progress: 80, status: "Shipped", statusColor: "text-accent border-accent", date: "Aug 16, 2026" },
+  { id: "#ORD-2026-1001", customer: "John Doe", email: "john.doe@example.com", items: 1, total: "$77.19", progress: 100, status: "Delivered", statusColor: "text-emerald-500 border-emerald-500", date: "Aug 16, 2026" },
+  { id: "#ORD-2026-1032", customer: "Jane Smith", email: "jane.smith@example.com", items: 1, total: "$138.24", progress: 55, status: "Processing", statusColor: "text-accent border-accent", date: "Aug 15, 2026" },
+  { id: "#ORD-2026-1002", customer: "Jane Smith", email: "jane.smith@example.com", items: 4, total: "$582.75", progress: 20, status: "Confirmed", statusColor: "text-accent border-accent", date: "Aug 15, 2026" },
+  { id: "#ORD-2026-1033", customer: "Emily Davis", email: "emily.davis@example.com", items: 1, total: "$196.65", progress: 20, status: "Confirmed", statusColor: "text-accent border-accent", date: "Aug 14, 2026" },
 ];
 
 const metrics = [
@@ -29,6 +26,33 @@ const metrics = [
 ];
 
 export default function OrdersPage() {
+  const [orders, setOrders] = useState<any[]>(initialOrders);
+  const [loading, setLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const loadOrders = async () => {
+    setLoading(true);
+    const data = await ordersApi.list();
+    if (data && data.length > 0) {
+      const formatted = data.map((o, idx) => ({
+        id: o.orderNumber || `#ORD-2026-${1030 + idx}`,
+        customer: o.customerName || "Customer",
+        email: o.customerEmail || "customer@example.com",
+        items: o.itemsCount || 1,
+        total: `$${typeof o.totalAmount === 'number' ? o.totalAmount.toFixed(2) : o.totalAmount}`,
+        progress: o.status === "DELIVERED" ? 100 : o.status === "SHIPPED" ? 80 : o.status === "PROCESSING" ? 55 : 20,
+        status: o.status || "Confirmed",
+        statusColor: o.status === "DELIVERED" ? "text-emerald-500 border-emerald-500" : "text-accent border-accent",
+        date: new Date(o.createdAt || Date.now()).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+      }));
+      setOrders(formatted);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    loadOrders();
+  }, []);
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-12">
       {/* Breadcrumbs */}
@@ -160,12 +184,21 @@ export default function OrdersPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {ordersData.map((order, index) => (
-                <tr key={index} className="hover:bg-surface-hover transition-colors group">
+              {loading ? (
+                <tr>
+                  <td colSpan={8} className="px-6 py-12 text-center text-muted-foreground">
+                    <div className="flex items-center justify-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin text-accent" />
+                      <span>Loading orders from API...</span>
+                    </div>
+                  </td>
+                </tr>
+              ) : orders.map((order, index) => (
+                <tr key={order.id || index} className="hover:bg-surface-hover transition-colors group">
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-full bg-background border border-border flex items-center justify-center text-xs font-bold text-foreground">
-                        {order.customer.split(' ').map(n => n[0]).join('')}
+                        {order.customer.split(' ').map((n: string) => n[0]).join('')}
                       </div>
                       <div>
                         <p className="font-medium text-foreground">{order.customer}</p>

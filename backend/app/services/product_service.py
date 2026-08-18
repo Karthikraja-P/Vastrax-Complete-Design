@@ -1,0 +1,189 @@
+from decimal import Decimal
+from typing import Optional
+
+import boto3
+from botocore.exceptions import ClientError
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+
+from app.core.config import settings
+from app.core.exceptions import InternalError, NotFoundError
+from app.core.logging import get_logger
+from app.models.product import Product
+from app.models.product_image import ProductImage
+from app.models.product_variant import ProductVariant
+from app.schemas.products import ProductCreate, ProductResponse, ProductUpdate
+
+logger = get_logger(__name__)
+
+
+class ProductService:
+    def __init__(self, db: Session) -> None:
+        self.db = db
+
+    def _to_response(self, product: Product) -> ProductResponse:
+        return ProductResponse.model_validate(product)
+
+    def list_featured(self) -> list[ProductResponse]:
+        products = (
+            self.db.query(Product)
+            .filter(Product.is_featured.is_(True), Product.is_published.is_(True))
+            .all()
+        )
+        return [self._to_response(p) for p in products]
+
+    def list_products(
+        self,
+        category_id: Optional[str] = None,
+        min_price: Optional[float] = None,
+        max_price: Optional[float] = None,
+        size: Optional[str] = None,
+        published_only: bool = True,
+        skip: int = 0,
+        limit: int = 50,
+    ) -> list[ProductResponse]:
+        q = self.db.query(Product)
+        if published_only:
+            q = q.filter(Product.is_published.is_(True))
+        if category_id:
+            q = q.filter(Product.category_id == category_id)
+        if min_price is not None:
+            q = q.filter(Product.price_selling >= Decimal(str(min_price)))
+        if max_price is not None:
+            q = q.filter(Product.price_selling <= Decimal(str(max_price)))
+        if size:
+            q = q.join(Product.variants).filter(ProductVariant.size == size)
+        products = q.offset(skip).limit(limit).all()
+        return [self._to_response(p) for p in products]
+
+    def search_products(self, query: str, skip: int = 0, limit: int = 50) -> list[ProductResponse]:
+        # Raw SQL for full-text-like ILIKE search across name and description
+        rows = self.db.execute(
+            text(
+                "SELECT id FROM products "
+                "WHERE (name ILIKE :q OR description ILIKE :q) AND is_published = TRUE "
+                "ORDER BY name LIMIT :limit OFFSET :skip"
+            ),
+            {"q": f"%{query}%", "limit": limit, "skip": skip},
+        ).fetchall()
+        ids = [r[0] for r in rows]
+        products = self.db.query(Product).filter(Product.id.in_(ids)).all()
+        id_order = {pid: i for i, pid in enumerate(ids)}
+        products.sort(key=lambda p: id_order.get(p.id, 999))
+        return [self._to_response(p) for p in products]
+
+    def get_product(self, product_id: str) -> ProductResponse:
+        product = self.db.query(Product).filter(Product.id == product_id).first()
+        if not product:
+            raise NotFoundError("Product not found")
+        return self._to_response(product)
+
+    def create_product(self, payload: ProductCreate) -> ProductResponse:
+        product = Product(
+            category_id=payload.category_id,
+            name=payload.name,
+            fabric=payload.fabric,
+            colour=payload.colour,
+            price_mrp=payload.price_mrp,
+            price_selling=payload.price_selling,
+            description=payload.description,
+            is_featured=payload.is_featured,
+            is_published=payload.is_published,
+        )
+        self.db.add(product)
+        self.db.flush()
+
+        for img_data in payload.images:
+            self.db.add(ProductImage(
+                product_id=product.id,
+                s3_url=img_data.s3_url,
+                display_order=img_data.display_order,
+            ))
+        for var_data in payload.variants:
+            self.db.add(ProductVariant(
+                product_id=product.id,
+                sku=var_data.sku,
+                size=var_data.size,
+                stock_qty=var_data.stock_qty,
+            ))
+
+        self.db.commit()
+        self.db.refresh(product)
+        logger.info("Product created: %s", product.id)
+        return self._to_response(product)
+
+    def update_product(self, product_id: str, payload: ProductUpdate) -> ProductResponse:
+        product = self.db.query(Product).filter(Product.id == product_id).first()
+        if not product:
+            raise NotFoundError("Product not found")
+
+        for field in ("category_id", "name", "fabric", "colour", "price_mrp",
+                      "price_selling", "description", "is_featured", "is_published"):
+            value = getattr(payload, field)
+            if value is not None:
+                setattr(product, field, value)
+
+        if payload.images is not None:
+            for img in product.images:
+                self.db.delete(img)
+            for img_data in payload.images:
+                self.db.add(ProductImage(
+                    product_id=product.id,
+                    s3_url=img_data.s3_url,
+                    display_order=img_data.display_order,
+                ))
+
+        if payload.variants is not None:
+            for var in product.variants:
+                self.db.delete(var)
+            for var_data in payload.variants:
+                self.db.add(ProductVariant(
+                    product_id=product.id,
+                    sku=var_data.sku,
+                    size=var_data.size,
+                    stock_qty=var_data.stock_qty,
+                ))
+
+        self.db.commit()
+        self.db.refresh(product)
+        logger.info("Product updated: %s", product_id)
+        return self._to_response(product)
+
+    def delete_product(self, product_id: str) -> None:
+        product = self.db.query(Product).filter(Product.id == product_id).first()
+        if not product:
+            raise NotFoundError("Product not found")
+        self.db.delete(product)
+        self.db.commit()
+        logger.info("Product deleted: %s", product_id)
+
+    def update_stock(self, product_id: str, variant_id: str, stock_qty: int) -> dict:
+        variant = self.db.query(ProductVariant).filter(
+            ProductVariant.id == variant_id,
+            ProductVariant.product_id == product_id,
+        ).first()
+        if not variant:
+            raise NotFoundError("Variant not found for this product")
+        variant.stock_qty = stock_qty
+        self.db.commit()
+        return {"product_id": product_id, "variant_id": variant_id, "stock_qty": stock_qty}
+
+    def generate_image_upload_url(self, product_id: str, filename: str, content_type: str) -> dict:
+        if not self.db.query(Product).filter(Product.id == product_id).first():
+            raise NotFoundError("Product not found")
+        s3 = boto3.client("s3", region_name=settings.aws_default_region)
+        safe_filename = "".join(c for c in filename if c.isalnum() or c in "._-")
+        key = f"catalog/{product_id}_{safe_filename}"
+        bucket = settings.aws_s3_bucket
+        try:
+            presigned_url = s3.generate_presigned_url(
+                ClientMethod="put_object",
+                Params={"Bucket": bucket, "Key": key, "ContentType": content_type},
+                ExpiresIn=3600,
+            )
+        except ClientError as exc:
+            raise InternalError(str(exc))
+        dest_url = (
+            f"https://{bucket}.s3.{settings.aws_default_region}.amazonaws.com/{key}"
+        )
+        return {"upload_url": presigned_url, "s3_url": dest_url, "key": key}

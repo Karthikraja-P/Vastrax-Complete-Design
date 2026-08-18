@@ -4,6 +4,8 @@ import { useState, useRef, useEffect } from "react";
 import { User, ShoppingBag, Search, Menu, ChevronRight, ChevronLeft, ArrowRight } from "lucide-react";
 import { AuthModal } from "@/components/auth/AuthModal";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { CartDrawer } from "@/components/layout/CartDrawer";
+import { StylistDrawer } from "@/components/stylist/StylistDrawer";
 
 const categories = [
   { name: "T-Shirts", image: "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?q=80&w=300&auto=format&fit=crop" },
@@ -26,11 +28,19 @@ const collections = [
 
 export default function StorefrontHome() {
   const [isAuthOpen, setIsAuthOpen] = useState(false);
+  const [isCartOpen, setIsCartOpen] = useState(false);
+  const [isStylistOpen, setIsStylistOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [activeCollection, setActiveCollection] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(true);
+
+  useEffect(() => {
+    const handleOpenStylist = () => setIsStylistOpen(true);
+    window.addEventListener("open-stylist", handleOpenStylist);
+    return () => window.removeEventListener("open-stylist", handleOpenStylist);
+  }, []);
 
   const handleScroll = () => {
     if (scrollRef.current) {
@@ -136,7 +146,11 @@ export default function StorefrontHome() {
               </>
             )}
           </div>
-          <button className="text-muted-foreground hover:text-accent transition-colors relative">
+          <button 
+            onClick={() => setIsCartOpen(true)}
+            className="text-muted-foreground hover:text-accent transition-colors relative"
+            aria-label="Open Shopping Bag"
+          >
             <ShoppingBag className="w-5 h-5" />
             <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-accent text-accent-foreground text-[10px] font-bold rounded-full flex items-center justify-center">2</span>
           </button>
@@ -306,6 +320,8 @@ export default function StorefrontHome() {
       </div>
 
       <AuthModal isOpen={isAuthOpen} onClose={() => setIsAuthOpen(false)} />
+      <CartDrawer isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} />
+      <StylistDrawer isOpen={isStylistOpen} onClose={() => setIsStylistOpen(false)} />
     </div>
   );
 }

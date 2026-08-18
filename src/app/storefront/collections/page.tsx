@@ -4,6 +4,8 @@ import { useState, useEffect } from "react";
 import { Search, Heart, Star, ShoppingBag, Menu, User, ChevronRight, SlidersHorizontal } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { AuthModal } from "@/components/auth/AuthModal";
+import { CartDrawer } from "@/components/layout/CartDrawer";
+import { StylistDrawer } from "@/components/stylist/StylistDrawer";
 
 // --- Mock Data ---
 
@@ -59,13 +61,21 @@ const products = [
 
 export default function CollectionsPage() {
   const [isAuthOpen, setIsAuthOpen] = useState(false);
+  const [isCartOpen, setIsCartOpen] = useState(false);
+  const [isStylistOpen, setIsStylistOpen] = useState(false);
   const [activeBanner, setActiveBanner] = useState(0);
   const [isMobileFiltersOpen, setIsMobileFiltersOpen] = useState(false);
-  const [bagItems, setBagItems] = useState<number[]>([]);
+  const [bagItems, setBagItems] = useState<number[]>([1]);
   
   const [isSortOpen, setIsSortOpen] = useState(false);
   const [sortBy, setSortBy] = useState("Recommended");
   const sortOptions = ["Recommended", "Newest Arrivals", "Price: Low to High", "Price: High to Low", "Top Rated"];
+
+  useEffect(() => {
+    const handleOpenStylist = () => setIsStylistOpen(true);
+    window.addEventListener("open-stylist", handleOpenStylist);
+    return () => window.removeEventListener("open-stylist", handleOpenStylist);
+  }, []);
 
   // Auto-play banner logic
   useEffect(() => {
@@ -123,7 +133,11 @@ export default function CollectionsPage() {
           >
             <User className="w-5 h-5" />
           </button>
-          <button className="text-white/70 hover:text-[#e07a3f] transition-colors relative">
+          <button 
+            onClick={() => setIsCartOpen(true)}
+            className="text-white/70 hover:text-[#e07a3f] transition-colors relative"
+            aria-label="Open Shopping Bag"
+          >
             <ShoppingBag className="w-5 h-5" />
             {bagItems.length > 0 && (
               <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-[#e07a3f] text-white text-[10px] font-bold rounded-full flex items-center justify-center">
@@ -354,6 +368,8 @@ export default function CollectionsPage() {
       </div>
 
       <AuthModal isOpen={isAuthOpen} onClose={() => setIsAuthOpen(false)} />
+      <CartDrawer isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} />
+      <StylistDrawer isOpen={isStylistOpen} onClose={() => setIsStylistOpen(false)} />
     </div>
   );
 }

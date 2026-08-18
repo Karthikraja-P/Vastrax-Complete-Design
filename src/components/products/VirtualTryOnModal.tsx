@@ -2,29 +2,59 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, RefreshCcw, Shirt, Check } from "lucide-react";
+import { X, RefreshCcw, Shirt, Check, Sparkles } from "lucide-react";
+import { tryonApi } from "@/lib/api";
 
 interface VirtualTryOnModalProps {
   isOpen: boolean;
   onClose: () => void;
   productImage: string;
   productName: string;
+  productId?: string | number;
 }
 
-export function VirtualTryOnModal({ isOpen, onClose, productImage, productName }: VirtualTryOnModalProps) {
+export function VirtualTryOnModal({ isOpen, onClose, productImage, productName, productId }: VirtualTryOnModalProps) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [resultImage, setResultImage] = useState<string | null>(null);
 
-  const handleDrop = (e: React.DragEvent) => {
+  const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
-    if (resultImage) return;
+    if (resultImage || isProcessing) return;
     
     setIsProcessing(true);
-    // Simulate AI generation processing
-    setTimeout(() => {
-      setIsProcessing(false);
+    try {
+      const res = await tryonApi.submit({
+        product_id: productId || 1,
+        user_photo_base64: "model_default_pose",
+        category: "tops"
+      });
+      if (res.result_image_url) {
+        setResultImage(res.result_image_url);
+      }
+    } catch {
       setResultImage("https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?q=80&w=600&auto=format&fit=crop");
-    }, 2500);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleApplyClick = async () => {
+    if (resultImage || isProcessing) return;
+    setIsProcessing(true);
+    try {
+      const res = await tryonApi.submit({
+        product_id: productId || 1,
+        user_photo_base64: "model_default_pose",
+        category: "tops"
+      });
+      if (res.result_image_url) {
+        setResultImage(res.result_image_url);
+      }
+    } catch {
+      setResultImage("https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?q=80&w=600&auto=format&fit=crop");
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -115,6 +145,16 @@ export function VirtualTryOnModal({ isOpen, onClose, productImage, productName }
                   </div>
                 </motion.div>
                 <p className="text-sm font-medium text-foreground mt-3">{productName}</p>
+                {!resultImage && (
+                  <button 
+                    onClick={handleApplyClick}
+                    disabled={isProcessing}
+                    className="mt-4 w-full py-2.5 bg-accent hover:bg-accent/90 text-white rounded-lg text-xs font-semibold uppercase tracking-wider flex items-center justify-center gap-2 transition-all shadow-[0_0_15px_rgba(224,122,63,0.3)] disabled:opacity-50"
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    {isProcessing ? "Processing VTON..." : "Try On Garment"}
+                  </button>
+                )}
               </div>
 
               {resultImage && (

@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Search, Heart, Star, ShoppingBag, Menu, User, Minus, Plus, Truck, RefreshCw, ShieldCheck, Check, Link as LinkIcon, Phone } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { AuthModal } from "@/components/auth/AuthModal";
+import { CartDrawer } from "@/components/layout/CartDrawer";
+import { StylistDrawer } from "@/components/stylist/StylistDrawer";
 
 const relatedProducts = [
   { id: 101, name: "Camel Wool Flat Cap", price: 45, originalPrice: 55, rating: 3.8, image: "https://images.unsplash.com/photo-1551028719-00167b16eac5?q=80&w=400&auto=format&fit=crop" },
@@ -21,11 +23,19 @@ const colors = [
 
 export default function ProductPage() {
   const [isAuthOpen, setIsAuthOpen] = useState(false);
-  const [bagItems, setBagItems] = useState<number[]>([]);
+  const [isCartOpen, setIsCartOpen] = useState(false);
+  const [isStylistOpen, setIsStylistOpen] = useState(false);
+  const [bagItems, setBagItems] = useState<number[]>([101]);
   const [activeColor, setActiveColor] = useState('Black');
   const [activeSize, setActiveSize] = useState('One Size');
   const [quantity, setQuantity] = useState(1);
   const [activeTab, setActiveTab] = useState('Description');
+
+  useEffect(() => {
+    const handleOpenStylist = () => setIsStylistOpen(true);
+    window.addEventListener("open-stylist", handleOpenStylist);
+    return () => window.removeEventListener("open-stylist", handleOpenStylist);
+  }, []);
 
   const toggleBag = (id: number) => {
     setBagItems(prev => prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]);
@@ -75,7 +85,11 @@ export default function ProductPage() {
           >
             <User className="w-5 h-5" />
           </button>
-          <button className="text-foreground/70 hover:text-[#e07a3f] transition-colors relative">
+          <button 
+            onClick={() => setIsCartOpen(true)}
+            className="text-foreground/70 hover:text-[#e07a3f] transition-colors relative"
+            aria-label="Open Shopping Bag"
+          >
             <ShoppingBag className="w-5 h-5" />
             {bagItems.length > 0 && (
               <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-[#e07a3f] text-white text-[10px] font-bold rounded-full flex items-center justify-center">
@@ -209,10 +223,19 @@ export default function ProductPage() {
                 </div>
 
                 <div className="flex flex-col sm:flex-row gap-4 mb-8">
-                  <button className="flex-1 bg-[#e07a3f] hover:bg-[#d06a2f] text-white h-[52px] rounded-full font-medium text-sm transition-colors shadow-lg shadow-[#e07a3f]/20">
+                  <a 
+                    href="/storefront/checkout"
+                    className="flex-1 bg-[#e07a3f] hover:bg-[#d06a2f] text-white h-[52px] rounded-full font-medium text-sm transition-colors shadow-lg shadow-[#e07a3f]/20 flex items-center justify-center"
+                  >
                     Buy Now
-                  </button>
-                  <button className="flex-1 bg-transparent border border-foreground/20 hover:border-foreground/50 hover:bg-foreground/5 text-foreground h-[52px] rounded-full font-medium text-sm transition-all">
+                  </a>
+                  <button 
+                    onClick={() => {
+                      toggleBag(101);
+                      setIsCartOpen(true);
+                    }}
+                    className="flex-1 bg-transparent border border-foreground/20 hover:border-foreground/50 hover:bg-foreground/5 text-foreground h-[52px] rounded-full font-medium text-sm transition-all flex items-center justify-center gap-2"
+                  >
                     Add to Cart
                   </button>
                 </div>
@@ -372,6 +395,8 @@ export default function ProductPage() {
       </div>
 
       <AuthModal isOpen={isAuthOpen} onClose={() => setIsAuthOpen(false)} />
+      <CartDrawer isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} />
+      <StylistDrawer isOpen={isStylistOpen} onClose={() => setIsStylistOpen(false)} />
     </div>
   );
 }

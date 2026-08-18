@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import { 
   Home, ChevronRight, Plus, Sparkles, Image as ImageIcon, Send, Link, 
   Bold, Italic, Underline, List, AlignLeft, Upload, Edit3, Type,
-  Tags, ChevronDown, Check
+  Tags, ChevronDown, Check, X
 } from "lucide-react";
 
 export default function EditProductPage() {

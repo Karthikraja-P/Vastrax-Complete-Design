@@ -1,7 +1,35 @@
-import { Bell, Sparkles, ChevronDown, Download, Home, ChevronRight, TrendingUp } from "lucide-react";
+"use client";
+
+import { useState, useEffect } from "react";
+import { Bell, Sparkles, ChevronDown, Download, Home, ChevronRight, TrendingUp, Loader2 } from "lucide-react";
 import { NotchedCard } from "@/components/admin/NotchedCard";
+import { analyticsApi } from "@/lib/api";
 
 export default function Dashboard() {
+  const [overview, setOverview] = useState<any>(null);
+  const [regional, setRegional] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadData() {
+      setLoading(true);
+      const [ov, reg] = await Promise.all([
+        analyticsApi.getOverview(),
+        analyticsApi.getRegionalSales()
+      ]);
+      setOverview(ov);
+      setRegional(reg);
+      setLoading(false);
+    }
+    loadData();
+  }, []);
+
+  const rev = overview?.revenue || { total: 84300, growthPercent: 18.2, avgOrderValue: 66, ordersCount: 1284 };
+  const cust = overview?.customers || { total: 12800, growthPercent: 9.3 };
+  const weekly = overview?.salesWeekly || { labels: ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"], values: [40, 60, 45, 80, 50, 100, 70] };
+  const conv = overview?.conversionRate || { rate: 4.9, change: 0.6 };
+  const camp = overview?.activeCampaigns || { count: 24, reach: "128.4K", roi: "340%" };
+
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-12">
       {/* Breadcrumbs */}
@@ -46,23 +74,23 @@ export default function Dashboard() {
               <div className="flex flex-col h-full w-1/2 justify-center pb-8">
                 <div className="flex items-baseline gap-1">
                   <span className="text-2xl font-medium text-muted-foreground/70">$</span>
-                  <span className="text-6xl font-bold tracking-tight">84.3K</span>
+                  <span className="text-6xl font-bold tracking-tight">{(rev.total / 1000).toFixed(1)}K</span>
                 </div>
                 
                 <div className="flex gap-6 mt-4">
                   <div>
                     <p className="text-xs text-muted-foreground mb-1">Orders</p>
-                    <p className="text-sm font-bold">1,284</p>
+                    <p className="text-sm font-bold">{rev.ordersCount?.toLocaleString() || "1,284"}</p>
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground mb-1">Avg order</p>
-                    <p className="text-sm font-bold">$66</p>
+                    <p className="text-sm font-bold">${rev.avgOrderValue || "66"}</p>
                   </div>
                 </div>
 
                 <div className="mt-8 flex items-center gap-1.5 text-xs font-medium text-accent">
                   <TrendingUp className="w-3.5 h-3.5" />
-                  <span>18.2% vs last month</span>
+                  <span>{rev.growthPercent}% vs last month</span>
                 </div>
               </div>
 
