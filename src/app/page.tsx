@@ -66,17 +66,7 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              {/* Glowing Abstract Graphic */}
-              <div className="absolute right-0 top-0 bottom-12 w-1/2 flex items-center justify-center pointer-events-none">
-                <div className="animate-spin-slow">
-                  <img 
-                    src="https://images.unsplash.com/photo-1614850523459-c2f4c699c52e?q=80&w=400&auto=format&fit=crop" 
-                    className="w-48 h-48 object-cover mix-blend-screen opacity-90 drop-shadow-[0_0_15px_rgba(224,122,63,0.5)]"
-                    style={{ filter: "hue-rotate(200deg) saturate(3) brightness(1.5)" }}
-                    alt="Abstract 3D Structure"
-                  />
-                </div>
-              </div>
+
 
               {/* Glowing Line Chart at Bottom */}
               <div className="absolute bottom-0 left-0 right-0 h-24 overflow-hidden pointer-events-none">

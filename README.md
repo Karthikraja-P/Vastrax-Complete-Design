@@ -22,6 +22,8 @@ This is a complete Next.js 15 project integrating a modern, dark-luxury e-commer
 - [ ] Connect Postgres/MongoDB database.
 - [ ] Implement user authentication and authorization logic.
 - [ ] Dynamic data fetching for metrics, orders, and products.
+- [ ] Pending UI: Source and implement a clean, transparent 3D twisting structure asset for the Total Revenue card.
+- [ ] Pending UI: Implement the "App Settings" tab in the Settings panel.
 
 ---
 

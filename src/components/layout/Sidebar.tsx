@@ -39,14 +39,28 @@ const navGroups = [
           { name: "Deleted", href: "/products/deleted" },
         ],
       },
-      { name: "Categories", href: "/categories", icon: Tags },
+      {
+        name: "Categories",
+        icon: Tags,
+        subItems: [
+          { name: "All Categories", href: "/categories" },
+          { name: "Deleted", href: "/categories/deleted" },
+        ],
+      },
     ],
   },
   {
     title: "SALES",
     items: [
       { name: "Orders", href: "/orders", icon: ShoppingCart },
-      { name: "Users", href: "/users", icon: Users },
+      { 
+        name: "Users", 
+        icon: Users,
+        subItems: [
+          { name: "All Users", href: "/users" },
+          { name: "Deleted", href: "/users/deleted" },
+        ]
+      },
     ],
   },
   {
@@ -59,7 +73,6 @@ const navGroups = [
     title: "ADMINISTRATION",
     items: [
       { name: "Admin Management", href: "/admin/management", icon: UserCog },
-      { name: "Admin Roles", href: "/admin/roles", icon: ShieldCheck },
       { name: "Settings", href: "/settings", icon: Settings },
     ],
   },
@@ -68,7 +81,9 @@ const navGroups = [
 export function Sidebar({ isCollapsed = false }: { isCollapsed?: boolean }) {
   const pathname = usePathname();
   const [openMenus, setOpenMenus] = useState<Record<string, boolean>>({
-    Products: true,
+    "Products": true,
+    "Users": true,
+    "Categories": true
   });
 
   const toggleMenu = (name: string) => {
@@ -215,7 +230,7 @@ export function Sidebar({ isCollapsed = false }: { isCollapsed?: boolean }) {
 
       <div className={cn("p-4 border-t border-border", isCollapsed ? "px-2 flex justify-center" : "")}>
         <Link
-          href="/logout"
+          href="/storefront/home"
           title={isCollapsed ? "Logout" : undefined}
           className={cn(
             "flex items-center py-2.5 text-sm font-medium text-muted-foreground rounded-md transition-colors hover:bg-surface-hover hover:text-foreground",
