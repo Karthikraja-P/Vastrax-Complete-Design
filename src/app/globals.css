@@ -1,0 +1,118 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-background: var(--bg-color);
+  --color-foreground: var(--fg-color);
+  
+  --color-surface: var(--surface-color);
+  --color-surface-hover: var(--surface-hover-color);
+  
+  --color-border: var(--border-color);
+  --color-border-hover: var(--border-hover-color);
+
+  --color-accent: var(--accent-color);
+  --color-accent-hover: var(--accent-hover-color);
+  --color-accent-foreground: #ffffff;
+  
+  --color-muted: var(--muted-color);
+  --color-muted-foreground: var(--muted-fg-color);
+
+  --font-sans: var(--font-outfit), ui-sans-serif, system-ui, sans-serif;
+  
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+
+}
+
+@layer base {
+  :root {
+    /* Light Mode */
+    --bg-color: #f5f5f5; /* Light grey background */
+    --fg-color: #111111;
+    --surface-color: #ffffff; /* Plain white surface */
+    --surface-hover-color: #f9fafb;
+    --border-color: #e5e7eb;
+    --border-hover-color: #d1d5db;
+    --muted-color: #f3f4f6;
+    --muted-fg-color: #4b5563;
+    
+    /* Copper/Orange Accent from screenshot */
+    --accent-color: #e07a3f;
+    --accent-hover-color: #c96b34;
+  }
+
+  .dark {
+    /* Dark Mode */
+    --bg-color: #000000; /* Deep black for main background */
+    --fg-color: #f5f5f5;
+    --surface-color: #111111; /* Lighter charcoal for header/sidebar/cards */
+    --surface-hover-color: #1a1a1a;
+    --border-color: #27272a;
+    --border-hover-color: #3f3f46;
+    --muted-color: #27272a;
+    --muted-fg-color: #a1a1aa;
+    
+    /* Copper/Orange Accent */
+    --accent-color: #e07a3f;
+    --accent-hover-color: #f0894d;
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+  }
+}
+
+/* Custom scrollbar for premium feel */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-border-hover);
+}
+
+/* Custom Animations */
+@keyframes drawLine {
+  from { stroke-dashoffset: 100; }
+  to { stroke-dashoffset: 0; }
+}
+.animate-draw-line {
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100;
+  animation: drawLine 2s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes spin-slow {
+  from { transform: rotateY(0deg); }
+  to { transform: rotateY(360deg); }
+}
+.animate-spin-slow {
+  animation: spin-slow 20s linear infinite;
+}
+
+@keyframes spin-slow-3d {
+  from { transform: rotateX(20deg) rotateY(0deg) rotateZ(10deg); }
+  to { transform: rotateX(20deg) rotateY(360deg) rotateZ(10deg); }
+}
+
+@keyframes morph {
+  0% { border-radius: 40% 60% 70% 30% / 40% 50% 60% 50%; }
+  33% { border-radius: 70% 30% 50% 50% / 30% 30% 70% 70%; }
+  66% { border-radius: 100% 60% 60% 100% / 100% 100% 60% 60%; }
+  100% { border-radius: 40% 60% 70% 30% / 40% 50% 60% 50%; }
+}
