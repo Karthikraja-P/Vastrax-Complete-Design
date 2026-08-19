@@ -1,29 +1,91 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Mail, Lock, Eye, EyeOff, CheckSquare, Square } from "lucide-react";
+import { X, Mail, Lock, Eye, EyeOff, CheckSquare, Square, CheckCircle2 } from "lucide-react";
+import { signIn } from "next-auth/react";
 
-export function AuthModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
+export function AuthModal({ isOpen, onClose, initialMode = "signin", onSuccess }: { isOpen: boolean; onClose: () => void; initialMode?: "signin" | "signup"; onSuccess?: (name: string) => void }) {
   const [isSignUp, setIsSignUp] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [agreeTerms, setAgreeTerms] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [loginMethod, setLoginMethod] = useState<"email" | "mobile">("email");
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [isForgotPassword, setIsForgotPassword] = useState(false);
+  const [forgotPasswordSuccess, setForgotPasswordSuccess] = useState(false);
+  
+  // Controlled inputs state
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [mobileNumber, setMobileNumber] = useState("");
+  const [forgotInput, setForgotInput] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [otp, setOtp] = useState("");
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const [isGoogleSuccess, setIsGoogleSuccess] = useState(false);
+  const [isSuccess, setIsSuccess] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setIsSignUp(initialMode === "signup");
+      setIsForgotPassword(false);
+      setIsVerifying(false);
+      setForgotPasswordSuccess(false);
+    }
+  }, [isOpen, initialMode]);
 
   const toggleMode = () => {
     setIsSignUp(!isSignUp);
     setShowPassword(false);
+    setIsForgotPassword(false);
+    setForgotPasswordSuccess(false);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (isForgotPassword) {
+      setIsLoading(true);
+      setTimeout(() => {
+        setIsLoading(false);
+        setForgotPasswordSuccess(true);
+      }, 1500);
+      return;
+    }
+
+
+
     setIsLoading(true);
-    // Simulate authentication
-    setTimeout(() => {
+    // Authenticate using NextAuth CredentialsProvider to create global session
+    signIn("credentials", {
+      redirect: false,
+      name: firstName || "Aishwarya",
+      email: email || "test@example.com",
+      password: password || "password"
+    }).then(() => {
       setIsLoading(false);
-      onClose();
-    }, 1500);
+      setIsSuccess(true);
+      setTimeout(() => {
+        setIsSuccess(false);
+        setIsVerifying(false);
+        onSuccess?.(firstName || "Aishwarya");
+        onClose();
+      }, 1500);
+    });
+  };
+
+  const handleGoogleSignIn = () => {
+    setIsGoogleLoading(true);
+    signIn("google", { callbackUrl: "/storefront/home" });
+  };
+
+  const handleMobileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value.replace(/\D/g, "");
+    if (val.length <= 10) {
+      setMobileNumber(val);
+    }
   };
 
   return (
@@ -44,7 +106,7 @@ export function AuthModal({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.96, y: 10 }}
               transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-              className="w-full max-w-5xl bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col md:flex-row pointer-events-auto h-auto md:h-[650px] relative"
+              className="w-full max-w-5xl bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col md:flex-row pointer-events-auto h-auto md:min-h-[650px] md:max-h-[90vh] relative"
             >
               {/* Close Button */}
               <button
@@ -57,150 +119,445 @@ export function AuthModal({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
               {/* LEFT SIDE — AUTHENTICATION FORM */}
               <div className="w-full md:w-[55%] p-8 md:p-12 flex flex-col justify-center bg-[#FAFAFA] text-[#0A192F] relative overflow-y-auto">
                 <AnimatePresence mode="wait">
-                  <motion.div
-                    key={isSignUp ? "signup" : "signin"}
-                    initial={{ opacity: 0, x: isSignUp ? 20 : -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: isSignUp ? -20 : 20 }}
-                    transition={{ duration: 0.3 }}
-                    className="w-full max-w-sm mx-auto"
-                  >
+                  {isSuccess ? (
+                    <motion.div
+                      key="success"
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.95 }}
+                      transition={{ duration: 0.3 }}
+                      className="w-full max-w-sm mx-auto text-center py-12"
+                    >
+                      <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                        <CheckCircle2 className="w-10 h-10 text-emerald-600" />
+                      </div>
+                      <h2 className="text-3xl font-light tracking-tight text-[#0A192F] mb-3">
+                        Success!
+                      </h2>
+                      <p className="text-slate-500 text-[17px]">
+                        Welcome back, {firstName || "Aishwarya"}. You have successfully signed in.
+                      </p>
+                    </motion.div>
+                  ) : (
+                    <motion.div
+                      key={isSignUp ? "signup" : "signin"}
+                      initial={{ opacity: 0, x: isSignUp ? 20 : -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: isSignUp ? -20 : 20 }}
+                      transition={{ duration: 0.3 }}
+                      className="w-full max-w-sm mx-auto"
+                    >
                     <div className="mb-8">
                       <h2 className="text-3xl font-light tracking-tight text-[#0A192F] mb-2">
-                        {isSignUp ? "Create an account" : "Welcome back"}
+                        {isForgotPassword 
+                          ? "Reset Password" 
+                          : isVerifying 
+                            ? "Verification Required" 
+                            : (isSignUp ? "Create an account" : "Welcome back")}
                       </h2>
-                      <p className="text-slate-500 text-sm">
-                        {isSignUp
-                          ? "Join us and enjoy a faster checkout experience."
-                          : "Sign in to your account to continue shopping."}
+                      <p className="text-slate-500 text-[17px]">
+                        {isForgotPassword
+                          ? forgotPasswordSuccess 
+                            ? "We've sent a password reset link to your account."
+                            : "Enter your details to receive a password reset link."
+                          : isVerifying
+                            ? `Please enter the verification code sent to your ${loginMethod}.`
+                            : (isSignUp
+                                ? "Unlock exclusive perks, track your orders in real-time, and enjoy a seamless checkout experience."
+                                : "Sign in to your account to continue shopping.")}
                       </p>
                     </div>
 
                     <form onSubmit={handleSubmit} className="space-y-4">
-                      {isSignUp && (
-                        <div className="flex gap-4">
-                          <div className="w-1/2">
-                            <label className="block text-xs font-semibold text-slate-700 mb-1.5 uppercase tracking-wider">
-                              First Name *
-                            </label>
-                            <input
-                              type="text"
-                              placeholder="John"
-                              required
-                              className="w-full bg-slate-100/80 border border-slate-200 rounded-lg px-4 py-3 text-sm focus:bg-white focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] outline-none transition-all placeholder:text-slate-400"
-                            />
-                          </div>
-                          <div className="w-1/2">
-                            <label className="block text-xs font-semibold text-slate-700 mb-1.5 uppercase tracking-wider">
-                              Last Name *
-                            </label>
-                            <input
-                              type="text"
-                              placeholder="Smith"
-                              required
-                              className="w-full bg-slate-100/80 border border-slate-200 rounded-lg px-4 py-3 text-sm focus:bg-white focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] outline-none transition-all placeholder:text-slate-400"
-                            />
-                          </div>
-                        </div>
-                      )}
-
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-700 mb-1.5 uppercase tracking-wider">
-                          Email Address *
-                        </label>
-                        <div className="relative">
-                          <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                          <input
-                            type="email"
-                            placeholder="you@example.com"
-                            required
-                            className="w-full bg-slate-100/80 border border-slate-200 rounded-lg pl-10 pr-4 py-3 text-sm focus:bg-white focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] outline-none transition-all placeholder:text-slate-400"
-                          />
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-700 mb-1.5 uppercase tracking-wider">
-                          Password *
-                        </label>
-                        <div className="relative">
-                          <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                          <input
-                            type={showPassword ? "text" : "password"}
-                            placeholder={isSignUp ? "At least 8 characters" : "Your password"}
-                            required
-                            className="w-full bg-slate-100/80 border border-slate-200 rounded-lg pl-10 pr-10 py-3 text-sm focus:bg-white focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] outline-none transition-all placeholder:text-slate-400"
-                          />
+                      {isForgotPassword ? (
+                        forgotPasswordSuccess ? (
                           <button
                             type="button"
-                            onClick={() => setShowPassword(!showPassword)}
-                            className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                            onClick={() => {
+                              setIsForgotPassword(false);
+                              setForgotPasswordSuccess(false);
+                            }}
+                            className="w-full py-3.5 bg-[#D4AF37] hover:bg-[#c5a030] text-white rounded-lg font-medium text-[17px] transition-all"
                           >
-                            {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center justify-between pt-2 pb-4">
-                        {isSignUp ? (
-                          <button
-                            type="button"
-                            onClick={() => setAgreeTerms(!agreeTerms)}
-                            className="flex items-center gap-2 text-sm text-slate-600 hover:text-[#0A192F] transition-colors"
-                          >
-                            {agreeTerms ? (
-                              <CheckSquare className="w-4 h-4 text-[#D4AF37]" />
-                            ) : (
-                              <Square className="w-4 h-4 text-slate-400" />
-                            )}
-                            <span>I agree to the Terms of Service and Privacy Policy</span>
+                            Back to Sign In
                           </button>
                         ) : (
                           <>
+                            <div>
+                              <label className="block text-xs font-semibold text-slate-700 mb-1.5 uppercase tracking-wider">
+                                Email or Mobile Number *
+                              </label>
+                              <input
+                                type="text"
+                                placeholder="you@example.com or 9999999999"
+                                required
+                                value={forgotInput}
+                                onChange={(e) => setForgotInput(e.target.value)}
+                                className="w-full bg-slate-100/80 border border-slate-200 rounded-lg px-4 py-3 text-[17px] focus:bg-white focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] outline-none transition-all placeholder:text-slate-400"
+                              />
+                            </div>
                             <button
-                              type="button"
-                              onClick={() => setRememberMe(!rememberMe)}
-                              className="flex items-center gap-2 text-sm text-slate-600 hover:text-[#0A192F] transition-colors"
+                              type="submit"
+                              disabled={isLoading}
+                              className="w-full py-3.5 bg-[#D4AF37] hover:bg-[#c5a030] text-white rounded-lg font-medium text-[17px] transition-all relative overflow-hidden"
                             >
-                              {rememberMe ? (
-                                <CheckSquare className="w-4 h-4 text-[#D4AF37]" />
+                              {isLoading ? (
+                                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin mx-auto" />
                               ) : (
-                                <Square className="w-4 h-4 text-slate-400" />
+                                "Send Reset Link"
                               )}
-                              <span>Remember me</span>
                             </button>
-                            <a href="#" className="text-sm font-medium text-slate-600 hover:text-[#D4AF37] transition-colors">
-                              Forgot your password?
-                            </a>
+                            <div className="mt-4 text-center">
+                              <button
+                                type="button"
+                                onClick={() => setIsForgotPassword(false)}
+                                className="text-[17px] font-semibold text-slate-500 hover:text-[#0A192F] transition-colors"
+                              >
+                                Cancel
+                              </button>
+                            </div>
                           </>
-                        )}
-                      </div>
+                        )
+                      ) : !isVerifying ? (
+                        <>
+                          {!isSignUp && (
+                            <div className="mb-4">
+                              <label className="block text-xs font-semibold text-slate-700 mb-2 uppercase tracking-wider">
+                                Login With
+                              </label>
+                              <div className="flex items-center gap-6">
+                                <label className="flex items-center gap-2 text-[17px] text-slate-700 cursor-pointer">
+                                  <input
+                                    type="radio"
+                                    name="loginMethod"
+                                    checked={loginMethod === "email"}
+                                    onChange={() => setLoginMethod("email")}
+                                    className="accent-[#D4AF37]"
+                                  />
+                                  Email Address
+                                </label>
+                                <label className="flex items-center gap-2 text-[17px] text-slate-700 cursor-pointer">
+                                  <input
+                                    type="radio"
+                                    name="loginMethod"
+                                    checked={loginMethod === "mobile"}
+                                    onChange={() => setLoginMethod("mobile")}
+                                    className="accent-[#D4AF37]"
+                                  />
+                                  Mobile Number
+                                </label>
+                              </div>
+                            </div>
+                          )}
+
+                          {isSignUp ? (
+                            <>
+                              <div className="flex gap-4">
+                                <div className="w-1/2">
+                                  <label className="block text-xs font-semibold text-slate-700 mb-1.5 uppercase tracking-wider">
+                                    First Name *
+                                  </label>
+                                  <input
+                                    type="text"
+                                    placeholder="John"
+                                    required
+                                    value={firstName}
+                                    onChange={(e) => setFirstName(e.target.value.replace(/[^a-zA-Z\s-]/g, ''))}
+                                    className="w-full bg-slate-100/80 border border-slate-200 rounded-lg px-4 py-3 text-[17px] focus:bg-white focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] outline-none transition-all placeholder:text-slate-400"
+                                  />
+                                </div>
+                                <div className="w-1/2">
+                                  <label className="block text-xs font-semibold text-slate-700 mb-1.5 uppercase tracking-wider">
+                                    Last Name *
+                                  </label>
+                                  <input
+                                    type="text"
+                                    placeholder="Smith"
+                                    required
+                                    value={lastName}
+                                    onChange={(e) => setLastName(e.target.value.replace(/[^a-zA-Z\s-]/g, ''))}
+                                    className="w-full bg-slate-100/80 border border-slate-200 rounded-lg px-4 py-3 text-[17px] focus:bg-white focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] outline-none transition-all placeholder:text-slate-400"
+                                  />
+                                </div>
+                              </div>
+                              
+                              <div>
+                                <label className="block text-xs font-semibold text-slate-700 mb-1.5 uppercase tracking-wider">
+                                  Mobile Number *
+                                </label>
+                                <div className="relative flex">
+                                  <span className="inline-flex items-center px-4 bg-slate-100/80 border border-r-0 border-slate-200 rounded-l-lg text-slate-500 text-[17px]">
+                                    +91
+                                  </span>
+                                  <input
+                                    type="text"
+                                    placeholder="9999999999"
+                                    required
+                                    value={mobileNumber}
+                                    onChange={handleMobileChange}
+                                    className="w-full bg-slate-100/80 border border-slate-200 rounded-r-lg px-4 py-3 text-[17px] focus:bg-white focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] outline-none transition-all placeholder:text-slate-400"
+                                  />
+                                </div>
+                              </div>
+                              
+                              <div>
+                                <label className="block text-xs font-semibold text-slate-700 mb-1.5 uppercase tracking-wider">
+                                  Email Address (Optional)
+                                </label>
+                                <div className="relative">
+                                  <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                  <input
+                                    type="email"
+                                    placeholder="you@example.com"
+                                    value={email}
+                                    onChange={(e) => setEmail(e.target.value)}
+                                    className="w-full bg-slate-100/80 border border-slate-200 rounded-lg pl-10 pr-4 py-3 text-[17px] focus:bg-white focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] outline-none transition-all placeholder:text-slate-400"
+                                  />
+                                </div>
+                              </div>
+
+                              <div>
+                                <label className="block text-xs font-semibold text-slate-700 mb-1.5 uppercase tracking-wider">
+                                  Password *
+                                </label>
+                                <div className="relative">
+                                  <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                  <input
+                                    type={showPassword ? "text" : "password"}
+                                    placeholder="At least 8 characters"
+                                    required
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                    className="w-full bg-slate-100/80 border border-slate-200 rounded-lg pl-10 pr-10 py-3 text-[17px] focus:bg-white focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] outline-none transition-all placeholder:text-slate-400"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => setShowPassword(!showPassword)}
+                                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                                  >
+                                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                  </button>
+                                </div>
+                              </div>
+                            </>
+                          ) : (
+                            // Sign In Mode
+                            <>
+                              {loginMethod === "email" ? (
+                                <>
+                                  <div>
+                                    <label className="block text-xs font-semibold text-slate-700 mb-1.5 uppercase tracking-wider">
+                                      Email Address *
+                                    </label>
+                                    <div className="relative">
+                                      <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                      <input
+                                        type="email"
+                                        placeholder="you@example.com"
+                                        required
+                                        value={email}
+                                        onChange={(e) => setEmail(e.target.value)}
+                                        className="w-full bg-slate-100/80 border border-slate-200 rounded-lg pl-10 pr-4 py-3 text-[17px] focus:bg-white focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] outline-none transition-all placeholder:text-slate-400"
+                                      />
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <label className="block text-xs font-semibold text-slate-700 mb-1.5 uppercase tracking-wider">
+                                      Password *
+                                    </label>
+                                    <div className="relative">
+                                      <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                      <input
+                                        type={showPassword ? "text" : "password"}
+                                        placeholder="Your password"
+                                        required
+                                        value={password}
+                                        onChange={(e) => setPassword(e.target.value)}
+                                        className="w-full bg-slate-100/80 border border-slate-200 rounded-lg pl-10 pr-10 py-3 text-[17px] focus:bg-white focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] outline-none transition-all placeholder:text-slate-400"
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={() => setShowPassword(!showPassword)}
+                                        className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                                      >
+                                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                      </button>
+                                    </div>
+                                  </div>
+                                </>
+                              ) : (
+                                <>
+                                  <div>
+                                    <label className="block text-xs font-semibold text-slate-700 mb-1.5 uppercase tracking-wider">
+                                      Mobile Number *
+                                    </label>
+                                    <div className="relative flex">
+                                      <span className="inline-flex items-center px-4 bg-slate-100/80 border border-r-0 border-slate-200 rounded-l-lg text-slate-500 text-[17px]">
+                                        +91
+                                      </span>
+                                      <input
+                                        type="text"
+                                        placeholder="9999999999"
+                                        required
+                                        value={mobileNumber}
+                                        onChange={handleMobileChange}
+                                        className="w-full bg-slate-100/80 border border-slate-200 rounded-r-lg px-4 py-3 text-[17px] focus:bg-white focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] outline-none transition-all placeholder:text-slate-400"
+                                      />
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <label className="block text-xs font-semibold text-slate-700 mb-1.5 uppercase tracking-wider">
+                                      Password *
+                                    </label>
+                                    <div className="relative">
+                                      <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                      <input
+                                        type={showPassword ? "text" : "password"}
+                                        placeholder="Your password"
+                                        required
+                                        value={password}
+                                        onChange={(e) => setPassword(e.target.value)}
+                                        className="w-full bg-slate-100/80 border border-slate-200 rounded-lg pl-10 pr-10 py-3 text-[17px] focus:bg-white focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] outline-none transition-all placeholder:text-slate-400"
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={() => setShowPassword(!showPassword)}
+                                        className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                                      >
+                                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                      </button>
+                                    </div>
+                                  </div>
+                                </>
+                              )}
+                            </>
+                          )}
+
+
+                          <div className="flex items-center justify-between pt-2 pb-4">
+                            {isSignUp ? (
+                              <button
+                                type="button"
+                                onClick={() => setAgreeTerms(!agreeTerms)}
+                                className="flex items-center gap-2 text-[17px] text-slate-600 hover:text-[#0A192F] transition-colors"
+                              >
+                                {agreeTerms ? (
+                                  <CheckSquare className="w-4 h-4 text-[#D4AF37]" />
+                                ) : (
+                                  <Square className="w-4 h-4 text-slate-400" />
+                                )}
+                                <span>I agree to the Terms of Service</span>
+                              </button>
+                            ) : (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => setRememberMe(!rememberMe)}
+                                  className="flex items-center gap-2 text-[17px] text-slate-600 hover:text-[#0A192F] transition-colors"
+                                >
+                                  {rememberMe ? (
+                                    <CheckSquare className="w-4 h-4 text-[#D4AF37]" />
+                                  ) : (
+                                    <Square className="w-4 h-4 text-slate-400" />
+                                  )}
+                                  <span>Remember me</span>
+                                </button>
+                                {loginMethod === "email" && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setIsForgotPassword(true)}
+                                    className="text-[17px] font-medium text-slate-600 hover:text-[#D4AF37] transition-colors"
+                                  >
+                                    Forgot password?
+                                  </button>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        </>
+                      ) : (
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-700 mb-1.5 uppercase tracking-wider">
+                            Verification Code *
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="Enter 6-digit code"
+                            required
+                            value={otp}
+                            onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                            className="w-full bg-slate-100/80 border border-slate-200 rounded-lg px-4 py-3 text-[17px] text-center tracking-[0.5em] focus:bg-white focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] outline-none transition-all placeholder:text-slate-400 placeholder:tracking-normal"
+                          />
+                        </div>
+                      )}
 
                       <button
                         type="submit"
                         disabled={isLoading}
-                        className="w-full py-3.5 bg-[#D4AF37] hover:bg-[#c5a030] text-white rounded-lg font-medium text-sm transition-all hover:shadow-lg hover:-translate-y-0.5 disabled:opacity-70 disabled:hover:shadow-none disabled:hover:translate-y-0 relative overflow-hidden"
+                        className="w-full py-3.5 bg-[#D4AF37] hover:bg-[#c5a030] text-white rounded-lg font-medium text-[17px] transition-all hover:shadow-lg hover:-translate-y-0.5 disabled:opacity-70 disabled:hover:shadow-none disabled:hover:translate-y-0 relative overflow-hidden"
                       >
                         {isLoading ? (
                           <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin mx-auto" />
                         ) : (
-                          isSignUp ? "Create Account" : "Sign In"
+                          isVerifying ? "Verify & Sign In" : (isSignUp ? "Create Account" : "Sign In")
                         )}
                       </button>
+
+                      {!isVerifying && (
+                        <>
+                          <div className="relative my-6">
+                            <div className="absolute inset-0 flex items-center">
+                              <div className="w-full border-t border-slate-200"></div>
+                            </div>
+                            <div className="relative flex justify-center text-[17px]">
+                              <span className="px-2 bg-[#FAFAFA] text-slate-500">or</span>
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={handleGoogleSignIn}
+                            disabled={isLoading || isGoogleLoading || isGoogleSuccess}
+                            className={`w-full py-3.5 bg-white border border-slate-200 text-[#0A192F] rounded-lg font-medium text-[17px] transition-all flex items-center justify-center gap-3 disabled:opacity-70 disabled:hover:shadow-none ${isGoogleSuccess ? 'border-green-500 bg-green-50 text-green-700' : 'hover:bg-slate-50 hover:shadow-md'}`}
+                          >
+                            {isGoogleSuccess ? (
+                              <div className="flex items-center gap-2">
+                                <CheckSquare className="w-5 h-5 text-green-600" />
+                                <span>Success!</span>
+                              </div>
+                            ) : isGoogleLoading ? (
+                              <div className="w-5 h-5 border-2 border-slate-200 border-t-slate-400 rounded-full animate-spin" />
+                            ) : (
+                              <>
+                                <svg className="w-5 h-5" viewBox="0 0 24 24">
+                                  <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                                  <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                                  <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
+                                  <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+                                </svg>
+                                Continue with Google
+                              </>
+                            )}
+                          </button>
+                        </>
+                      )}
                     </form>
 
-                    <div className="mt-8 text-center">
-                      <p className="text-sm text-slate-500">
-                        {isSignUp ? "Already have an account? " : "Don't have an account? "}
-                        <button
-                          onClick={toggleMode}
-                          className="font-semibold text-[#0A192F] hover:text-[#D4AF37] transition-colors underline decoration-[#D4AF37]/30 underline-offset-4 hover:decoration-[#D4AF37]"
-                        >
-                          {isSignUp ? "Sign in" : "Create one"}
-                        </button>
-                      </p>
-                    </div>
+                    {!isVerifying && !isForgotPassword && (
+                      <div className="mt-8 text-center">
+                        <p className="text-[17px] text-slate-500">
+                          {isSignUp ? "Already have an account? " : "Don't have an account? "}
+                          <button
+                            onClick={toggleMode}
+                            className="font-semibold text-[#0A192F] hover:text-[#D4AF37] transition-colors underline decoration-[#D4AF37]/30 underline-offset-4 hover:decoration-[#D4AF37]"
+                          >
+                            {isSignUp ? "Sign in" : "Create one"}
+                          </button>
+                        </p>
+                      </div>
+                    )}
                   </motion.div>
+                  )}
                 </AnimatePresence>
               </div>
 
@@ -217,7 +574,7 @@ export function AuthModal({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
                   <h3 className="text-4xl font-light tracking-wide mb-3 leading-tight">
                     Style that<br />lasts.
                   </h3>
-                  <p className="text-white/70 text-sm max-w-xs font-light leading-relaxed">
+                  <p className="text-white/70 text-[17px] max-w-xs font-light leading-relaxed">
                     Sign in to track orders, save your wishlist, and check out faster with our premium digital experience.
                   </p>
                 </div>

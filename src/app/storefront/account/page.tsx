@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { 
   Package, MapPin, Heart, User, ChevronRight, 
@@ -9,6 +9,7 @@ import {
 import { Header } from "@/components/layout/Header";
 import { CartDrawer } from "@/components/layout/CartDrawer";
 import { StylistDrawer } from "@/components/stylist/StylistDrawer";
+import jsPDF from "jspdf";
 
 interface OrderItem {
   id: string;
@@ -26,88 +27,101 @@ interface OrderItem {
   shippingAddress: string;
 }
 
-const mockCustomerOrders: OrderItem[] = [
-  {
-    id: "ord-1",
-    orderNumber: "VX-89241",
-    date: "Aug 16, 2026",
-    total: "$625.00",
-    status: "SHIPPED",
-    trackingNumber: "TRK-98421894",
-    shippingAddress: "742 Evergreen Terrace, Apt 4B, New York, NY 10001",
-    items: [
-      {
-        name: "Noir Silk Evening Blazer",
-        variant: "Midnight / Size M",
-        price: "$480.00",
-        image: "https://images.unsplash.com/photo-1598033129183-c4f50c736f10?q=80&w=400&auto=format&fit=crop"
-      },
-      {
-        name: "Monochrome Wool Knit Tee",
-        variant: "Obsidian / Size L",
-        price: "$145.00",
-        image: "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?q=80&w=400&auto=format&fit=crop"
-      }
-    ]
-  },
-  {
-    id: "ord-2",
-    orderNumber: "VX-84102",
-    date: "Jul 28, 2026",
-    total: "$380.00",
-    status: "DELIVERED",
-    trackingNumber: "TRK-74120953",
-    shippingAddress: "742 Evergreen Terrace, Apt 4B, New York, NY 10001",
-    items: [
-      {
-        name: "Minimalist Cashmere Turtleneck",
-        variant: "Charcoal / Size M",
-        price: "$380.00",
-        image: "https://images.unsplash.com/photo-1624542313043-30df84aee15d?q=80&w=400&auto=format&fit=crop"
-      }
-    ]
-  }
-];
+const mockCustomerOrders: OrderItem[] = [];
 
 export default function CustomerAccountPage() {
-  const [activeTab, setActiveTab] = useState<"orders" | "addresses" | "wishlist" | "profile">("orders");
+  const [activeTab, setActiveTab] = useState<"orders" | "favorites" | "profile">("orders");
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isStylistOpen, setIsStylistOpen] = useState(false);
   
   // Profile state
-  const [name, setName] = useState("Alexandre Vance");
-  const [email, setEmail] = useState("a.vance@atelier-vance.com");
-  const [phone, setPhone] = useState("+1 (555) 234-5678");
+  const [firstName, setFirstName] = useState("Aishwarya");
+  const [lastName, setLastName] = useState("R");
+  const [headerName, setHeaderName] = useState("Aishwarya R");
+  const [email, setEmail] = useState("aishwarya.r@outlook.com");
+  const [phone, setPhone] = useState("+91 99622 88110");
   const [savedSuccess, setSavedSuccess] = useState(false);
 
   // Address state
-  const [addresses, setAddresses] = useState([
-    {
-      id: "addr-1",
-      title: "Primary Residence",
-      name: "Alexandre Vance",
-      street: "742 Evergreen Terrace, Apt 4B",
-      city: "New York",
-      state: "NY",
-      zip: "10001",
-      isDefault: true
-    },
-    {
-      id: "addr-2",
-      title: "Design Studio",
-      name: "Alexandre Vance",
-      street: "450 West 14th Street, Studio 8",
-      city: "New York",
-      state: "NY",
-      zip: "10014",
-      isDefault: false
+  const [addresses, setAddresses] = useState<any[]>([]);
+  const [isAddingAddress, setIsAddingAddress] = useState(false);
+
+  const [favorites, setFavorites] = useState<any[]>([]);
+
+  useEffect(() => {
+    const saved = localStorage.getItem("vastrax_favorites");
+    if (saved) {
+      try {
+        setFavorites(JSON.parse(saved));
+      } catch (e) {}
     }
-  ]);
+  }, []);
+
+  const toggleFavorite = (id: string | number) => {
+    const newFavorites = favorites.filter(f => f.id !== id);
+    setFavorites(newFavorites);
+    localStorage.setItem("vastrax_favorites", JSON.stringify(newFavorites));
+  };
 
   const handleSaveProfile = (e: React.FormEvent) => {
     e.preventDefault();
+    setHeaderName(`${firstName} ${lastName}`);
     setSavedSuccess(true);
     setTimeout(() => setSavedSuccess(false), 3000);
+  };
+
+  const handleDownloadInvoice = (order: OrderItem) => {
+    const doc = new jsPDF();
+    
+    // Add company logo/header
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(24);
+    doc.text("VASTRAX", 105, 20, { align: "center" });
+    
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.text("INVOICE", 105, 30, { align: "center" });
+    
+    // Order details
+    doc.setFontSize(12);
+    doc.text(`Order Number: ${order.orderNumber}`, 20, 50);
+    doc.text(`Date: ${order.date}`, 20, 60);
+    doc.text(`Status: ${order.status}`, 20, 70);
+    
+    if (order.trackingNumber) {
+      doc.text(`Tracking Number: ${order.trackingNumber}`, 20, 80);
+    }
+    
+    // Shipping Address
+    doc.text("Shipping Address:", 20, 100);
+    doc.setFontSize(10);
+    doc.text(order.shippingAddress, 20, 110);
+    
+    // Items
+    doc.setFontSize(12);
+    doc.text("Items:", 20, 130);
+    
+    let yPos = 140;
+    order.items.forEach((item, index) => {
+      doc.setFontSize(10);
+      doc.text(`${index + 1}. ${item.name} (${item.variant})`, 20, yPos);
+      doc.text(item.price, 170, yPos);
+      yPos += 10;
+    });
+    
+    // Total
+    doc.line(20, yPos + 5, 190, yPos + 5);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(14);
+    doc.text(`Total: ${order.total}`, 140, yPos + 15);
+    
+    // Footer
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.text("Thank you for your purchase.", 105, 280, { align: "center" });
+    
+    // Save the PDF
+    doc.save(`Invoice_${order.orderNumber}.pdf`);
   };
 
   const getStatusBadge = (status: OrderItem["status"]) => {
@@ -132,41 +146,23 @@ export default function CustomerAccountPage() {
         <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground mb-8">
           <Link href="/storefront/home" className="hover:text-foreground transition-colors">Home</Link>
           <ChevronRight className="w-3 h-3" />
-          <span className="text-foreground">Client Portal</span>
+          <span className="text-foreground">Profile</span>
         </div>
 
         {/* Hero Header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-8 border-b border-border/40">
           <div className="flex items-center gap-5">
             <div className="w-16 h-16 rounded-full bg-gradient-to-tr from-accent to-[#d95f26] p-0.5 shadow-[0_0_20px_rgba(224,122,63,0.3)]">
-              <div className="w-full h-full rounded-full bg-surface flex items-center justify-center text-xl font-bold text-foreground">
-                {name.split(" ").map(n => n[0]).join("")}
+              <div className="w-full h-full rounded-full bg-surface flex items-center justify-center text-xl font-bold text-foreground uppercase">
+                {headerName.charAt(0)}
               </div>
             </div>
             <div>
               <div className="flex items-center gap-3">
-                <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">{name}</h1>
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-accent/20 text-accent border border-accent/30">
-                  VIP Concierge
-                </span>
+                <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">{headerName}</h1>
               </div>
               <p className="text-sm text-muted-foreground mt-1">{email}</p>
             </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <button 
-              onClick={() => setIsStylistOpen(true)}
-              className="px-4 py-2 rounded-full border border-accent/30 bg-accent/10 hover:bg-accent/20 text-accent text-xs font-semibold uppercase tracking-wider transition-colors flex items-center gap-2"
-            >
-              Consult Personal Stylist
-            </button>
-            <Link 
-              href="/storefront/home"
-              className="px-4 py-2 rounded-full border border-border hover:bg-surface-hover text-muted-foreground hover:text-foreground text-xs font-semibold uppercase tracking-wider transition-colors flex items-center gap-2"
-            >
-              <LogOut className="w-3.5 h-3.5" /> Exit
-            </Link>
           </div>
         </div>
 
@@ -175,9 +171,8 @@ export default function CustomerAccountPage() {
           {/* Navigation Sidebar */}
           <div className="lg:col-span-1 space-y-2">
             {[
-              { id: "orders", label: "Orders & Shipments", icon: Package, count: mockCustomerOrders.length },
-              { id: "addresses", label: "Saved Addresses", icon: MapPin, count: addresses.length },
-              { id: "wishlist", label: "Private Wishlist", icon: Heart, count: 3 },
+              { id: "orders", label: "Orders & Shipments", icon: Package },
+              { id: "favorites", label: "Favorites", icon: Heart },
               { id: "profile", label: "Account Profile", icon: User },
             ].map((tab) => {
               const Icon = tab.icon;
@@ -186,7 +181,7 @@ export default function CustomerAccountPage() {
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id as any)}
-                  className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-medium transition-all ${
+                  className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-lg font-medium transition-all ${
                     isActive 
                       ? "bg-accent/15 text-accent border border-accent/30 shadow-[0_0_15px_rgba(224,122,63,0.15)]" 
                       : "text-muted-foreground hover:text-foreground hover:bg-surface border border-transparent"
@@ -196,11 +191,6 @@ export default function CustomerAccountPage() {
                     <Icon className={`w-4 h-4 ${isActive ? "text-accent" : "text-muted-foreground"}`} />
                     <span>{tab.label}</span>
                   </div>
-                  {tab.count !== undefined && (
-                    <span className={`text-xs px-2 py-0.5 rounded-full ${isActive ? "bg-accent/20 text-accent font-bold" : "bg-surface-hover text-muted-foreground"}`}>
-                      {tab.count}
-                    </span>
-                  )}
                 </button>
               );
             })}
@@ -212,8 +202,7 @@ export default function CustomerAccountPage() {
             {activeTab === "orders" && (
               <div className="space-y-6">
                 <div>
-                  <h2 className="text-xl font-bold text-foreground">Active & Past Orders</h2>
-                  <p className="text-xs text-muted-foreground mt-1">Real-time status, tracking numbers, and receipt history.</p>
+                  <h2 className="text-xl font-bold text-foreground">Orders</h2>
                 </div>
 
                 <div className="space-y-6">
@@ -289,7 +278,10 @@ export default function CustomerAccountPage() {
 
                       <div className="mt-4 pt-4 border-t border-border/40 flex items-center justify-between text-xs text-muted-foreground">
                         <span>Ship to: {order.shippingAddress}</span>
-                        <button className="text-accent hover:underline flex items-center gap-1 font-medium">
+                        <button 
+                          onClick={() => handleDownloadInvoice(order)}
+                          className="text-accent hover:underline flex items-center gap-1 font-medium"
+                        >
                           Download Invoice <ExternalLink className="w-3 h-3" />
                         </button>
                       </div>
@@ -299,76 +291,33 @@ export default function CustomerAccountPage() {
               </div>
             )}
 
-            {/* ADDRESSES TAB */}
-            {activeTab === "addresses" && (
-              <div className="space-y-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h2 className="text-xl font-bold text-foreground">Delivery Addresses</h2>
-                    <p className="text-xs text-muted-foreground mt-1">Manage shipping locations for express delivery.</p>
-                  </div>
-                  <button className="px-4 py-2 rounded-full bg-accent hover:bg-accent/90 text-white text-xs font-semibold uppercase tracking-wider transition-colors flex items-center gap-2 shadow-[0_0_15px_rgba(224,122,63,0.3)]">
-                    <Plus className="w-3.5 h-3.5" /> Add Address
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {addresses.map((addr) => (
-                    <div key={addr.id} className="bg-surface/60 border border-border/80 rounded-2xl p-5 relative flex flex-col justify-between">
-                      <div>
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-xs font-bold uppercase tracking-wider text-accent">{addr.title}</span>
-                          {addr.isDefault && (
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-accent/10 text-accent border border-accent/20">Default</span>
-                          )}
-                        </div>
-                        <h4 className="font-semibold text-foreground text-sm">{addr.name}</h4>
-                        <p className="text-xs text-muted-foreground mt-1">{addr.street}</p>
-                        <p className="text-xs text-muted-foreground">{addr.city}, {addr.state} {addr.zip}</p>
-                      </div>
-
-                      <div className="mt-6 pt-3 border-t border-border/40 flex items-center justify-end gap-3 text-xs">
-                        <button className="text-muted-foreground hover:text-foreground flex items-center gap-1">
-                          <Edit2 className="w-3 h-3" /> Edit
-                        </button>
-                        {!addr.isDefault && (
-                          <button className="text-red-400 hover:text-red-300 flex items-center gap-1">
-                            <Trash2 className="w-3 h-3" /> Delete
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* WISHLIST TAB */}
-            {activeTab === "wishlist" && (
+            {/* FAVORITES TAB */}
+            {activeTab === "favorites" && (
               <div className="space-y-6">
                 <div>
-                  <h2 className="text-xl font-bold text-foreground">Curated Wishlist</h2>
-                  <p className="text-xs text-muted-foreground mt-1">Garments and tailoring pieces saved for future acquisition.</p>
+                  <h2 className="text-xl font-bold text-foreground">Favorites</h2>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-                  {[
-                    { name: "Silk Crepe Tailored Trousers", price: "$320.00", image: "https://images.unsplash.com/photo-1594938298603-c8148c4dae35?q=80&w=400&auto=format&fit=crop" },
-                    { name: "Sculpted Cashmere Coat", price: "$890.00", image: "https://images.unsplash.com/photo-1544441893-675973e31985?q=80&w=400&auto=format&fit=crop" },
-                    { name: "Architectural Oxford Shirt", price: "$260.00", image: "https://images.unsplash.com/photo-1598033129183-c4f50c736f10?q=80&w=400&auto=format&fit=crop" },
-                  ].map((item, idx) => (
-                    <div key={idx} className="group bg-surface/60 border border-border/80 rounded-2xl overflow-hidden flex flex-col justify-between">
-                      <div className="aspect-[3/4] overflow-hidden bg-surface-hover">
+                  {favorites.map((item) => (
+                    <div key={item.id} className="group bg-surface/60 border border-border/80 rounded-2xl overflow-hidden flex flex-col justify-between">
+                      <div className="aspect-[3/4] overflow-hidden bg-surface-hover relative">
                         <img src={item.image} alt={item.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                        <button 
+                          onClick={() => toggleFavorite(item.id)}
+                          className="absolute top-3 right-3 p-2 rounded-full bg-white/20 backdrop-blur-md hover:bg-white/40 transition-colors z-10"
+                        >
+                          <Heart className="w-4 h-4 text-accent fill-accent" />
+                        </button>
                       </div>
                       <div className="p-4">
                         <h4 className="font-semibold text-foreground text-sm truncate">{item.name}</h4>
                         <p className="text-xs font-semibold text-accent mt-1">{item.price}</p>
                         <button 
                           onClick={() => setIsCartOpen(true)}
-                          className="mt-3 w-full py-2 bg-surface-hover hover:bg-accent hover:text-white rounded-lg text-xs font-semibold uppercase tracking-wider transition-colors border border-border flex items-center justify-center gap-2"
+                          className="mt-4 w-full py-2.5 bg-accent hover:bg-accent/90 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-md shadow-accent/20 flex items-center justify-center gap-2"
                         >
-                          <ShoppingBag className="w-3.5 h-3.5" /> Move to Bag
+                          <ShoppingBag className="w-4 h-4" /> Move to Bag
                         </button>
                       </div>
                     </div>
@@ -377,60 +326,170 @@ export default function CustomerAccountPage() {
               </div>
             )}
 
-            {/* PROFILE TAB */}
+            {/* WISHLIST TAB -> (Removed, Replaced by FAVORITES above) */}            {/* PROFILE TAB */}
             {activeTab === "profile" && (
               <div className="space-y-6">
                 <div>
-                  <h2 className="text-xl font-bold text-foreground">Client Profile</h2>
-                  <p className="text-xs text-muted-foreground mt-1">Personal details and concierge preferences.</p>
+                  <h2 className="text-2xl font-bold text-foreground">Client Profile</h2>
+                  <p className="text-base text-muted-foreground mt-1">Personal details and concierge preferences.</p>
                 </div>
 
                 <form onSubmit={handleSaveProfile} className="bg-surface/60 border border-border/80 rounded-2xl p-6 space-y-4 max-w-xl">
                   {savedSuccess && (
-                    <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4" /> Profile changes successfully updated.
+                    <div className="p-4 bg-green-500/10 border border-green-500/20 text-green-500 rounded-xl text-lg font-medium flex items-center gap-2">
+                      <CheckCircle2 className="w-5 h-5" /> Profile successfully updated.
                     </div>
                   )}
-
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-muted-foreground uppercase">Full Name</label>
-                    <input 
-                      type="text" 
-                      value={name} 
-                      onChange={(e) => setName(e.target.value)} 
-                      className="w-full px-4 py-2.5 bg-background border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-accent"
-                    />
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-base font-semibold text-foreground uppercase tracking-wider mb-2">First Name <span className="text-red-500">*</span></label>
+                      <input 
+                        type="text" 
+                        value={firstName}
+                        onChange={(e) => setFirstName(e.target.value.replace(/[^a-zA-Z\s-]/g, ''))}
+                        className="w-full bg-surface border border-border/50 rounded-xl px-4 py-3 text-lg text-foreground focus:outline-none focus:border-accent transition-colors"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-base font-semibold text-foreground uppercase tracking-wider mb-2">Last Name <span className="text-red-500">*</span></label>
+                      <input 
+                        type="text" 
+                        value={lastName}
+                        onChange={(e) => setLastName(e.target.value.replace(/[^a-zA-Z\s-]/g, ''))}
+                        className="w-full bg-surface border border-border/50 rounded-xl px-4 py-3 text-lg text-foreground focus:outline-none focus:border-accent transition-colors"
+                        required
+                      />
+                    </div>
                   </div>
 
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-muted-foreground uppercase">Email Address</label>
+                  <div>
+                    <label className="block text-base font-semibold text-foreground uppercase tracking-wider mb-2">Email Address <span className="text-red-500">*</span></label>
                     <input 
                       type="email" 
-                      value={email} 
-                      onChange={(e) => setEmail(e.target.value)} 
-                      className="w-full px-4 py-2.5 bg-background border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-accent"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="w-full bg-surface border border-border/50 rounded-xl px-4 py-3 text-lg text-foreground focus:outline-none focus:border-accent transition-colors"
+                      required
                     />
                   </div>
 
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-muted-foreground uppercase">Phone Number</label>
+                  <div>
+                    <label className="block text-base font-semibold text-foreground uppercase tracking-wider mb-2">Phone Number</label>
                     <input 
                       type="tel" 
-                      value={phone} 
-                      onChange={(e) => setPhone(e.target.value)} 
-                      className="w-full px-4 py-2.5 bg-background border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-accent"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      className="w-full bg-surface border border-border/50 rounded-xl px-4 py-3 text-lg text-foreground focus:outline-none focus:border-accent transition-colors"
                     />
                   </div>
 
-                  <div className="pt-4 flex justify-end">
+                  <div className="pt-4 border-t border-border/40">
                     <button 
-                      type="submit" 
-                      className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white rounded-full text-xs font-semibold uppercase tracking-wider transition-colors shadow-[0_0_15px_rgba(224,122,63,0.3)]"
+                      type="submit"
+                      className="px-8 py-3 bg-accent hover:bg-accent/90 text-white rounded-xl text-lg font-bold uppercase tracking-wider transition-all shadow-md shadow-accent/20"
                     >
-                      Save Profile
+                      Save Changes
                     </button>
                   </div>
                 </form>
+
+                <div className="mt-12">
+                  <div className="flex items-center justify-between mb-6">
+                    <div>
+                      <h3 className="text-2xl font-bold text-foreground">Delivery Addresses</h3>
+                      <p className="text-base text-muted-foreground mt-1">Manage shipping locations for express delivery.</p>
+                    </div>
+                    {!isAddingAddress && (
+                      <button 
+                        onClick={() => setIsAddingAddress(true)}
+                        className="px-4 py-2 rounded-full bg-accent hover:bg-accent/90 text-white text-xs font-semibold uppercase tracking-wider transition-colors flex items-center gap-2 shadow-[0_0_15px_rgba(224,122,63,0.3)]"
+                      >
+                        <Plus className="w-3.5 h-3.5" /> Add Address
+                      </button>
+                    )}
+                  </div>
+
+                  {isAddingAddress ? (
+                    <div className="bg-surface/60 border border-border/80 rounded-2xl p-6">
+                      <h4 className="text-sm font-bold mb-4">Add New Address</h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-1.5 md:col-span-2">
+                          <label className="text-xs font-semibold text-muted-foreground uppercase">Street Number & Name<span className="text-red-500 ml-1">*</span></label>
+                          <input type="text" placeholder="e.g. 123 Main St" className="w-full px-4 py-2.5 bg-background border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-accent" required />
+                        </div>
+                        <div className="space-y-1.5 md:col-span-2">
+                          <label className="text-xs font-semibold text-muted-foreground uppercase">Nearby Landmark</label>
+                          <input type="text" placeholder="e.g. Opposite Central Park" className="w-full px-4 py-2.5 bg-background border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-accent" />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-semibold text-muted-foreground uppercase">City<span className="text-red-500 ml-1">*</span></label>
+                          <input type="text" onInput={(e) => { e.currentTarget.value = e.currentTarget.value.replace(/[^a-zA-Z\s-]/g, ''); }} className="w-full px-4 py-2.5 bg-background border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-accent" required />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-semibold text-muted-foreground uppercase">State / Province<span className="text-red-500 ml-1">*</span></label>
+                          <input type="text" onInput={(e) => { e.currentTarget.value = e.currentTarget.value.replace(/[^a-zA-Z\s-]/g, ''); }} className="w-full px-4 py-2.5 bg-background border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-accent" required />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-semibold text-muted-foreground uppercase">Country<span className="text-red-500 ml-1">*</span></label>
+                          <input type="text" onInput={(e) => { e.currentTarget.value = e.currentTarget.value.replace(/[^a-zA-Z\s-]/g, ''); }} className="w-full px-4 py-2.5 bg-background border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-accent" required />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-semibold text-muted-foreground uppercase">Zip / Postal Code<span className="text-red-500 ml-1">*</span></label>
+                          <input type="text" className="w-full px-4 py-2.5 bg-background border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-accent" required />
+                        </div>
+                        <div className="space-y-1.5 md:col-span-2">
+                          <label className="text-xs font-semibold text-muted-foreground uppercase">Mobile Number<span className="text-red-500 ml-1">*</span></label>
+                          <input type="tel" onInput={(e) => { e.currentTarget.value = e.currentTarget.value.replace(/\D/g, ''); }} placeholder="5550000000" className="w-full px-4 py-2.5 bg-background border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-accent" required />
+                        </div>
+                      </div>
+                      <div className="mt-6 flex justify-end gap-3">
+                        <button 
+                          onClick={() => setIsAddingAddress(false)}
+                          className="px-6 py-2.5 bg-transparent border border-border hover:bg-surface-hover text-foreground rounded-full text-xs font-semibold uppercase tracking-wider transition-colors"
+                        >
+                          Cancel
+                        </button>
+                        <button 
+                          onClick={() => setIsAddingAddress(false)}
+                          className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white rounded-full text-xs font-semibold uppercase tracking-wider transition-colors"
+                        >
+                          Save Address
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {addresses.map((addr) => (
+                        <div key={addr.id} className="bg-surface/60 border border-border/80 rounded-2xl p-5 relative flex flex-col justify-between">
+                          <div>
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-xs font-bold uppercase tracking-wider text-accent">{addr.title}</span>
+                              {addr.isDefault && (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-accent/10 text-accent border border-accent/20">Default</span>
+                              )}
+                            </div>
+                            <h4 className="font-semibold text-foreground text-sm">{addr.name}</h4>
+                            <p className="text-xs text-muted-foreground mt-1">{addr.street}</p>
+                            <p className="text-xs text-muted-foreground">{addr.city}, {addr.state} {addr.zip}</p>
+                          </div>
+
+                          <div className="mt-6 pt-3 border-t border-border/40 flex items-center justify-end gap-3 text-xs">
+                            <button className="text-muted-foreground hover:text-foreground flex items-center gap-1">
+                              <Edit2 className="w-3 h-3" /> Edit
+                            </button>
+                            {!addr.isDefault && (
+                              <button className="text-red-400 hover:text-red-300 flex items-center gap-1">
+                                <Trash2 className="w-3 h-3" /> Delete
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>

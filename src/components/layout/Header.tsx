@@ -1,7 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import { Bell, Search, Menu } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import Link from "next/link";
+import { useSession, signOut } from "next-auth/react";
 
 interface HeaderProps {
   isSidebarCollapsed?: boolean;
@@ -10,6 +13,9 @@ interface HeaderProps {
 }
 
 export function Header({ isSidebarCollapsed, toggleSidebar, onOpenCart }: HeaderProps) {
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const { data: session } = useSession();
+
   return (
     <header className="h-16 border-b border-border bg-surface flex items-center justify-between px-6 z-20">
       <div className="flex items-center gap-6 flex-1">
@@ -30,9 +36,9 @@ export function Header({ isSidebarCollapsed, toggleSidebar, onOpenCart }: Header
             </button>
           )}
           
-          <a href="/storefront/home" className="text-xl font-bold tracking-widest text-foreground hover:text-accent transition-colors">
+          <Link href="/storefront/home" className="text-xl font-bold tracking-widest text-foreground hover:text-accent transition-colors">
             VASTRAX
-          </a>
+          </Link>
         </div>
 
         <div className="flex items-center gap-6">
@@ -52,14 +58,14 @@ export function Header({ isSidebarCollapsed, toggleSidebar, onOpenCart }: Header
       </div>
 
       <div className="flex items-center gap-2 md:gap-4 shrink-0">
-        <a href="/storefront/home" className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-md border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-surface-hover transition-colors">
+        <Link href="/storefront/home" className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-md border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-surface-hover transition-colors">
           <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
           Storefront
-        </a>
+        </Link>
 
-        <a href="/" className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-md border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-surface-hover transition-colors">
+        <Link href="/" className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-md border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-surface-hover transition-colors">
           Dashboard
-        </a>
+        </Link>
 
         <ThemeToggle />
         
@@ -68,12 +74,46 @@ export function Header({ isSidebarCollapsed, toggleSidebar, onOpenCart }: Header
           <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-accent rounded-full border border-background"></span>
         </button>
         
-        <a href="/storefront/account" className="flex items-center gap-2 ml-1 p-1 rounded-full md:rounded-md hover:bg-surface-hover transition-colors border border-transparent md:border-border/50">
-          <div className="h-7 w-7 rounded-full bg-accent/20 border border-accent/40 flex items-center justify-center overflow-hidden text-accent font-bold text-[10px]">
-            AV
-          </div>
-          <span className="text-sm font-medium hidden md:block mr-1">Alexandre</span>
-        </a>
+        <div className="relative">
+          <button 
+            onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+            className="flex items-center gap-2 ml-1 p-1 rounded-full md:rounded-md hover:bg-surface-hover transition-colors border border-transparent md:border-border/50 focus:outline-none"
+          >
+            <div className="h-7 w-7 rounded-full bg-accent/20 border border-accent/40 flex items-center justify-center overflow-hidden text-accent font-bold text-[10px] uppercase">
+              {session?.user?.name ? session.user.name.charAt(0) : "AV"}
+            </div>
+            <span className="text-sm font-medium hidden md:block mr-1">
+              {session?.user?.name || "Alexandre"}
+            </span>
+          </button>
+
+          {isUserMenuOpen && (
+            <>
+              <div 
+                className="fixed inset-0 z-40" 
+                onClick={() => setIsUserMenuOpen(false)} 
+              />
+              <div className="absolute right-0 mt-2 w-48 bg-background border border-border rounded-xl shadow-lg py-2 z-50 overflow-hidden">
+                <Link 
+                  href="/storefront/account"
+                  onClick={() => setIsUserMenuOpen(false)}
+                  className="block w-full text-left px-4 py-3 text-sm font-medium text-foreground hover:bg-surface transition-colors"
+                >
+                  My Account
+                </Link>
+                <button 
+                  onClick={() => { 
+                    if (session) signOut();
+                    setIsUserMenuOpen(false); 
+                  }}
+                  className="w-full text-left px-4 py-3 text-sm font-medium text-red-500 hover:bg-surface transition-colors"
+                >
+                  Sign Out
+                </button>
+              </div>
+            </>
+          )}
+        </div>
       </div>
     </header>
   );

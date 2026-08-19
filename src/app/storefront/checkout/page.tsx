@@ -8,6 +8,8 @@ import {
   Package, ShoppingBag
 } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { useSession } from "next-auth/react";
+import { AuthModal } from "@/components/auth/AuthModal";
 
 interface OrderItem {
   id: number;
@@ -24,6 +26,15 @@ export default function CheckoutPage() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [orderComplete, setOrderComplete] = useState(false);
   const [orderNumber, setOrderNumber] = useState("");
+
+  const { data: session, status } = useSession();
+  const [isAuthOpen, setIsAuthOpen] = useState(false);
+
+  React.useEffect(() => {
+    if (status === "unauthenticated") {
+      setIsAuthOpen(true);
+    }
+  }, [status]);
 
   // Form State
   const [email, setEmail] = useState("alexandra.vance@example.com");
@@ -83,6 +94,38 @@ export default function CheckoutPage() {
       setOrderComplete(true);
     }, 2000);
   };
+
+  if (status === "loading") {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Loader2 className="w-8 h-8 animate-spin text-accent" />
+      </div>
+    );
+  }
+
+  if (status === "unauthenticated") {
+    return (
+      <div className="min-h-screen bg-background text-foreground font-sans flex flex-col items-center justify-center p-6">
+        <div className="bg-surface border border-border/50 rounded-3xl p-10 max-w-md w-full text-center shadow-2xl">
+          <Lock className="w-12 h-12 text-accent mx-auto mb-6 opacity-80" />
+          <h1 className="text-2xl font-bold mb-4">Authentication Required</h1>
+          <p className="text-muted-foreground mb-8">You must be signed in to proceed to checkout and secure your order.</p>
+          <button 
+            onClick={() => setIsAuthOpen(true)}
+            className="w-full px-8 py-4 bg-accent hover:bg-accent-hover text-white rounded-full font-bold uppercase tracking-wider transition-colors shadow-lg shadow-accent/20"
+          >
+            Sign In to Checkout
+          </button>
+          <div className="mt-6">
+            <Link href="/storefront/home" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+              Return to Store
+            </Link>
+          </div>
+        </div>
+        <AuthModal isOpen={isAuthOpen} onClose={() => setIsAuthOpen(false)} />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background text-foreground font-sans flex flex-col transition-colors duration-300 pb-16">

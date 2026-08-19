@@ -1,9 +1,15 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Search, Heart, Star, ShoppingBag, Menu, User, Minus, Plus, Truck, RefreshCw, ShieldCheck, Check, Link as LinkIcon, Phone } from "lucide-react";
+import { useState, useRef, useEffect } from "react";
+import { 
+  ChevronRight, Heart, Star, Share2, Ruler, Truck, ShieldCheck, 
+  Minus, Plus, ChevronLeft, ArrowRight, Menu, Search, User, ShoppingBag,
+  Phone, Link as LinkIcon, RefreshCw, Check
+} from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { AuthModal } from "@/components/auth/AuthModal";
+import { useSession, signOut } from "next-auth/react";
+import Link from "next/link";
 import { CartDrawer } from "@/components/layout/CartDrawer";
 import { StylistDrawer } from "@/components/stylist/StylistDrawer";
 
@@ -23,6 +29,7 @@ const colors = [
 
 export default function ProductPage() {
   const [isAuthOpen, setIsAuthOpen] = useState(false);
+  const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isStylistOpen, setIsStylistOpen] = useState(false);
   const [bagItems, setBagItems] = useState<number[]>([101]);
@@ -30,6 +37,52 @@ export default function ProductPage() {
   const [activeSize, setActiveSize] = useState('One Size');
   const [quantity, setQuantity] = useState(1);
   const [activeTab, setActiveTab] = useState('Description');
+
+  const [favorites, setFavorites] = useState<number[]>([]);
+  
+  const { data: session } = useSession();
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [userName, setUserName] = useState("");
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  
+  useEffect(() => {
+    if (session?.user?.name) {
+      setIsLoggedIn(true);
+      setUserName(session.user.name);
+    }
+  }, [session]);
+
+  useEffect(() => {
+    const saved = localStorage.getItem("vastrax_favorites");
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        setFavorites(parsed.map((f: any) => f.id));
+      } catch (e) {}
+    }
+  }, []);
+
+  const toggleFavorite = (product: any, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const savedStr = localStorage.getItem("vastrax_favorites");
+    let currentFavs = savedStr ? JSON.parse(savedStr) : [];
+    
+    if (currentFavs.some((f: any) => f.id === product.id)) {
+      currentFavs = currentFavs.filter((f: any) => f.id !== product.id);
+      setFavorites(prev => prev.filter(id => id !== product.id));
+    } else {
+      currentFavs.push({
+        id: product.id,
+        name: product.name,
+        price: `$${product.price || 0}.00`,
+        image: product.image
+      });
+      setFavorites(prev => [...prev, product.id]);
+    }
+    localStorage.setItem("vastrax_favorites", JSON.stringify(currentFavs));
+  };
 
   useEffect(() => {
     const handleOpenStylist = () => setIsStylistOpen(true);
@@ -79,12 +132,75 @@ export default function ProductPage() {
           <button className="md:hidden text-foreground/70 hover:text-[#e07a3f] transition-colors">
             <Search className="w-5 h-5" />
           </button>
-          <button 
-            onClick={() => setIsAuthOpen(true)}
-            className="flex items-center gap-2 text-foreground/70 hover:text-[#e07a3f] transition-colors"
-          >
-            <User className="w-5 h-5" />
-          </button>
+
+          <div className="relative">
+            <button 
+              onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+              className="flex items-center gap-2 text-foreground/70 hover:text-[#e07a3f] transition-colors"
+            >
+              {isLoggedIn ? (
+                <>
+                  <div className="w-7 h-7 rounded-full bg-accent/20 border border-accent/40 flex items-center justify-center text-accent text-xs font-bold uppercase">
+                    {userName.charAt(0)}
+                  </div>
+                  <span className="text-sm font-medium hidden md:block text-foreground">{userName}</span>
+                </>
+              ) : (
+                <User className="w-5 h-5" />
+              )}
+            </button>
+            
+            {isUserMenuOpen && (
+              <>
+                <div 
+                  className="fixed inset-0 z-40" 
+                  onClick={() => setIsUserMenuOpen(false)} 
+                />
+                <div className="absolute right-0 mt-4 w-48 bg-background border border-border rounded-xl shadow-lg py-2 z-50 overflow-hidden">
+                  {isLoggedIn ? (
+                    <>
+                      <Link 
+                        href="/storefront/account"
+                        className="block w-full text-left px-4 py-3 text-sm font-medium text-foreground hover:bg-surface transition-colors"
+                      >
+                        My Account
+                      </Link>
+                      <button 
+                        onClick={() => { 
+                          if (session) {
+                            signOut();
+                          } else {
+                            setIsLoggedIn(false); 
+                            setUserName(""); 
+                          }
+                          setIsUserMenuOpen(false); 
+                        }}
+                        className="w-full text-left px-4 py-3 text-sm font-medium text-red-500 hover:bg-surface transition-colors"
+                      >
+                        Sign Out
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button 
+                        onClick={() => { setAuthMode("signin"); setIsAuthOpen(true); setIsUserMenuOpen(false); }}
+                        className="w-full text-left px-4 py-3 text-sm font-medium text-foreground hover:bg-surface transition-colors"
+                      >
+                        Sign In
+                      </button>
+                      <button 
+                        onClick={() => { setAuthMode("signup"); setIsAuthOpen(true); setIsUserMenuOpen(false); }}
+                        className="w-full text-left px-4 py-3 text-sm font-medium text-foreground hover:bg-surface transition-colors"
+                      >
+                        Create Account
+                      </button>
+                    </>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+
           <button 
             onClick={() => setIsCartOpen(true)}
             className="text-foreground/70 hover:text-[#e07a3f] transition-colors relative"
@@ -122,8 +238,11 @@ export default function ProductPage() {
               {/* Left: Image Gallery */}
               <div className="w-full lg:w-[55%]">
                 <div className="bg-[#f5f5f5] rounded-[2.5rem] aspect-square relative flex items-center justify-center p-10 transition-colors duration-300">
-                  <button className="absolute top-6 left-6 w-12 h-12 rounded-full bg-white flex items-center justify-center text-black/60 hover:text-[#e07a3f] transition-colors z-10 shadow-md border border-black/5">
-                    <Heart className="w-5 h-5" />
+                  <button 
+                    onClick={(e) => toggleFavorite({ id: 999, name: "Teal Five-Panel Cap", price: 45, image: "https://images.unsplash.com/photo-1588850561407-ed78c282e89b?q=80&w=800&auto=format&fit=crop" }, e)}
+                    className="absolute top-6 left-6 w-12 h-12 rounded-full bg-white flex items-center justify-center text-black/60 hover:text-[#e07a3f] transition-colors z-10 shadow-md border border-black/5"
+                  >
+                    <Heart className={`w-5 h-5 ${favorites.includes(999) ? 'fill-[#e07a3f] text-[#e07a3f]' : ''}`} />
                   </button>
                   <img 
                     src="https://images.unsplash.com/photo-1588850561407-ed78c282e89b?q=80&w=800&auto=format&fit=crop" 
@@ -346,8 +465,11 @@ export default function ProductPage() {
                 <div key={product.id} className="bg-surface dark:bg-[#f5f5f5] rounded-3xl p-5 group relative border border-border/50 hover:border-border transition-colors flex flex-col h-[300px]">
                   {/* Top icons */}
                   <div className="flex items-start justify-between z-10 relative mb-4 shrink-0">
-                    <button className="w-8 h-8 rounded-full bg-white flex items-center justify-center text-black/60 hover:text-[#e07a3f] transition-colors shadow-sm">
-                      <Heart className="w-4 h-4" />
+                    <button 
+                      onClick={(e) => toggleFavorite(product, e)}
+                      className="w-8 h-8 rounded-full bg-white flex items-center justify-center text-black/60 hover:text-[#e07a3f] transition-colors shadow-sm"
+                    >
+                      <Heart className={`w-4 h-4 ${favorites.includes(product.id) ? 'fill-[#e07a3f] text-[#e07a3f]' : ''}`} />
                     </button>
                     <div className="bg-foreground/5 dark:bg-black/5 px-2.5 py-1 rounded-full flex items-center gap-1.5">
                       <Star className="w-3 h-3 fill-[#e07a3f] text-[#e07a3f]" />

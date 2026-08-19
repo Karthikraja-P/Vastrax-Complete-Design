@@ -6,6 +6,8 @@ import { AuthModal } from "@/components/auth/AuthModal";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { CartDrawer } from "@/components/layout/CartDrawer";
 import { StylistDrawer } from "@/components/stylist/StylistDrawer";
+import { useSession, signOut } from "next-auth/react";
+import Link from "next/link";
 
 const categories = [
   { name: "T-Shirts", image: "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?q=80&w=300&auto=format&fit=crop" },
@@ -27,7 +29,20 @@ const collections = [
 ];
 
 export default function StorefrontHome() {
+  const { data: session } = useSession();
   const [isAuthOpen, setIsAuthOpen] = useState(false);
+  const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [userName, setUserName] = useState("");
+  
+  // Sync NextAuth session with local state for seamless transition
+  useEffect(() => {
+    if (session?.user?.name) {
+      setIsLoggedIn(true);
+      setUserName(session.user.name);
+    }
+  }, [session]);
+  
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isStylistOpen, setIsStylistOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
@@ -120,7 +135,16 @@ export default function StorefrontHome() {
               onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
               className="flex items-center gap-2 text-muted-foreground hover:text-accent transition-colors"
             >
-              <User className="w-5 h-5" />
+              {isLoggedIn ? (
+                <>
+                  <div className="w-7 h-7 rounded-full bg-accent/20 border border-accent/40 flex items-center justify-center text-accent text-xs font-bold uppercase">
+                    {userName.charAt(0)}
+                  </div>
+                  <span className="text-sm font-medium hidden md:block">{userName}</span>
+                </>
+              ) : (
+                <User className="w-5 h-5" />
+              )}
             </button>
             
             {isUserMenuOpen && (
@@ -130,18 +154,45 @@ export default function StorefrontHome() {
                   onClick={() => setIsUserMenuOpen(false)} 
                 />
                 <div className="absolute right-0 mt-4 w-48 bg-background border border-border rounded-xl shadow-lg py-2 z-50 overflow-hidden">
-                  <button 
-                    onClick={() => { setIsAuthOpen(true); setIsUserMenuOpen(false); }}
-                    className="w-full text-left px-4 py-3 text-sm font-medium text-foreground hover:bg-surface transition-colors"
-                  >
-                    Sign In
-                  </button>
-                  <button 
-                    onClick={() => { setIsAuthOpen(true); setIsUserMenuOpen(false); }}
-                    className="w-full text-left px-4 py-3 text-sm font-medium text-foreground hover:bg-surface transition-colors"
-                  >
-                    Create Account
-                  </button>
+                  {isLoggedIn ? (
+                    <>
+                      <Link 
+                        href="/storefront/account"
+                        className="block w-full text-left px-4 py-3 text-sm font-medium text-foreground hover:bg-surface transition-colors"
+                      >
+                        My Account
+                      </Link>
+                      <button 
+                        onClick={() => { 
+                          if (session) {
+                            signOut();
+                          } else {
+                            setIsLoggedIn(false); 
+                            setUserName(""); 
+                          }
+                          setIsUserMenuOpen(false); 
+                        }}
+                        className="w-full text-left px-4 py-3 text-sm font-medium text-red-500 hover:bg-surface transition-colors"
+                      >
+                        Sign Out
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button 
+                        onClick={() => { setAuthMode("signin"); setIsAuthOpen(true); setIsUserMenuOpen(false); }}
+                        className="w-full text-left px-4 py-3 text-sm font-medium text-foreground hover:bg-surface transition-colors"
+                      >
+                        Sign In
+                      </button>
+                      <button 
+                        onClick={() => { setAuthMode("signup"); setIsAuthOpen(true); setIsUserMenuOpen(false); }}
+                        className="w-full text-left px-4 py-3 text-sm font-medium text-foreground hover:bg-surface transition-colors"
+                      >
+                        Create Account
+                      </button>
+                    </>
+                  )}
                 </div>
               </>
             )}
@@ -190,7 +241,7 @@ export default function StorefrontHome() {
         </main>
 
         {/* Categories Section */}
-        <section className="py-20 w-full">
+        <section className="py-20 w-full mt-4 rounded-[2rem] md:rounded-[2.5rem] overflow-hidden bg-background shadow-sm border border-border/50">
           <div className="flex flex-col md:flex-row md:items-end justify-between mb-10 gap-4 max-w-7xl mx-auto px-6 md:px-12">
             <div>
               <p className="text-accent text-xs font-bold tracking-[0.2em] uppercase mb-2">Find Your Style</p>
@@ -248,7 +299,7 @@ export default function StorefrontHome() {
         </section>
 
         {/* Shop by Collection Section */}
-        <section className="py-20 w-full relative">
+        <section className="py-20 w-full relative mt-4 rounded-[2rem] md:rounded-[2.5rem] overflow-hidden bg-background shadow-sm border border-border/50">
           <div className="max-w-7xl mx-auto mb-10 px-6 md:px-12">
             <p className="text-accent text-xs font-bold tracking-[0.2em] uppercase mb-2">Curated Looks</p>
             <h2 className="text-4xl md:text-5xl font-light text-foreground">
@@ -319,7 +370,15 @@ export default function StorefrontHome() {
         </section>
       </div>
 
-      <AuthModal isOpen={isAuthOpen} onClose={() => setIsAuthOpen(false)} />
+      <AuthModal 
+        isOpen={isAuthOpen} 
+        onClose={() => setIsAuthOpen(false)} 
+        initialMode={authMode} 
+        onSuccess={(name) => {
+          setIsLoggedIn(true);
+          setUserName(name);
+        }}
+      />
       <CartDrawer isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} />
       <StylistDrawer isOpen={isStylistOpen} onClose={() => setIsStylistOpen(false)} />
     </div>
