@@ -34,6 +34,10 @@ This is a complete Next.js 16 + FastAPI PostgreSQL project integrating a modern,
   - `app/api/routes/` - REST endpoints: `auth`, `products`, `categories`, `orders`, `payments`, `shipping`, `tryon`, `chat`, `analytics`, `settings`.
   - `app/models/` - SQLAlchemy models.
   - `app/services/` - Business logic services (PhonePe, Fashn VTON, Shiprocket, Anthropic Stylist).
+- `/virtual-try-on/` - Standalone Virtual Try-On sub-system (FASHN VTON 1.5 engine + Fitting Room UI).
+  - `backend/` - Dedicated VTON FastAPI service with GPU inference execution.
+  - `frontend/` - Standalone luxury boutique UI and modal fitting room.
+  - `docker-compose.yml` - Container orchestration for standalone try-on.
 - `BACKEND_API_SPECIFICATION.md` - Complete backend REST/Server Action endpoints specification, ER diagrams, data models, and suggested stack.
 
 ## Production Ready Status

@@ -90,8 +90,28 @@ export default function ProductPage() {
     return () => window.removeEventListener("open-stylist", handleOpenStylist);
   }, []);
 
-  const toggleBag = (id: number) => {
-    setBagItems(prev => prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]);
+  const addToCart = () => {
+    const saved = localStorage.getItem("vastrax_cart");
+    const currentCart = saved ? JSON.parse(saved) : [];
+    
+    // Check if it already exists
+    const existingIndex = currentCart.findIndex((i: any) => i.id === 101);
+    if (existingIndex >= 0) {
+      currentCart[existingIndex].quantity += quantity;
+    } else {
+      currentCart.push({
+        id: 101,
+        name: "Camel Wool Flat Cap",
+        price: 45,
+        quantity: quantity,
+        size: activeSize,
+        color: activeColor,
+        image: "https://images.unsplash.com/photo-1551028719-00167b16eac5?q=80&w=400&auto=format&fit=crop"
+      });
+    }
+    
+    localStorage.setItem("vastrax_cart", JSON.stringify(currentCart));
+    setBagItems([101]);
   };
 
   return (
@@ -350,7 +370,7 @@ export default function ProductPage() {
                   </a>
                   <button 
                     onClick={() => {
-                      toggleBag(101);
+                      addToCart();
                       setIsCartOpen(true);
                     }}
                     className="flex-1 bg-transparent border border-foreground/20 hover:border-foreground/50 hover:bg-foreground/5 text-foreground h-[52px] rounded-full font-medium text-sm transition-all flex items-center justify-center gap-2"

@@ -178,7 +178,7 @@ export interface OrderItemRecord {
 export const ordersApi = {
   async list(): Promise<OrderItemRecord[]> {
     try {
-      return await fetchApi<OrderItemRecord[]>("/orders");
+      return await fetchApi<OrderItemRecord[]>("/orders/admin");
     } catch {
       return [
         { id: "ord-1", orderNumber: "#VX-9021", customerName: "Elena Rostova", customerEmail: "elena@rostova.com", totalAmount: 460.00, status: "CONFIRMED", itemsCount: 3, createdAt: "2026-08-18T14:32:00Z", deliveryMethod: "Express" },
@@ -190,8 +190,8 @@ export const ordersApi = {
   },
 
   async updateStatus(id: string | number, status: string): Promise<{ success: boolean }> {
-    return await fetchApi<{ success: boolean }>(`/orders/${id}/status`, {
-      method: "PATCH",
+    return await fetchApi<{ success: boolean }>(`/orders/admin/${id}/status`, {
+      method: "PUT",
       body: JSON.stringify({ status }),
     });
   }
@@ -208,9 +208,9 @@ export interface TryonResult {
 }
 
 export const tryonApi = {
-  async submit(data: { product_id: string | number; user_photo_base64: string; category?: string }): Promise<TryonResult> {
+  async submit(data: { product_id: string | number; user_photo_base64: string; category?: string; garment_path?: string }): Promise<TryonResult> {
     try {
-      return await fetchApi<TryonResult>("/tryon/submit", {
+      return await fetchApi<TryonResult>("/try-on/submit", {
         method: "POST",
         body: JSON.stringify(data),
       });
@@ -228,7 +228,20 @@ export const tryonApi = {
 };
 
 // -------------------------------------------------------------
-// 5. ANALYTICS & APP SETTINGS API
+// 5. USERS API (Admin)
+// -------------------------------------------------------------
+export const usersApi = {
+  async listAll(): Promise<any[]> {
+    try {
+      return await fetchApi<any[]>("/users/admin");
+    } catch {
+      return [];
+    }
+  }
+};
+
+// -------------------------------------------------------------
+// 6. ANALYTICS & APP SETTINGS API
 // -------------------------------------------------------------
 export const analyticsApi = {
   async getOverview() {

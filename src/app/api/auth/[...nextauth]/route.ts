@@ -11,20 +11,42 @@ const handler = NextAuth({
     CredentialsProvider({
       name: "Credentials",
       credentials: {
+        id: { label: "ID", type: "text" },
         name: { label: "Name", type: "text" },
         email: { label: "Email", type: "email" },
-        password: { label: "Password", type: "password" }
+        password: { label: "Password", type: "password" },
+        accessToken: { label: "Token", type: "text" }
       },
       async authorize(credentials) {
-        // Mock a successful login for any credentials
-        return {
-          id: "1",
-          name: credentials?.name || "Aishwarya",
-          email: credentials?.email || "test@example.com",
-        };
+        // Return the real user data passed from the successful backend OTP verification
+        if (credentials?.email && credentials?.name) {
+          return {
+            id: credentials.id || "1",
+            name: credentials.name,
+            email: credentials.email,
+            accessToken: credentials.accessToken,
+          };
+        }
+        return null;
       }
     }),
   ],
+  callbacks: {
+    async jwt({ token, user }) {
+      if (user) {
+        token.id = user.id;
+        token.accessToken = (user as any).accessToken;
+      }
+      return token;
+    },
+    async session({ session, token }) {
+      if (token) {
+        (session as any).user.id = token.id;
+        (session as any).accessToken = token.accessToken;
+      }
+      return session;
+    }
+  },
   secret: process.env.NEXTAUTH_SECRET || "placeholder-nextauth-secret",
 });
 

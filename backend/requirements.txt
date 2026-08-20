@@ -11,4 +11,5 @@ pydantic[email]>=2.0
 pydantic-settings
 requests
 anthropic
-boto3
+httpx
+resend

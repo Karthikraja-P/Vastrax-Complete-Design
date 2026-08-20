@@ -25,6 +25,7 @@ export function VirtualTryOnModal({ isOpen, onClose, productImage, productName, 
     try {
       const res = await tryonApi.submit({
         product_id: productId || 1,
+        garment_path: productImage,
         user_photo_base64: "model_default_pose",
         category: "tops"
       });
@@ -44,6 +45,7 @@ export function VirtualTryOnModal({ isOpen, onClose, productImage, productName, 
     try {
       const res = await tryonApi.submit({
         product_id: productId || 1,
+        garment_path: productImage,
         user_photo_base64: "model_default_pose",
         category: "tops"
       });

@@ -45,6 +45,10 @@ class Settings(BaseSettings):
     # Anthropic
     anthropic_api_key: str = ""
 
+    # Resend Email
+    resend_api_key: str = ""
+    resend_from_email: str = "onboarding@resend.dev"
+
     @model_validator(mode="after")
     def _resolve_dirs(self) -> "Settings":
         _backend = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))

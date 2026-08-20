@@ -24,19 +24,7 @@ const rolesMetrics = [
   { label: "Recently Updated", value: "0", icon: Edit3, color: "text-muted-foreground", glow: "shadow-[-4px_0_15px_rgba(161,161,170,0.1)]", border: "border-l-muted-foreground/30" },
 ];
 
-// --- ADMINS DATA ---
-const adminsData = [
-  { name: "Demo Tester", role: "Super Admin", email: "demo+vf2dquuz@example.com", phone: "—", date: "18/08/2026" },
-  { name: "Demo Tester", role: "Super Admin", email: "demo+2i57idzz@example.com", phone: "—", date: "18/08/2026" },
-  { name: "Demo Tester", role: "Super Admin", email: "demo+gptkc8fr@example.com", phone: "—", date: "18/08/2026" },
-  { name: "Demo Tester", role: "Super Admin", email: "demo+vjkjzs5v@example.com", phone: "—", date: "18/08/2026" },
-  { name: "Demo Tester", role: "Super Admin", email: "demo+cq6zhaf5@example.com", phone: "—", date: "18/08/2026" },
-  { name: "Demo Tester", role: "Super Admin", email: "demo+v1pf1h0h@example.com", phone: "—", date: "18/08/2026" },
-  { name: "Demo Tester", role: "Super Admin", email: "demo+5cwo5qjc@example.com", phone: "—", date: "18/08/2026" },
-  { name: "Demo Tester", role: "Super Admin", email: "demo+x81ql30k@example.com", phone: "—", date: "18/08/2026" },
-  { name: "Demo Tester", role: "Super Admin", email: "demo+kwgs1196@example.com", phone: "—", date: "18/08/2026" },
-  { name: "Demo Tester", role: "Super Admin", email: "demo+0b9qbt6m@example.com", phone: "—", date: "18/08/2026" },
-];
+// const adminsData = [ ... ] // Replaced by dynamic fetch
 
 const adminsMetrics = [
   { label: "Total Admins", value: "73", icon: UserCog, color: "text-accent", glow: "shadow-[-4px_0_15px_rgba(224,122,63,0.3)]", border: "border-l-accent" },
@@ -48,9 +36,35 @@ const adminsMetrics = [
 
 export default function AdminManagementPage() {
   const [activeTab, setActiveTab] = useState<"admins" | "roles">("admins");
-  const [openActionId, setOpenActionId] = useState<number | null>(0); // Mock open row for demo
+  const [openActionId, setOpenActionId] = useState<string | null>(null);
   const [isAddRoleOpen, setIsAddRoleOpen] = useState(false);
   const [isAddAdminOpen, setIsAddAdminOpen] = useState(false);
+  const [adminsData, setAdminsData] = useState<any[]>([]);
+
+  React.useEffect(() => {
+    async function fetchAdmins() {
+      try {
+        const res = await fetch("http://localhost:8000/api/v1/users/admin/admins", {
+          // Note: In real setup, send NextAuth session token
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const mapped = data.map((admin: any) => ({
+            id: admin.id,
+            name: admin.full_name,
+            role: "Admin",
+            email: admin.email,
+            phone: "—",
+            date: new Date(admin.created_at).toLocaleDateString()
+          }));
+          setAdminsData(mapped);
+        }
+      } catch(err) {
+        console.error("Failed to fetch admins:", err);
+      }
+    }
+    fetchAdmins();
+  }, []);
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-12">
@@ -76,7 +90,7 @@ export default function AdminManagementPage() {
             <button
               onClick={() => {
                 setActiveTab("admins");
-                setOpenActionId(0);
+                setOpenActionId(null);
               }}
               className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
                 activeTab === "admins"
@@ -89,7 +103,7 @@ export default function AdminManagementPage() {
             <button
               onClick={() => {
                 setActiveTab("roles");
-                setOpenActionId(0);
+                setOpenActionId(null);
               }}
               className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
                 activeTab === "roles"
@@ -206,7 +220,7 @@ export default function AdminManagementPage() {
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center gap-3">
                           <div className="w-8 h-8 rounded-full bg-background border border-border flex items-center justify-center text-xs font-bold text-foreground">
-                            {admin.name.split(' ').map(n => n[0]).join('')}
+                            {admin.name?.charAt(0)}
                           </div>
                           <div className="flex flex-col">
                             <span className="font-bold text-foreground">{admin.name}</span>
@@ -225,14 +239,14 @@ export default function AdminManagementPage() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap relative">
                         <button 
-                          onClick={() => setOpenActionId(openActionId === index ? null : index)}
+                          onClick={() => setOpenActionId(openActionId === admin.id ? null : admin.id)}
                           className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-background border border-border hover:bg-border/50 text-xs font-medium text-foreground transition-colors"
                         >
                           Actions
                           <ChevronDown className="w-3 h-3 text-muted-foreground" />
                         </button>
                         
-                        {openActionId === index && (
+                        {openActionId === admin.id && (
                           <div className="absolute top-full left-6 z-50 w-36 mt-1 bg-surface border border-border rounded-lg shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
                             <div className="py-1">
                               <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-foreground hover:bg-surface-hover transition-colors">
@@ -362,14 +376,14 @@ export default function AdminManagementPage() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap relative">
                         <button 
-                          onClick={() => setOpenActionId(openActionId === index ? null : index)}
+                          onClick={() => setOpenActionId(openActionId === String(index) ? null : String(index))}
                           className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-background border border-border hover:bg-border/50 text-xs font-medium text-foreground transition-colors"
                         >
                           Actions
                           <ChevronDown className="w-3 h-3 text-muted-foreground" />
                         </button>
                         
-                        {openActionId === index && (
+                        {openActionId === String(index) && (
                           <div className="absolute top-full left-6 z-50 w-36 mt-1 bg-surface border border-border rounded-lg shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
                             <div className="py-1">
                               <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-foreground hover:bg-surface-hover transition-colors">

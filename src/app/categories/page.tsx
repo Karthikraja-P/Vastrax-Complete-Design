@@ -7,15 +7,7 @@ import {
 } from "lucide-react";
 import { categoriesApi, CategoryItem } from "@/lib/api";
 
-const initialCategories = [
-  { id: "cat-1", name: "T-Shirts", slug: "t-shirts", desc: "Everyday tees in soft cotton", status: "Active", count: 45, sort: "1" },
-  { id: "cat-2", name: "Hoodies & Sweatshirts", slug: "hoodies-sweatshirts", desc: "Heavyweight fleece, zip-ups and pullovers", status: "Active", count: 32, sort: "2" },
-  { id: "cat-3", name: "Jackets & Outerwear", slug: "jackets-outerwear", desc: "Leather, denim, wool outerwear pieces", status: "Active", count: 18, sort: "3" },
-  { id: "cat-4", name: "Pants & Trousers", slug: "pants-trousers", desc: "Denim, chinos, cargos, joggers and tailored", status: "Active", count: 24, sort: "4" },
-  { id: "cat-5", name: "Shirts", slug: "shirts", desc: "Oxfords, flannels, linen and henleys", status: "Active", count: 15, sort: "5" },
-  { id: "cat-6", name: "Shoes & Sneakers", slug: "shoes-sneakers", desc: "Low-tops, high-tops, leather boots and runners", status: "Active", count: 28, sort: "6" },
-  { id: "cat-7", name: "Hats", slug: "hats", desc: "Caps, beanies and brims", status: "Active", count: 12, sort: "7" },
-];
+// const initialCategories = [ ... ] // Removed static array
 
 const metrics = [
   { label: "Total Categories", value: "7", icon: LayoutGrid, color: "text-accent", glow: "shadow-[-4px_0_15px_rgba(224,122,63,0.3)]", border: "border-l-accent" },
@@ -26,7 +18,7 @@ const metrics = [
 ];
 
 export default function CategoriesPage() {
-  const [categories, setCategories] = useState<any[]>(initialCategories);
+  const [categories, setCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [openActionId, setOpenActionId] = useState<number | string | null>(null);
   const [isAddCategoryOpen, setIsAddCategoryOpen] = useState(false);
@@ -40,7 +32,16 @@ export default function CategoriesPage() {
     setLoading(true);
     const data = await categoriesApi.list();
     if (data && data.length > 0) {
-      setCategories(data);
+      const mapped = data.map((c: any, index: number) => ({
+        id: c.id,
+        name: c.name,
+        slug: c.slug,
+        desc: "Category description", // Missing in backend schema
+        status: "Active",
+        count: c.count || 0,
+        sort: String(index + 1)
+      }));
+      setCategories(mapped);
     }
     setLoading(false);
   };

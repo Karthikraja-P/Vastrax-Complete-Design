@@ -44,8 +44,14 @@ export function AuthModal({ isOpen, onClose, initialMode = "signin", onSuccess }
     setForgotPasswordSuccess(false);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (isSignUp && !agreeTerms) {
+      alert("Please agree to the Terms of Service to continue.");
+      return;
+    }
+
     if (isForgotPassword) {
       setIsLoading(true);
       setTimeout(() => {
@@ -55,25 +61,73 @@ export function AuthModal({ isOpen, onClose, initialMode = "signin", onSuccess }
       return;
     }
 
-
-
     setIsLoading(true);
-    // Authenticate using NextAuth CredentialsProvider to create global session
-    signIn("credentials", {
-      redirect: false,
-      name: firstName || "Aishwarya",
-      email: email || "test@example.com",
-      password: password || "password"
-    }).then(() => {
+
+    try {
+      if (!isVerifying) {
+        const payload = loginMethod === "email" 
+          ? { email: email || "test@example.com" }
+          : { phone_number: `+91${mobileNumber}` };
+
+        // Phase 1: Send OTP
+        const res = await fetch("http://localhost:8000/api/v1/otp/send", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        
+        if (res.ok) {
+          setIsVerifying(true);
+        } else {
+          const data = await res.json();
+          alert(data.detail || "Failed to send OTP");
+        }
+        setIsLoading(false);
+      } else {
+        const payload = loginMethod === "email" 
+          ? { email: email || "test@example.com", code: otp, first_name: firstName, last_name: lastName }
+          : { phone_number: `+91${mobileNumber}`, code: otp, first_name: firstName, last_name: lastName };
+
+        // Phase 2: Verify OTP
+        const res = await fetch("http://localhost:8000/api/v1/otp/verify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          const dbUser = data.user;
+          
+          // Authenticate using NextAuth CredentialsProvider to create global session
+          signIn("credentials", {
+            redirect: false,
+            id: dbUser.id,
+            name: dbUser.name,
+            email: dbUser.email,
+            password: "OTP_VERIFIED",
+            accessToken: data.access_token
+          }).then(() => {
+            setIsLoading(false);
+            setIsSuccess(true);
+            setTimeout(() => {
+              setIsSuccess(false);
+              setIsVerifying(false);
+              onSuccess?.(dbUser.name || "User");
+              onClose();
+            }, 1500);
+          });
+        } else {
+          const data = await res.json();
+          alert(data.detail || "Invalid OTP");
+          setIsLoading(false);
+        }
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Network error occurred");
       setIsLoading(false);
-      setIsSuccess(true);
-      setTimeout(() => {
-        setIsSuccess(false);
-        setIsVerifying(false);
-        onSuccess?.(firstName || "Aishwarya");
-        onClose();
-      }, 1500);
-    });
+    }
   };
 
   const handleGoogleSignIn = () => {
@@ -148,7 +202,7 @@ export function AuthModal({ isOpen, onClose, initialMode = "signin", onSuccess }
                       className="w-full max-w-sm mx-auto"
                     >
                     <div className="mb-8">
-                      <h2 className="text-3xl font-light tracking-tight text-[#0A192F] mb-2">
+                      <h2 className="text-2xl md:text-3xl font-medium text-[#0A192F] mb-2 leading-tight py-1">
                         {isForgotPassword 
                           ? "Reset Password" 
                           : isVerifying 
@@ -446,7 +500,9 @@ export function AuthModal({ isOpen, onClose, initialMode = "signin", onSuccess }
                                 ) : (
                                   <Square className="w-4 h-4 text-slate-400" />
                                 )}
-                                <span>I agree to the Terms of Service</span>
+                                <span>
+                                  I agree to the <a href="/storefront/terms" target="_blank" className="underline text-[#D4AF37] hover:text-[#B39030]" onClick={(e) => e.stopPropagation()}>Terms of Service</a>
+                                </span>
                               </button>
                             ) : (
                               <>

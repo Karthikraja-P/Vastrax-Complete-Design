@@ -154,6 +154,10 @@ class UserService:
     def list_customers(self) -> list[UserResponse]:
         users = self.db.query(User).filter(User.role == "customer").all()
         return [UserResponse.model_validate(u) for u in users]
+        
+    def list_admins(self) -> list[UserResponse]:
+        users = self.db.query(User).filter(User.role == "admin").all()
+        return [UserResponse.model_validate(u) for u in users]
 
     def get_customer_detail(self, user_id: str) -> UserResponse:
         user = self.db.query(User).filter(User.id == user_id).first()

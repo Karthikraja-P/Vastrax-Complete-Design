@@ -46,7 +46,7 @@ const categories = [
   { name: "Hats", count: 12, icon: "🧢" },
 ];
 
-const products = [
+const defaultProducts = [
   { id: 1, name: "Navy Cotton Canvas Cap", price: 37, rating: 4.8, image: "https://images.unsplash.com/photo-1588850561407-ed78c282e89b?q=80&w=400&auto=format&fit=crop" },
   { id: 2, name: "Camel Wool Ivy Cap", price: 48, originalPrice: 60, rating: 4.5, image: "https://images.unsplash.com/photo-1551028719-00167b16eac5?q=80&w=400&auto=format&fit=crop", isNew: true },
   { id: 3, name: "Mustard Bucket Hat", price: 39, rating: 4.9, image: "https://images.unsplash.com/photo-1588850561407-ed78c282e89b?q=80&w=400&auto=format&fit=crop" }
@@ -63,6 +63,31 @@ export default function CollectionsPage() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userName, setUserName] = useState("");
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [products, setProducts] = useState<any[]>([]);
+  
+  useEffect(() => {
+    async function fetchProducts() {
+      try {
+        const res = await fetch("http://localhost:8000/api/v1/products");
+        if (res.ok) {
+          const data = await res.json();
+          const mapped = data.map((p: any) => ({
+            id: p.id,
+            name: p.name,
+            price: p.price_selling,
+            originalPrice: p.price_mrp,
+            rating: 4.5, // Mock rating since backend doesn't have it yet
+            image: p.images?.[0]?.s3_url || "",
+            isNew: p.is_featured
+          }));
+          setProducts(mapped);
+        }
+      } catch (err) {
+        console.error("Failed to fetch products:", err);
+      }
+    }
+    fetchProducts();
+  }, []);
   
   useEffect(() => {
     if (session?.user?.name) {
@@ -72,35 +97,68 @@ export default function CollectionsPage() {
   }, [session]);
 
   useEffect(() => {
-    const saved = localStorage.getItem("vastrax_favorites");
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        setFavorites(parsed.map((f: any) => f.id));
-      } catch (e) {}
+    async function loadWishlist() {
+      if ((session as any)?.accessToken) {
+        // Fetch from backend if logged in
+        try {
+          const res = await fetch("http://localhost:8000/api/v1/users/me/wishlist", {
+            headers: { Authorization: `Bearer ${(session as any).accessToken}` }
+          });
+          if (res.ok) {
+            const data = await res.json();
+            setFavorites(data.map((item: any) => item.product_id));
+            return;
+          }
+        } catch (err) {}
+      }
+      
+      // Fallback to local storage if guest or fetch failed
+      const saved = localStorage.getItem("vastrax_favorites");
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          setFavorites(parsed.map((f: any) => f.id));
+        } catch (e) {}
+      }
     }
-  }, []);
+    loadWishlist();
+  }, [session]);
 
-  const toggleFavorite = (product: any, e: React.MouseEvent) => {
+  const toggleFavorite = async (product: any, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     
-    const savedStr = localStorage.getItem("vastrax_favorites");
-    let currentFavs = savedStr ? JSON.parse(savedStr) : [];
-    
-    if (currentFavs.some((f: any) => f.id === product.id)) {
-      currentFavs = currentFavs.filter((f: any) => f.id !== product.id);
-      setFavorites(prev => prev.filter(id => id !== product.id));
+    // Optimistic UI update
+    const isFav = favorites.includes(product.id);
+    setFavorites(prev => isFav ? prev.filter(id => id !== product.id) : [...prev, product.id]);
+
+    if ((session as any)?.accessToken) {
+      // Sync with Backend if logged in
+      try {
+        await fetch(`http://localhost:8000/api/v1/users/me/wishlist/${product.id}`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${(session as any).accessToken}` }
+        });
+      } catch (err) {
+        console.error("Failed to toggle wishlist", err);
+      }
     } else {
-      currentFavs.push({
-        id: product.id,
-        name: product.name,
-        price: `$${product.price}.00`,
-        image: product.image
-      });
-      setFavorites(prev => [...prev, product.id]);
+      // Guest: Sync with LocalStorage
+      const savedStr = localStorage.getItem("vastrax_favorites");
+      let currentFavs = savedStr ? JSON.parse(savedStr) : [];
+      
+      if (isFav) {
+        currentFavs = currentFavs.filter((f: any) => f.id !== product.id);
+      } else {
+        currentFavs.push({
+          id: product.id,
+          name: product.name,
+          price: product.price,
+          image: product.image
+        });
+      }
+      localStorage.setItem("vastrax_favorites", JSON.stringify(currentFavs));
     }
-    localStorage.setItem("vastrax_favorites", JSON.stringify(currentFavs));
   };
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isStylistOpen, setIsStylistOpen] = useState(false);

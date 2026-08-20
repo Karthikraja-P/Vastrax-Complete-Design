@@ -9,7 +9,7 @@ import { StylistDrawer } from "@/components/stylist/StylistDrawer";
 import { useSession, signOut } from "next-auth/react";
 import Link from "next/link";
 
-const categories = [
+const defaultCategories = [
   { name: "T-Shirts", image: "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?q=80&w=300&auto=format&fit=crop" },
   { name: "Hoodies & Sweatshirts", image: "https://images.unsplash.com/photo-1556821840-3a63f95609a7?q=80&w=300&auto=format&fit=crop" },
   { name: "Jackets & Outerwear", image: "https://images.unsplash.com/photo-1551028719-00167b16eac5?q=80&w=300&auto=format&fit=crop" },
@@ -19,21 +19,15 @@ const categories = [
   { name: "Hats", image: "https://images.unsplash.com/photo-1588850561407-ed78c282e89b?q=80&w=300&auto=format&fit=crop" },
 ];
 
-const collections = [
-  { id: '01', title: "CREAM PULLOVER HOODIE", image: "https://images.unsplash.com/photo-1556821840-3a63f95609a7?q=80&w=800&auto=format&fit=crop" },
-  { id: '02', title: "OLIVE PUFFER JACKET", image: "https://images.unsplash.com/photo-1551028719-00167b16eac5?q=80&w=800&auto=format&fit=crop" },
-  { id: '03', title: "CARGO PANTS", image: "https://images.unsplash.com/photo-1542272604-787c3835535d?q=80&w=800&auto=format&fit=crop" },
-  { id: '04', title: "FLANNEL SHIRT", image: "https://images.unsplash.com/photo-1596755094514-f87e32f85e2c?q=80&w=800&auto=format&fit=crop" },
-  { id: '05', title: "BROWN LOAFERS", image: "https://images.unsplash.com/photo-1549298916-b41d501d3772?q=80&w=800&auto=format&fit=crop" },
-  { id: '06', title: "MUSTARD BUCKET HAT", image: "https://images.unsplash.com/photo-1588850561407-ed78c282e89b?q=80&w=800&auto=format&fit=crop" },
-];
-
 export default function StorefrontHome() {
   const { data: session } = useSession();
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userName, setUserName] = useState("");
+  
+  const [collections, setCollections] = useState<any[]>([]);
+  const [categories, setCategories] = useState(defaultCategories);
   
   // Sync NextAuth session with local state for seamless transition
   useEffect(() => {
@@ -42,6 +36,28 @@ export default function StorefrontHome() {
       setUserName(session.user.name);
     }
   }, [session]);
+  
+  // Fetch real products and categories from backend
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        const prodRes = await fetch("http://localhost:8000/api/v1/products/featured");
+        if (prodRes.ok) {
+          const data = await prodRes.json();
+          const mapped = data.map((p: any, idx: number) => ({
+            id: String(idx + 1).padStart(2, '0'),
+            dbId: p.id,
+            title: p.name,
+            image: p.images?.[0]?.s3_url || ""
+          }));
+          setCollections(mapped);
+        }
+      } catch (err) {
+        console.error("Failed to fetch featured products:", err);
+      }
+    }
+    fetchData();
+  }, []);
   
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isStylistOpen, setIsStylistOpen] = useState(false);

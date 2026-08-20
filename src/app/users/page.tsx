@@ -6,18 +6,9 @@ import {
   ChevronDown, Filter, RotateCcw, Plus, Eye, Key, Mail, Check, Trash2
 } from "lucide-react";
 
-const allUsersData = [
-  { name: "test test", email: "aymanmanwan00@gmail.com", phone: "—", status: "Unverified", date: "18/08/2026" },
-  { name: "Trial Trialbrooo", email: "test@gmail.com", phone: "—", status: "Unverified", date: "17/08/2026" },
-  { name: "Sarah Williams", email: "sarah.williams@example.com", phone: "+1555987654", status: "Unverified", date: "10/08/2026" },
-  { name: "William Rodriguez", email: "william.rodriguez@example.com", phone: "+1555357159", status: "Verified", date: "15/08/2026" },
-  { name: "Patricia Moore", email: "patricia.moore@example.com", phone: "+1555963852", status: "Unverified", date: "07/08/2026" },
-  { name: "Lisa Anderson", email: "lisa.anderson@example.com", phone: "+1555753951", status: "Verified", date: "24/07/2026" },
-  { name: "Mike Johnson", email: "mike.johnson@example.com", phone: "+1555123456", status: "Verified", date: "29/07/2026" },
-  { name: "Maria Martinez", email: "maria.martinez@example.com", phone: "+1555159357", status: "Unverified", date: "06/08/2026" },
-  { name: "James Garcia", email: "james.garcia@example.com", phone: "+1555951753", status: "Verified", date: "12/08/2026" },
-  { name: "Charles Wilson", email: "charles.wilson@example.com", phone: "+1555741852", status: "Verified", date: "29/07/2026" },
-];
+import { usersApi } from "@/lib/api";
+
+// const allUsersData = [ ... ] // Replaced by dynamic fetch
 
 const metrics = [
   { label: "Total Users", value: "17", icon: Users, color: "text-accent", glow: "shadow-[-4px_0_15px_rgba(224,122,63,0.3)]", border: "border-l-accent" },
@@ -28,7 +19,33 @@ const metrics = [
 ];
 
 export default function AllUsersPage() {
-  const [openActionId, setOpenActionId] = useState<number | null>(1); // Mock open second row for demo
+  const [openActionId, setOpenActionId] = useState<string | null>(null);
+  const [usersData, setUsersData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  React.useEffect(() => {
+    async function loadUsers() {
+      setLoading(true);
+      try {
+        const data = await usersApi.listAll();
+        if (data && data.length > 0) {
+          const mapped = data.map((u: any) => ({
+            id: u.id,
+            name: `${u.first_name || ''} ${u.last_name || ''}`.trim() || 'No Name',
+            email: u.email,
+            phone: u.phone_number || '—',
+            status: u.is_active ? "Verified" : "Unverified",
+            date: new Date(u.created_at || Date.now()).toLocaleDateString("en-GB")
+          }));
+          setUsersData(mapped);
+        }
+      } catch (error) {
+        console.error(error);
+      }
+      setLoading(false);
+    }
+    loadUsers();
+  }, []);
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-12">
@@ -175,12 +192,12 @@ export default function AllUsersPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {allUsersData.map((user, index) => (
+              {usersData.map((user, index) => (
                 <tr key={index} className="hover:bg-surface-hover transition-colors group">
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-full bg-background border border-border flex items-center justify-center text-xs font-bold text-foreground">
-                        {user.name.split(' ').map(n => n[0]).join('')}
+                        {user.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2)}
                       </div>
                       <span className="font-medium text-foreground">{user.name}</span>
                     </div>
@@ -205,15 +222,15 @@ export default function AllUsersPage() {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap relative">
                     <button 
-                      onClick={() => setOpenActionId(openActionId === index ? null : index)}
+                      onClick={() => setOpenActionId(openActionId === user.id ? null : user.id)}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-background border border-border hover:bg-border/50 text-xs font-medium text-foreground transition-colors"
                     >
                       Actions
                       <ChevronDown className="w-3 h-3 text-muted-foreground" />
                     </button>
                     
-                    {/* Action Dropdown (Mocked for row 1 to match screenshot) */}
-                    {openActionId === index && (
+                    {/* Action Dropdown */}
+                    {openActionId === user.id && (
                       <div className="absolute top-full right-6 z-50 w-48 mt-1 bg-surface border border-border rounded-lg shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
                         <div className="py-1">
                           <button className="w-full flex items-center gap-3 px-4 py-2 text-sm text-foreground hover:bg-surface-hover transition-colors">

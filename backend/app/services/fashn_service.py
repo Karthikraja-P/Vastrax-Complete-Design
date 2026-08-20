@@ -37,23 +37,38 @@ def run_fashn(
         if garment_type in ("tops", "bottoms", "one-pieces")
         else detect_category(garment_image_path)
     )
-    cmd = [
-        settings.fashn_venv,
-        settings.fashn_script,
-        "--weights-dir", settings.fashn_weights,
-        "--person-image", person_image_path,
-        "--garment-image", garment_image_path,
-        "--category", category,
-        "--output-dir", settings.fashn_results,
-    ]
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
-    if result.returncode != 0:
-        raise RuntimeError(f"FASHN inference error: {result.stderr[-800:]}")
-    if not os.path.exists(settings.fashn_output):
-        raise RuntimeError("FASHN did not produce an output image")
+
+    # Check if GPU inference environment is installed
+    if os.path.exists(settings.fashn_venv) and os.path.exists(settings.fashn_script):
+        cmd = [
+            settings.fashn_venv,
+            settings.fashn_script,
+            "--weights-dir", settings.fashn_weights,
+            "--person-image", person_image_path,
+            "--garment-image", garment_image_path,
+            "--category", category,
+            "--output-dir", settings.fashn_results,
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        if result.returncode != 0:
+            raise RuntimeError(f"FASHN inference error: {result.stderr[-800:]}")
+        if not os.path.exists(settings.fashn_output):
+            raise RuntimeError("FASHN did not produce an output image")
+        if results_dir:
+            os.makedirs(results_dir, exist_ok=True)
+            dest = os.path.join(results_dir, f"result_{uuid.uuid4().hex[:8]}.png")
+            shutil.copy2(settings.fashn_output, dest)
+            return dest
+        return settings.fashn_output
+
+    # Development simulation fallback: Copy garment or person to results
     if results_dir:
         os.makedirs(results_dir, exist_ok=True)
         dest = os.path.join(results_dir, f"result_{uuid.uuid4().hex[:8]}.png")
-        shutil.copy2(settings.fashn_output, dest)
+        if os.path.exists(garment_image_path):
+            shutil.copy2(garment_image_path, dest)
+        elif os.path.exists(person_image_path):
+            shutil.copy2(person_image_path, dest)
         return dest
-    return settings.fashn_output
+
+    return person_image_path

@@ -34,16 +34,16 @@ export default function OrdersPage() {
     setLoading(true);
     const data = await ordersApi.list();
     if (data && data.length > 0) {
-      const formatted = data.map((o, idx) => ({
-        id: o.orderNumber || `#ORD-2026-${1030 + idx}`,
-        customer: o.customerName || "Customer",
-        email: o.customerEmail || "customer@example.com",
-        items: o.itemsCount || 1,
-        total: `$${typeof o.totalAmount === 'number' ? o.totalAmount.toFixed(2) : o.totalAmount}`,
-        progress: o.status === "DELIVERED" ? 100 : o.status === "SHIPPED" ? 80 : o.status === "PROCESSING" ? 55 : 20,
-        status: o.status || "Confirmed",
-        statusColor: o.status === "DELIVERED" ? "text-emerald-500 border-emerald-500" : "text-accent border-accent",
-        date: new Date(o.createdAt || Date.now()).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+      const formatted = data.map((o: any, idx: number) => ({
+        id: o.id.split('-')[0].toUpperCase(),
+        customer: "Customer", // Would fetch from user object if included
+        email: "customer@example.com", 
+        items: o.items ? o.items.length : (o.itemsCount || 1),
+        total: `$${typeof o.total_amount === 'number' ? o.total_amount.toFixed(2) : o.total_amount}`,
+        progress: String(o.status).toUpperCase() === "DELIVERED" ? 100 : String(o.status).toUpperCase() === "SHIPPED" ? 80 : String(o.status).toUpperCase() === "PROCESSING" ? 55 : 20,
+        status: String(o.status).charAt(0).toUpperCase() + String(o.status).slice(1),
+        statusColor: String(o.status).toUpperCase() === "DELIVERED" ? "text-emerald-500 border-emerald-500" : "text-accent border-accent",
+        date: new Date(o.placed_at || o.createdAt || Date.now()).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
       }));
       setOrders(formatted);
     }

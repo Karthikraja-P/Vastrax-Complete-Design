@@ -8,18 +8,9 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 
-const productsData = [
-  { name: "Teal Five-Panel Cap", sku: "HAT-005", price: "$27.00", oldPrice: null, stock: 120, status: "Active", date: "08/17/2026" },
-  { name: "Camel Wool Flat Cap", sku: "HAT-004", price: "$45.00", oldPrice: "$55.00", stock: 85, status: "Active", date: "08/17/2026" },
-  { name: "Mustard Bucket Hat", sku: "HAT-003", price: "$35.00", oldPrice: null, stock: 120, status: "Active", date: "08/17/2026" },
-  { name: "Forest Green Ribbed Beanie", sku: "HAT-002", price: "$32.00", oldPrice: null, stock: 180, status: "Active", date: "08/17/2026" },
-  { name: "Rust Corduroy Baseball Cap", sku: "HAT-001", price: "$39.00", oldPrice: "$49.00", stock: 150, status: "Active", date: "08/17/2026" },
-  { name: "Grey Performance Runners", sku: "SHO-005", price: "$149.00", oldPrice: null, stock: 70, status: "Active", date: "08/17/2026" },
-  { name: "Brown Suede Penny Loafers", sku: "SHO-004", price: "$179.00", oldPrice: null, stock: 35, status: "Active", date: "08/17/2026" },
-  { name: "Tan Leather Chelsea Boots", sku: "SHO-003", price: "$199.00", oldPrice: "$249.00", stock: 45, status: "Active", date: "08/17/2026" },
-  { name: "White High-Top Canvas Sneakers", sku: "SHO-002", price: "$79.00", oldPrice: null, stock: 110, status: "Active", date: "08/17/2026" },
-  { name: "White Low-Top Leather Sneakers", sku: "SHO-001", price: "$129.00", oldPrice: null, stock: 90, status: "Active", date: "08/17/2026" },
-];
+import { productsApi } from "@/lib/api";
+
+// const productsData = [ ... ] // Replaced by dynamic fetch
 
 const metrics = [
   { label: "Total Products", value: "35", icon: Package, color: "text-accent", glow: "shadow-[-4px_0_15px_rgba(224,122,63,0.3)]", border: "border-l-accent" },
@@ -30,8 +21,34 @@ const metrics = [
 ];
 
 export default function ProductsPage() {
-  const [openActionId, setOpenActionId] = useState<number | null>(0); // Mock open row for demo
-  const [productToDelete, setProductToDelete] = useState<number | null>(null);
+  const [openActionId, setOpenActionId] = useState<string | null>(null);
+  const [productToDelete, setProductToDelete] = useState<string | null>(null);
+  const [productsData, setProductsData] = useState<any[]>([]);
+
+  React.useEffect(() => {
+    async function loadProducts() {
+      try {
+        const data = await productsApi.list();
+        if (data && data.length > 0) {
+          const mapped = data.map((p) => ({
+            id: p.id,
+            name: p.name || p.title,
+            sku: p.sku || `PRD-${p.id}`,
+            price: `$${p.price?.toFixed(2) || '0.00'}`,
+            oldPrice: p.originalPrice ? `$${p.originalPrice?.toFixed(2)}` : null,
+            stock: p.stock || p.inventoryCount || 0,
+            status: p.status || "Active",
+            date: "Recent", // backend might not return created_at for products in schema
+            image: p.image || p.images?.[0]
+          }));
+          setProductsData(mapped);
+        }
+      } catch(err) {
+        console.error(err);
+      }
+    }
+    loadProducts();
+  }, []);
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-12">
@@ -209,7 +226,7 @@ export default function ProductsPage() {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap relative">
                     <button 
-                      onClick={() => setOpenActionId(openActionId === index ? null : index)}
+                      onClick={() => setOpenActionId(openActionId === product.id ? null : product.id)}
                       className="flex items-center gap-1.5 px-4 py-1.5 rounded-md bg-background border border-border hover:bg-border/50 text-xs font-medium text-foreground transition-colors"
                     >
                       Actions
@@ -217,7 +234,7 @@ export default function ProductsPage() {
                     </button>
                     
                     {/* Action Dropdown */}
-                    {openActionId === index && (
+                    {openActionId === product.id && (
                       <div className="absolute top-full left-6 z-50 w-36 mt-1 bg-surface border border-border rounded-lg shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
                         <div className="py-1">
                           <Link href="/products/edit" className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-foreground hover:bg-surface-hover transition-colors rounded-t-lg">
@@ -225,7 +242,7 @@ export default function ProductsPage() {
                           </Link>
                           <button 
                             onClick={() => {
-                              setProductToDelete(index);
+                              setProductToDelete(product.id);
                               setOpenActionId(null);
                             }}
                             className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-red-500 hover:bg-red-500/10 transition-colors rounded-b-lg"

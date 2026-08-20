@@ -9,6 +9,7 @@ from .order import Order
 from .order_item import OrderItem
 from .payment import Payment
 from .tryon_session import TryonSession
+from .otp import OTP
 
 __all__ = [
     "User",
@@ -22,4 +23,5 @@ __all__ = [
     "OrderItem",
     "Payment",
     "TryonSession",
+    "OTP",
 ]

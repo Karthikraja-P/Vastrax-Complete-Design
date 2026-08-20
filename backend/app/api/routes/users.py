@@ -100,6 +100,10 @@ def toggle_wishlist(
 def admin_customers(_: User = Depends(require_admin), db: Session = Depends(get_db)):
     return UserService(db).list_customers()
 
+@router.get("/admin/admins")
+def admin_admins(_: User = Depends(require_admin), db: Session = Depends(get_db)):
+    return UserService(db).list_admins()
+
 
 @router.get("/admin/{user_id}")
 def admin_customer_detail(

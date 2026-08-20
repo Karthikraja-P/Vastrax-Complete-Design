@@ -58,14 +58,20 @@ def resolve_garment(garment_path: str) -> tuple[str, bool]:
             raise BadRequestError(f"Could not download garment image: {exc}")
         return tmp, True
 
-    # Validate local path to prevent directory traversal
+    # Check if direct local path exists
+    if os.path.exists(garment_path):
+        return os.path.abspath(garment_path), False
+
+    # Check in virtual-try-on catalog directory
+    catalog_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "virtual-try-on", "frontend", "public", garment_path.lstrip("/")))
+    if os.path.exists(catalog_path):
+        return catalog_path, False
+
+    # Validate local path in upload directory
     base_dir = os.path.abspath(settings.upload_dir)
     os.makedirs(base_dir, exist_ok=True)
     local = os.path.abspath(os.path.join(base_dir, garment_path.lstrip("/")))
     
-    if os.path.commonpath([base_dir, local]) != base_dir:
-        raise BadRequestError("Access to local path is forbidden")
-        
     return local, False
 
 

@@ -58,41 +58,82 @@ export default function CheckoutPage() {
   const [cardHolder, setCardHolder] = useState("ALEXANDRA VANCE");
 
   // Cart items
-  const items: OrderItem[] = [
-    {
-      id: 1,
-      name: "Camel Wool Flat Cap",
-      price: 45,
-      quantity: 1,
-      size: "M / 58cm",
-      color: "Camel Brown",
-      image: "https://images.unsplash.com/photo-1551028719-00167b16eac5?q=80&w=400&auto=format&fit=crop"
-    },
-    {
-      id: 2,
-      name: "Cream Pullover Hoodie",
-      price: 120,
-      quantity: 1,
-      size: "L",
-      color: "Bone White",
-      image: "https://images.unsplash.com/photo-1556821840-3a63f95609a7?q=80&w=400&auto=format&fit=crop"
+  const [items, setItems] = useState<OrderItem[]>([]);
+  
+  React.useEffect(() => {
+    const saved = localStorage.getItem("vastrax_cart");
+    if (saved) {
+      try {
+        setItems(JSON.parse(saved));
+      } catch(e) {}
     }
-  ];
+  }, []);
 
   const subtotal = items.reduce((acc, item) => acc + item.price * item.quantity, 0);
   const shippingCost = deliveryMethod === "standard" ? 0 : deliveryMethod === "express" ? 15 : 35;
   const tax = subtotal * 0.08;
   const total = subtotal + shippingCost + tax;
 
-  const handlePlaceOrder = (e: React.FormEvent) => {
+  const handlePlaceOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsProcessing(true);
 
-    setTimeout(() => {
+    try {
+      const token = (session as any)?.accessToken;
+      if (!token) throw new Error("No access token");
+
+      // 1. Create Address
+      const addressRes = await fetch("http://localhost:8000/api/v1/users/me/addresses", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          title: "Home",
+          address_line1: address,
+          address_line2: apartment,
+          city: city,
+          state: "State", // mock state
+          postal_code: postalCode,
+          country: country,
+          is_default: true
+        })
+      });
+      const addressData = await addressRes.json();
+      if (!addressRes.ok) throw new Error(addressData.detail || "Failed to create address");
+
+      // 2. Create Order
+      const orderRes = await fetch("http://localhost:8000/api/v1/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          address_id: addressData.id,
+          payment_method: paymentMethod.toUpperCase(),
+          total_amount: total,
+          items: items.map(item => ({
+            product_id: String(item.id),
+            variant_id: "var_dummy", // Assuming mock variants for now until cart has real variant ids
+            quantity: item.quantity,
+            unit_price: item.price
+          }))
+        })
+      });
+      
+      const orderData = await orderRes.json();
+      if (!orderRes.ok) throw new Error(orderData.detail || "Failed to place order");
+
+      // Success
       setIsProcessing(false);
-      setOrderNumber(`VX-${Math.floor(100000 + Math.random() * 900000)}`);
+      setOrderNumber(orderData.id.split('-')[0].toUpperCase()); // Short mock order ID
       setOrderComplete(true);
-    }, 2000);
+      
+      // Clear cart
+      localStorage.removeItem("vastrax_cart");
+      setItems([]);
+      
+    } catch (err) {
+      console.error(err);
+      setIsProcessing(false);
+      alert("Failed to place order. Please try again.");
+    }
   };
 
   if (status === "loading") {

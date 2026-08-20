@@ -22,26 +22,21 @@ interface CartDrawerProps {
 }
 
 export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
-  const [cartItems, setCartItems] = useState<CartItem[]>([
-    {
-      id: 1,
-      name: "Camel Wool Flat Cap",
-      price: 45,
-      quantity: 1,
-      size: "M / 58cm",
-      color: "Camel Brown",
-      image: "https://images.unsplash.com/photo-1551028719-00167b16eac5?q=80&w=400&auto=format&fit=crop"
-    },
-    {
-      id: 2,
-      name: "Cream Pullover Hoodie",
-      price: 120,
-      quantity: 1,
-      size: "L",
-      color: "Bone White",
-      image: "https://images.unsplash.com/photo-1556821840-3a63f95609a7?q=80&w=400&auto=format&fit=crop"
+  const [cartItems, setCartItems] = useState<CartItem[]>([]);
+
+  React.useEffect(() => {
+    const saved = localStorage.getItem("vastrax_cart");
+    if (saved) {
+      try {
+        setCartItems(JSON.parse(saved));
+      } catch (e) {}
     }
-  ]);
+  }, []);
+
+  // Save to local storage on changes
+  React.useEffect(() => {
+    localStorage.setItem("vastrax_cart", JSON.stringify(cartItems));
+  }, [cartItems]);
 
   const [promoCode, setPromoCode] = useState("");
   const [discountPercent, setDiscountPercent] = useState(0);
