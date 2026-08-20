@@ -215,6 +215,15 @@ function ProductContent() {
     setBagItems(currentCart);
   };
 
+  const handleOpenTryOn = () => {
+    if (!isLoggedIn && !session?.user) {
+      setAuthMode("signin");
+      setIsAuthOpen(true);
+      return;
+    }
+    setIsTryOnOpen(true);
+  };
+
   return (
     <div className="min-h-screen bg-background text-foreground font-sans flex flex-col transition-colors duration-300">
       {/* Header */}
@@ -375,11 +384,16 @@ function ProductContent() {
 
                 <div className="space-y-3 mb-8">
                   <button 
-                    onClick={() => setIsTryOnOpen(true)}
+                    onClick={handleOpenTryOn}
                     className="w-full bg-[#0A192F] hover:bg-[#112240] text-white border border-[#D4AF37]/50 h-[52px] rounded-full font-medium text-sm transition-all flex items-center justify-center gap-2 shadow-lg shadow-black/10 group cursor-pointer"
                   >
                     <Sparkles className="w-4 h-4 text-[#D4AF37] group-hover:rotate-12 transition-transform" />
                     <span>Virtual Try-On (AI Fitting Room)</span>
+                    {!isLoggedIn && (
+                      <span className="text-[10px] bg-[#D4AF37]/20 border border-[#D4AF37]/40 text-[#D4AF37] px-2 py-0.5 rounded-full uppercase tracking-wider font-semibold ml-1">
+                        Sign In
+                      </span>
+                    )}
                   </button>
 
                   <div className="flex flex-col sm:flex-row gap-4">
@@ -463,7 +477,17 @@ function ProductContent() {
         </div>
       </div>
 
-      <AuthModal isOpen={isAuthOpen} onClose={() => setIsAuthOpen(false)} />
+      <AuthModal 
+        isOpen={isAuthOpen} 
+        onClose={() => setIsAuthOpen(false)} 
+        initialMode={authMode}
+        onSuccess={(name) => {
+          setIsLoggedIn(true);
+          setUserName(name);
+          setIsAuthOpen(false);
+          setIsTryOnOpen(true);
+        }}
+      />
       <CartDrawer isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} />
       <StylistDrawer isOpen={isStylistOpen} onClose={() => setIsStylistOpen(false)} />
       <VirtualTryOnModal 

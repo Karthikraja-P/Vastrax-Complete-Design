@@ -25,7 +25,7 @@ This is a complete Next.js 16 + FastAPI PostgreSQL project integrating a modern,
   - `StylistDrawer.tsx` - Conversational concierge powered by OpenAI GPT-4o mini with persistent database chat history, interactive chips, active promotions, and instant virtual try-on.
 - `/src/components/products/` - Product management and interactive modules.
   - `ProductTable.tsx` - Products listing wired to `productsApi`.
-  - `VirtualTryOnModal.tsx` - AI Virtual Try-on dialog wired to `tryonApi.submit`.
+  - `VirtualTryOnModal.tsx` - AI Virtual Try-on dialog gated behind authentication, wired to `tryonApi.submit`.
 - `/src/components/admin/` - Admin specific components (`NotchedCard.tsx`).
 - `/src/components/auth/` - Storefront authentication modals (`AuthModal.tsx`).
 - `/src/lib/api.ts` - Unified typed API client with offline graceful fallback for all frontend components.

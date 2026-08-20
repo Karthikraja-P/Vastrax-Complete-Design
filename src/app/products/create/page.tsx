@@ -31,7 +31,7 @@ export default function CreateProductPage() {
     categoriesApi.list().then(data => {
       setCategories(data || []);
       if (data && data.length > 0) {
-        setCategoryId(data[0].id);
+        setCategoryId(String(data[0].id));
       }
     });
   }, []);

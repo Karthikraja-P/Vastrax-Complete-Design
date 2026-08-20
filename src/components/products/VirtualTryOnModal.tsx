@@ -1,12 +1,14 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
   X, RefreshCcw, Shirt, Check, Sparkles, Upload, 
-  Image as ImageIcon, Download, Camera, CheckCircle2, User
+  Image as ImageIcon, Download, Camera, CheckCircle2, User, Lock, ArrowRight
 } from "lucide-react";
+import { useSession } from "next-auth/react";
 import { tryonApi } from "@/lib/api";
+import { AuthModal } from "@/components/auth/AuthModal";
 
 interface VirtualTryOnModalProps {
   isOpen: boolean;
@@ -43,6 +45,7 @@ export function VirtualTryOnModal({
   productId,
   category = "tops"
 }: VirtualTryOnModalProps) {
+  const { data: session } = useSession();
   const [personFile, setPersonFile] = useState<File | null>(null);
   const [personPreview, setPersonPreview] = useState<string | null>(SAMPLE_MODELS[0].preview);
   const [selectedModelId, setSelectedModelId] = useState<string>("female-1");
@@ -51,6 +54,16 @@ export function VirtualTryOnModal({
   const [processStatus, setProcessStatus] = useState("Preparing neural pipeline...");
   const [resultImage, setResultImage] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [isAuthOpen, setIsAuthOpen] = useState(false);
+  const [hasToken, setHasToken] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setHasToken(Boolean(localStorage.getItem("vastrax_token")));
+    }
+  }, [isOpen, session]);
+
+  const isAuthenticated = Boolean(session?.user || hasToken);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -87,6 +100,10 @@ export function VirtualTryOnModal({
   };
 
   const handleGenerate = async () => {
+    if (!isAuthenticated) {
+      setIsAuthOpen(true);
+      return;
+    }
     if (!personPreview || isProcessing) return;
 
     setIsProcessing(true);
@@ -241,6 +258,28 @@ export function VirtualTryOnModal({
                         <p className="text-xs text-slate-300 mt-2 max-w-[240px] animate-pulse">{processStatus}</p>
                       </div>
                     )}
+
+                    {!isAuthenticated && (
+                      <div 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setIsAuthOpen(true);
+                        }}
+                        className="absolute inset-0 bg-[#0A192F]/85 backdrop-blur-[3px] rounded-2xl flex flex-col items-center justify-center text-center p-6 z-30 cursor-pointer"
+                      >
+                        <div className="w-12 h-12 rounded-full bg-[#D4AF37]/20 border border-[#D4AF37]/40 flex items-center justify-center text-[#D4AF37] mb-3">
+                          <Lock className="w-6 h-6" />
+                        </div>
+                        <p className="text-sm font-semibold text-white mb-1">Members Only Experience</p>
+                        <p className="text-xs text-slate-300 max-w-[240px] mb-4">
+                          Sign in or create an account to access the AI Neural Fitting Room.
+                        </p>
+                        <span className="px-4 py-2 bg-[#D4AF37] hover:bg-[#c49f2e] text-[#0A192F] text-xs font-bold uppercase tracking-wider rounded-lg flex items-center gap-1.5 transition-all shadow-md">
+                          <span>Sign In / Register</span>
+                          <ArrowRight className="w-3.5 h-3.5" />
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Sample Models Bar */}
@@ -341,21 +380,45 @@ export function VirtualTryOnModal({
 
               {/* Bottom Actions */}
               <div className="mt-8 pt-6 border-t border-slate-800/80">
-                <button
-                  onClick={handleGenerate}
-                  disabled={!personPreview || isProcessing}
-                  className="w-full py-3.5 px-4 bg-gradient-to-r from-[#D4AF37] via-[#e5c358] to-[#D4AF37] hover:from-[#c49f2e] hover:to-[#c49f2e] text-[#0A192F] font-bold text-xs uppercase tracking-wider rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-[#D4AF37]/20 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-                >
-                  <Sparkles className="w-4 h-4 text-[#0A192F]" />
-                  <span>{isProcessing ? "Generating..." : "Generate Virtual Try-On"}</span>
-                </button>
+                {isAuthenticated ? (
+                  <button
+                    onClick={handleGenerate}
+                    disabled={!personPreview || isProcessing}
+                    className="w-full py-3.5 px-4 bg-gradient-to-r from-[#D4AF37] via-[#e5c358] to-[#D4AF37] hover:from-[#c49f2e] hover:to-[#c49f2e] text-[#0A192F] font-bold text-xs uppercase tracking-wider rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-[#D4AF37]/20 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                  >
+                    <Sparkles className="w-4 h-4 text-[#0A192F]" />
+                    <span>{isProcessing ? "Generating..." : "Generate Virtual Try-On"}</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => setIsAuthOpen(true)}
+                    className="w-full py-3.5 px-4 bg-gradient-to-r from-[#D4AF37] via-[#e5c358] to-[#D4AF37] hover:from-[#c49f2e] hover:to-[#c49f2e] text-[#0A192F] font-bold text-xs uppercase tracking-wider rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-[#D4AF37]/20 cursor-pointer"
+                  >
+                    <Lock className="w-4 h-4 text-[#0A192F]" />
+                    <span>Sign In to Try On</span>
+                  </button>
+                )}
                 <p className="text-[10px] text-slate-400 text-center mt-3 flex items-center justify-center gap-1.5">
-                  <span>🔒 Photos are processed securely & deleted automatically</span>
+                  {isAuthenticated ? (
+                    <span>🔒 Photos are processed securely & deleted automatically</span>
+                  ) : (
+                    <span className="text-[#D4AF37]/90 font-medium">✨ Exclusive to registered VASTRAX members</span>
+                  )}
                 </p>
               </div>
 
             </div>
           </motion.div>
+
+          <AuthModal 
+            isOpen={isAuthOpen} 
+            onClose={() => setIsAuthOpen(false)} 
+            initialMode="signin"
+            onSuccess={() => {
+              setIsAuthOpen(false);
+              setHasToken(true);
+            }} 
+          />
         </>
       )}
     </AnimatePresence>

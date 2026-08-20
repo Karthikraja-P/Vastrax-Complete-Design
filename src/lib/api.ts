@@ -46,10 +46,11 @@ export interface ProductItem {
   stock?: number;
   inventoryCount?: number;
   category?: string;
-  categoryId?: string;
+  categoryId?: string | number;
+  category_id?: string | number;
   status?: string;
   image?: string;
-  images?: string[];
+  images?: (string | any)[];
   rating?: number;
   sku?: string;
   isNew?: boolean;
@@ -97,14 +98,14 @@ export const productsApi = {
     }
   },
 
-  async create(data: Partial<ProductItem>): Promise<ProductItem> {
+  async create(data: Partial<ProductItem> | Record<string, any>): Promise<ProductItem> {
     return await fetchApi<ProductItem>("/products", {
       method: "POST",
       body: JSON.stringify(data),
     });
   },
 
-  async update(id: string | number, data: Partial<ProductItem>): Promise<ProductItem> {
+  async update(id: string | number, data: Partial<ProductItem> | Record<string, any>): Promise<ProductItem> {
     return await fetchApi<ProductItem>(`/products/${id}`, {
       method: "PUT",
       body: JSON.stringify(data),
