@@ -64,6 +64,10 @@ export default function CollectionsPage() {
   const [userName, setUserName] = useState("");
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [products, setProducts] = useState<any[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState("All Categories");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [minPrice, setMinPrice] = useState("");
+  const [maxPrice, setMaxPrice] = useState("");
   
   useEffect(() => {
     async function fetchProducts() {
@@ -71,15 +75,32 @@ export default function CollectionsPage() {
         const res = await fetch("http://localhost:8000/api/v1/products");
         if (res.ok) {
           const data = await res.json();
-          const mapped = data.map((p: any) => ({
-            id: p.id,
-            name: p.name,
-            price: p.price_selling,
-            originalPrice: p.price_mrp,
-            rating: 4.5, // Mock rating since backend doesn't have it yet
-            image: p.images?.[0]?.s3_url || "",
-            isNew: p.is_featured
-          }));
+          const mapped = data.map((p: any) => {
+            const fallbackImg = "https://images.unsplash.com/photo-1551028719-00167b16eac5?q=80&w=400&auto=format&fit=crop";
+            let img = p.images?.[0]?.s3_url;
+            if (!img || img === "") {
+              if (/frock|dress/i.test(p.name)) img = "https://images.unsplash.com/photo-1572804013309-59a88b7e92f1?q=80&w=400&auto=format&fit=crop";
+              else if (/jacket|coat|outerwear|puffer/i.test(p.name)) img = "https://images.unsplash.com/photo-1551028719-00167b16eac5?q=80&w=400&auto=format&fit=crop";
+              else if (/hoodie|sweatshirt/i.test(p.name)) img = "https://images.unsplash.com/photo-1556821840-3a63f95609a7?q=80&w=400&auto=format&fit=crop";
+              else if (/pant|trouser|cargo/i.test(p.name)) img = "https://images.unsplash.com/photo-1542272604-787c3835535d?q=80&w=400&auto=format&fit=crop";
+              else if (/shirt/i.test(p.name)) img = "https://images.unsplash.com/photo-1596755094514-f87e34085b2c?q=80&w=400&auto=format&fit=crop";
+              else if (/shoe|sneaker|loafer/i.test(p.name)) img = "https://images.unsplash.com/photo-1549298916-b41d501d3772?q=80&w=400&auto=format&fit=crop";
+              else if (/hat|cap|bucket/i.test(p.name)) img = "https://images.unsplash.com/photo-1588850561407-ed78c282e89b?q=80&w=400&auto=format&fit=crop";
+              else img = fallbackImg;
+            }
+
+            return {
+              id: p.id,
+              name: p.name,
+              price: Number(p.price_selling || 0),
+              originalPrice: p.price_mrp ? Number(p.price_mrp) : undefined,
+              rating: 4.8,
+              image: img,
+              isNew: p.is_featured,
+              categoryId: p.category_id,
+              categoryName: p.category?.name || "Jackets & Outerwear"
+            };
+          });
           setProducts(mapped);
         }
       } catch (err) {
@@ -197,13 +218,62 @@ export default function CollectionsPage() {
     }
     
     const isOneSize = /cap|hat|beanie/i.test(product.name);
-    
     if (!isOneSize) {
       setSelectedProductForSize(product);
     } else {
       toggleBag(product.id);
     }
   };
+  // Compute filtered & sorted products
+  const filteredProducts = products.filter((p) => {
+    // 1. Category Filter
+    if (selectedCategory !== "All Categories") {
+      const pCat = (p.categoryName || "").toLowerCase();
+      const pName = (p.name || "").toLowerCase();
+      const pCatId = (p.categoryId || "").toLowerCase();
+      
+      if (selectedCategory.includes("Jackets")) {
+        const isJacket = pCat.includes("jacket") || pCat.includes("outerwear") || /jacket|coat|outerwear|puffer|trench/i.test(pName) || pCatId.includes("jacket");
+        if (!isJacket) return false;
+      } else if (selectedCategory.includes("Hoodies")) {
+        const isHoodie = pCat.includes("hoodie") || pCat.includes("sweatshirt") || /hoodie|sweatshirt/i.test(pName) || pCatId.includes("hoodie");
+        if (!isHoodie) return false;
+      } else if (selectedCategory.includes("Pants")) {
+        const isPant = pCat.includes("pant") || pCat.includes("trouser") || /pant|trouser|cargo|denim|jean/i.test(pName) || pCatId.includes("pant");
+        if (!isPant) return false;
+      } else if (selectedCategory.includes("Shirts") && !selectedCategory.includes("T-")) {
+        const isShirt = (pCat.includes("shirt") && !pCat.includes("t-shirt")) || (/shirt/i.test(pName) && !/t-shirt/i.test(pName));
+        if (!isShirt) return false;
+      } else if (selectedCategory.includes("T-Shirts")) {
+        const isTee = pCat.includes("t-shirt") || /t-shirt|tee/i.test(pName);
+        if (!isTee) return false;
+      } else if (selectedCategory.includes("Shoes")) {
+        const isShoe = pCat.includes("shoe") || pCat.includes("sneaker") || /shoe|sneaker|loafer/i.test(pName);
+        if (!isShoe) return false;
+      } else if (selectedCategory.includes("Hats")) {
+        const isHat = pCat.includes("hat") || pCat.includes("cap") || /hat|cap|bucket|beanie/i.test(pName);
+        if (!isHat) return false;
+      }
+    }
+
+    // 2. Search Query
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      const matchSearch = p.name.toLowerCase().includes(q) || (p.categoryName && p.categoryName.toLowerCase().includes(q));
+      if (!matchSearch) return false;
+    }
+
+    // 3. Price Filter
+    if (minPrice && p.price < Number(minPrice)) return false;
+    if (maxPrice && p.price > Number(maxPrice)) return false;
+
+    return true;
+  }).sort((a, b) => {
+    if (sortBy === "Price: Low to High") return a.price - b.price;
+    if (sortBy === "Price: High to Low") return b.price - a.price;
+    if (sortBy === "Top Rated") return (b.rating || 0) - (a.rating || 0);
+    return 0;
+  });
 
   return (
     <div className="min-h-screen bg-surface dark:bg-[#111111] text-foreground dark:text-white font-sans flex flex-col">
@@ -369,7 +439,7 @@ export default function CollectionsPage() {
               
               {/* Mobile Filter Toggle */}
               <div className="lg:hidden flex items-center justify-between">
-                <h1 className="text-2xl font-bold">Best Sellers <span className="text-sm font-normal text-muted-foreground ml-2">24 products</span></h1>
+                <h1 className="text-2xl font-bold">Best Sellers <span className="text-sm font-normal text-muted-foreground ml-2">{filteredProducts.length} products</span></h1>
                 <button 
                   onClick={() => setIsMobileFiltersOpen(!isMobileFiltersOpen)}
                   className="bg-surface dark:bg-[#1a1a1a] border border-border/50 dark:border-white/5 text-sm px-4 py-2 rounded-xl flex items-center gap-2 hover:bg-white/5 transition-colors"
@@ -383,7 +453,9 @@ export default function CollectionsPage() {
                 <div className="bg-surface dark:bg-[#1a1a1a] rounded-[2rem] p-6 border border-border/50 dark:border-white/5 sticky top-6">
                   <div className="flex items-center justify-between mb-6">
                     <h3 className="font-bold text-lg">Filters</h3>
-                    <button className="text-[#e07a3f] text-xs font-bold tracking-wider uppercase flex items-center gap-1 hover:underline">
+                    <button 
+                      onClick={() => { setSelectedCategory("All Categories"); setSearchQuery(""); setMinPrice(""); setMaxPrice(""); }}
+                      className="text-[#e07a3f] text-xs font-bold tracking-wider uppercase flex items-center gap-1 hover:underline">
                       Reset Filters
                     </button>
                   </div>
@@ -393,6 +465,8 @@ export default function CollectionsPage() {
                     <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                     <input 
                       type="text" 
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
                       placeholder="Search products..." 
                       className="w-full bg-surface dark:bg-[#111111] border border-border dark:border-white/10 rounded-full py-3 pl-11 pr-4 text-sm text-foreground dark:text-white placeholder:text-muted-foreground focus:outline-none focus:border-[#e07a3f] transition-colors"
                     />
@@ -403,9 +477,10 @@ export default function CollectionsPage() {
                     <h4 className="text-[10px] font-bold text-muted-foreground tracking-[0.2em] uppercase mb-4">Category</h4>
                     <div className="space-y-1">
                       {categories.map((cat, idx) => (
-                        <label key={idx} className={`flex items-center gap-3 p-2.5 rounded-xl cursor-pointer transition-colors ${idx === 0 ? 'bg-[#e07a3f]/10 text-[#e07a3f]' : 'hover:bg-white/5 text-muted-foreground'}`}>
-                          <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${idx === 0 ? 'border-[#e07a3f] bg-[#e07a3f]' : 'border-border dark:border-white/20'}`}>
-                            {idx === 0 && <div className="w-1.5 h-1.5 bg-surface dark:bg-[#1a1a1a] rounded-full" />}
+                        <label key={idx} className={`flex items-center gap-3 p-2.5 rounded-xl cursor-pointer transition-colors ${selectedCategory === cat.name ? 'bg-[#e07a3f]/10 text-[#e07a3f]' : 'hover:bg-white/5 text-muted-foreground'}`}>
+                          <input type="radio" name="cat" className="hidden" onChange={() => setSelectedCategory(cat.name)} />
+                          <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${selectedCategory === cat.name ? 'border-[#e07a3f] bg-[#e07a3f]' : 'border-border dark:border-white/20'}`}>
+                            {selectedCategory === cat.name && <div className="w-1.5 h-1.5 bg-surface dark:bg-[#1a1a1a] rounded-full" />}
                           </div>
                           <span className="text-lg w-6 text-center shrink-0">{cat.icon}</span>
                           <span className="text-sm font-medium flex-1 truncate">{cat.name}</span>
@@ -417,23 +492,15 @@ export default function CollectionsPage() {
                   {/* Price Range */}
                   <div className="mb-8">
                     <h4 className="text-[10px] font-bold text-muted-foreground tracking-[0.2em] uppercase mb-4">Price Range</h4>
-                    {/* Fake dual slider visual */}
-                    <div className="px-2 mb-6 mt-2">
-                      <div className="h-1 bg-white/10 rounded-full relative">
-                        <div className="absolute left-1/4 right-1/4 h-full bg-[#e07a3f] rounded-full" />
-                        <div className="absolute left-1/4 top-1/2 -translate-y-1/2 -translate-x-1/2 w-3.5 h-3.5 bg-[#e07a3f] rounded-full ring-4 ring-[#1a1a1a] cursor-pointer hover:scale-125 transition-transform" />
-                        <div className="absolute right-1/4 top-1/2 -translate-y-1/2 translate-x-1/2 w-3.5 h-3.5 bg-[#e07a3f] rounded-full ring-4 ring-[#1a1a1a] cursor-pointer hover:scale-125 transition-transform" />
-                      </div>
-                    </div>
                     <div className="flex items-center gap-3">
                       <div className="flex-1 bg-surface dark:bg-[#111111] border border-border dark:border-white/10 rounded-xl px-3 py-2 flex items-center justify-between focus-within:border-[#e07a3f] transition-colors">
                         <span className="text-muted-foreground text-sm font-medium">$</span>
-                        <input type="text" defaultValue="30" className="w-full bg-transparent text-foreground dark:text-white text-sm text-right outline-none font-medium" />
+                        <input type="text" value={minPrice} onChange={(e) => setMinPrice(e.target.value)} className="w-full bg-transparent text-foreground dark:text-white text-sm text-right outline-none font-medium" />
                       </div>
                       <span className="text-muted-foreground">-</span>
                       <div className="flex-1 bg-surface dark:bg-[#111111] border border-border dark:border-white/10 rounded-xl px-3 py-2 flex items-center justify-between focus-within:border-[#e07a3f] transition-colors">
                         <span className="text-muted-foreground text-sm font-medium">$</span>
-                        <input type="text" defaultValue="150" className="w-full bg-transparent text-foreground dark:text-white text-sm text-right outline-none font-medium" />
+                        <input type="text" value={maxPrice} onChange={(e) => setMaxPrice(e.target.value)} className="w-full bg-transparent text-foreground dark:text-white text-sm text-right outline-none font-medium" />
                       </div>
                     </div>
                   </div>
@@ -445,7 +512,7 @@ export default function CollectionsPage() {
               <div className="flex-1">
                 <div className="hidden lg:flex items-end justify-between mb-8">
                   <div>
-                    <h1 className="text-3xl font-bold">Best Sellers <span className="text-sm font-normal text-muted-foreground ml-2">24 products</span></h1>
+                    <h1 className="text-3xl font-bold">{selectedCategory} <span className="text-sm font-normal text-muted-foreground ml-2">{filteredProducts.length} products</span></h1>
                   </div>
                   <div className="relative">
                     <button 
@@ -479,7 +546,7 @@ export default function CollectionsPage() {
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6">
-                  {products.map((product) => (
+                  {filteredProducts.map((product) => (
                     <div key={product.id} className="bg-surface dark:bg-[#1c1c1c] rounded-3xl p-5 group relative border border-border/50 dark:border-white/5 hover:border-border dark:border-white/10 transition-colors flex flex-col h-[340px]">
                       {/* Top icons */}
                       <div className="flex items-start justify-between z-10 relative mb-4 shrink-0">
@@ -496,23 +563,23 @@ export default function CollectionsPage() {
                       </div>
                       
                       {/* Image */}
-                      <a href="/storefront/product" className="relative w-full flex-1 mb-4 flex items-center justify-center overflow-hidden cursor-pointer">
+                      <a href={`/storefront/product?id=${product.id}`} className="relative w-full flex-1 mb-4 flex items-center justify-center overflow-hidden cursor-pointer rounded-2xl bg-black/5">
                         <img 
                           src={product.image} 
                           alt={product.name} 
-                          className="w-full h-full object-contain mix-blend-screen opacity-90 group-hover:scale-110 transition-transform duration-500 ease-out" 
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out" 
                         />
                       </a>
 
                       {/* Bottom Info */}
                       <div className="flex items-end justify-between relative z-10 shrink-0">
                         <div className="flex-1 pr-4">
-                          <a href="/storefront/product" className="hover:text-[#e07a3f] transition-colors">
+                          <a href={`/storefront/product?id=${product.id}`} className="hover:text-[#e07a3f] transition-colors">
                             <h3 className="text-sm font-medium text-foreground/90 mb-1.5 line-clamp-1">{product.name}</h3>
                           </a>
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-lg font-bold">${product.price}</span>
-                            {product.originalPrice && <span className="text-xs text-muted-foreground line-through">${product.originalPrice}</span>}
+                            <span className="text-lg font-bold">₹{product.price.toLocaleString()}</span>
+                            {product.originalPrice && <span className="text-xs text-muted-foreground line-through">₹{product.originalPrice.toLocaleString()}</span>}
                             {product.isSale && <span className="text-[9px] bg-[#e07a3f]/20 text-[#e07a3f] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">SALE</span>}
                             {product.isNew && <span className="text-[9px] bg-white/10 text-foreground dark:text-white px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">NEW</span>}
                           </div>

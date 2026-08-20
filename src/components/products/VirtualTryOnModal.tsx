@@ -153,11 +153,11 @@ export function VirtualTryOnModal({
               {resultImage ? (
                 /* Result Display */
                 <div className="w-full h-full flex flex-col items-center justify-center relative">
-                  <div className="relative w-full max-w-md h-[460px] rounded-2xl overflow-hidden shadow-2xl border border-[#D4AF37]/40 bg-black/40">
+                  <div className="relative w-full max-w-md h-[500px] rounded-2xl overflow-hidden shadow-2xl border border-[#D4AF37]/40 bg-black/60 flex items-center justify-center p-2">
                     <img 
                       src={resultImage} 
                       alt="Virtual Try-On Result" 
-                      className="w-full h-full object-contain"
+                      className="w-full h-full object-contain drop-shadow-2xl"
                     />
                     <div className="absolute top-4 left-4 px-3 py-1.5 rounded-full bg-black/70 backdrop-blur-md border border-[#D4AF37]/50 text-[11px] font-semibold text-[#D4AF37] flex items-center gap-1.5 shadow-lg">
                       <Sparkles className="w-3 h-3 text-[#D4AF37]" />
@@ -193,7 +193,7 @@ export function VirtualTryOnModal({
                     onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
                     onDragLeave={() => setIsDragging(false)}
                     onDrop={handleDrop}
-                    className={`w-full h-80 rounded-2xl border-2 border-dashed transition-all flex flex-col items-center justify-center p-4 cursor-pointer relative overflow-hidden group ${
+                    className={`w-full h-84 rounded-2xl border-2 border-dashed transition-all flex flex-col items-center justify-center p-3 cursor-pointer relative overflow-hidden group ${
                       isDragging 
                         ? "border-[#D4AF37] bg-[#D4AF37]/10" 
                         : "border-slate-700/80 hover:border-[#D4AF37]/60 bg-slate-900/50"
@@ -208,19 +208,19 @@ export function VirtualTryOnModal({
                     />
 
                     {personPreview ? (
-                      <div className="relative w-full h-full rounded-xl overflow-hidden">
+                      <div className="relative w-full h-full rounded-xl overflow-hidden bg-black/40 flex items-center justify-center">
                         <img 
                           src={personPreview} 
                           alt="Person Preview" 
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                          className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300" 
                         />
                         <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-center p-4">
                           <Camera className="w-8 h-8 text-[#D4AF37] mb-2" />
                           <span className="text-xs font-semibold text-white">Click or Drop to Change Photo</span>
                         </div>
                         {selectedModelId === "custom" && (
-                          <div className="absolute top-3 right-3 bg-[#D4AF37] text-[#0A192F] text-[10px] font-bold px-2 py-0.5 rounded-full shadow">
-                            Your Photo
+                          <div className="absolute top-3 right-3 bg-[#D4AF37] text-[#0A192F] text-[10px] font-bold px-2.5 py-0.5 rounded-full shadow">
+                            Your Full Photo
                           </div>
                         )}
                       </div>
@@ -230,7 +230,7 @@ export function VirtualTryOnModal({
                           <Upload className="w-6 h-6" />
                         </div>
                         <p className="text-sm font-semibold text-slate-200 mb-1">Upload Your Photo</p>
-                        <p className="text-xs text-slate-400 max-w-[200px]">Drag & drop your full-body portrait or click to browse</p>
+                        <p className="text-xs text-slate-400 max-w-[220px]">Upload a full-length portrait or choose a model below</p>
                       </div>
                     )}
 

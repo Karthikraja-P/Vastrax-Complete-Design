@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     results_dir: str = ""
 
     # FASHN VTON
+    fashn_tryon_url: str = "http://192.168.1.3:8001"
     fashn_venv: str = "/home/pkr/fashn-tryon/venv/bin/python"
     fashn_script: str = "/home/pkr/fashn-tryon/fashn-vton-1.5/examples/basic_inference.py"
     fashn_weights: str = "/home/pkr/fashn-tryon/fashn-vton-1.5/weights"

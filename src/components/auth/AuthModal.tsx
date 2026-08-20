@@ -99,6 +99,10 @@ export function AuthModal({ isOpen, onClose, initialMode = "signin", onSuccess }
           const data = await res.json();
           const dbUser = data.user;
           
+          if (data.access_token && typeof window !== "undefined") {
+            localStorage.setItem("vastrax_token", data.access_token);
+          }
+          
           // Authenticate using NextAuth CredentialsProvider to create global session
           signIn("credentials", {
             redirect: false,

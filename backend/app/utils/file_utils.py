@@ -11,7 +11,7 @@ from app.core.exceptions import BadRequestError
 
 
 def _is_safe_url(url_str: str) -> bool:
-    """Validate that the URL is public and does not point to internal/private IP ranges."""
+    """Validate that the URL is public or local dev host."""
     parsed = urllib.parse.urlparse(url_str)
     if parsed.scheme not in ("http", "https"):
         return False
@@ -20,12 +20,17 @@ def _is_safe_url(url_str: str) -> bool:
     if not hostname:
         return False
 
+    if hostname in ("localhost", "127.0.0.1", "0.0.0.0", "192.168.1.3"):
+        return True
+
     try:
         addr_info = socket.getaddrinfo(hostname, None)
         for entry in addr_info:
             ip_str = entry[4][0]
             ip = ipaddress.ip_address(ip_str)
             if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
+                if str(ip) in ("127.0.0.1", "192.168.1.3"):
+                    return True
                 return False
         return True
     except (socket.gaierror, ValueError):

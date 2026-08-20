@@ -243,7 +243,7 @@ export const tryonApi = {
       const headers: Record<string, string> = {};
       if (token) headers["Authorization"] = `Bearer ${token}`;
 
-      const res = await fetch("http://localhost:8000/api/v1/try-on/", {
+      const res = await fetch("http://localhost:8000/api/v1/try-on", {
         method: "POST",
         headers,
         body: formData,
@@ -265,7 +265,6 @@ export const tryonApi = {
       return await this.submit({
         garment_path: garmentPath,
         category: garmentType,
-        user_photo_base64: "uploaded_photo"
       });
     }
   }

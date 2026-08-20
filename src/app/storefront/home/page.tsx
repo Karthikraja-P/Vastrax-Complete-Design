@@ -360,7 +360,7 @@ export default function StorefrontHome() {
                         {col.title}
                       </h3>
                     </div>
-                    <a href="/storefront/product" className="w-10 h-10 md:w-12 md:h-12 rounded-full border border-white/40 flex items-center justify-center text-white hover:bg-white hover:text-black transition-all shrink-0">
+                    <a href={`/storefront/product?id=${col.dbId || col.id}`} className="w-10 h-10 md:w-12 md:h-12 rounded-full border border-white/40 flex items-center justify-center text-white hover:bg-white hover:text-black transition-all shrink-0">
                       <ArrowRight className="w-4 h-4 md:w-5 md:h-5" />
                     </a>
                   </div>
