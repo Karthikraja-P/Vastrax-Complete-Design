@@ -1,17 +1,22 @@
 """
 Vastra AI Style Advisor.
 
-Two modes:
-  • Mock  — scripted demo responses, no API key required (default)
-  • Live  — real Claude API when ANTHROPIC_API_KEY starts with "sk-ant-"
+Modes:
+  • OpenAI  — real OpenAI API (e.g. gpt-4o-mini) when OPENAI_API_KEY is provided
+  • Claude  — real Anthropic API when ANTHROPIC_API_KEY starts with "sk-ant-"
+  • Mock    — scripted fashion intelligence fallback when keys are absent
 """
 import json
+import logging
 import os
+import httpx
 
 from anthropic import Anthropic
 
+logger = logging.getLogger(__name__)
 
-def _get_client() -> Anthropic:
+
+def _get_anthropic_client() -> Anthropic:
     return Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY", ""))
 
 
@@ -332,10 +337,10 @@ STYLING RULES:
 - Rectangle: peplum, ruffles, wrap styles create curves
 """
 
-_SYSTEM_PROMPT_TEMPLATE = """You are Vastra, the personal style advisor for VastraX boutique.
-Warm, concise (2–4 sentences max), ask ONE question at a time.
-Gather profile naturally: height, skin tone, body shape (optional), occasion, budget (optional).
-Once you have height + skin tone + occasion → recommend 2–3 products and explain WHY specifically.
+_SYSTEM_PROMPT_TEMPLATE = """{admin_instructions}
+
+ACTIVE STORE OFFERS & PROMOTIONS (Mention these when relevant or when suggesting outfits):
+{active_offers}
 
 {catalog}
 {styling}
@@ -345,29 +350,101 @@ TAGS YOU MUST USE:
 - Product recommendation → inline [PRODUCT:product-id]
 - Profile fact learned → append [PROFILE:{{"key":"value"}}] silently at end
 
-PROFILE: {profile_context}
+CUSTOMER PROFILE: {profile_context}
 """
 
 
-def _build_system_prompt(profile: dict) -> str:
+def _get_catalog_context(db=None) -> str:
+    """Fetch live published products from database, falling back to default boutique list."""
+    if db is not None:
+        try:
+            from app.models.product import Product
+            products = db.query(Product).filter(Product.is_published == True).all()
+            if products:
+                lines = [f"LIVE BOUTIQUE CATALOG ({len(products)} active products — recommend strictly from this list):"]
+                for i, p in enumerate(products, 1):
+                    cat_name = p.category.name if p.category else "Boutique Collection"
+                    fabric = p.fabric or "Premium Luxury Fabric"
+                    colour = p.colour or "Signature Shade"
+                    price = f"₹{p.price_selling:,.0f}" if p.price_selling else "₹1,999"
+                    desc = p.description or ""
+                    lines.append(f"{i}. ID: {p.id} | Name: {p.name} | Category: {cat_name}")
+                    lines.append(f"   Fabric: {fabric} | Colour: {colour} | Price: {price}")
+                    if desc:
+                        lines.append(f"   Description: {desc}")
+                return "\n".join(lines)
+        except Exception as e:
+            logger.warning("Could not load products from database: %s", e)
+    return _CATALOG
+
+
+def _build_system_prompt(profile: dict, db=None) -> str:
+    from app.api.routes.settings import get_app_settings
+    app_settings = get_app_settings()
+    admin_instructions = getattr(app_settings, "stylistSystemPrompt", "You are Vastra, the personal style advisor for VastraX boutique.")
+    active_offers = getattr(app_settings, "activeOffers", "Use code VASTRA10 for 10% off; Free express shipping on orders over ₹2,500.")
+
+    catalog_text = _get_catalog_context(db)
     if profile:
         ctx = "Known: " + ", ".join(f"{k}={v}" for k, v in profile.items()) + ". Skip re-asking these."
     else:
         ctx = "No profile yet — gather naturally."
-    return _SYSTEM_PROMPT_TEMPLATE.format(catalog=_CATALOG, styling=_STYLING_RULES, profile_context=ctx)
+    return _SYSTEM_PROMPT_TEMPLATE.format(
+        admin_instructions=admin_instructions,
+        active_offers=active_offers,
+        catalog=catalog_text,
+        styling=_STYLING_RULES,
+        profile_context=ctx
+    )
 
 
 # ── Public entry point ────────────────────────────────────────────────────────
 
-def chat(messages: list, profile: dict) -> str:
-    api_key = os.getenv("ANTHROPIC_API_KEY", "")
-    if not api_key or not api_key.startswith("sk-ant-"):
-        return mock_chat(messages, profile)
+def chat(messages: list, profile: dict, db=None) -> str:
+    openai_key = os.getenv("OPENAI_API_KEY", "").strip()
+    anthropic_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
 
-    response = _get_client().messages.create(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=512,
-        system=_build_system_prompt(profile),
-        messages=messages,
-    )
-    return response.content[0].text
+    # 1. OpenAI GPT-4o-mini (Priority)
+    if openai_key and not openai_key.startswith("your_"):
+        try:
+            model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+            system_prompt = _build_system_prompt(profile, db=db)
+            openai_messages = [{"role": "system", "content": system_prompt}] + messages
+            
+            with httpx.Client(timeout=30.0) as client:
+                res = client.post(
+                    "https://api.openai.com/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {openai_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": model,
+                        "messages": openai_messages,
+                        "max_tokens": 512,
+                        "temperature": 0.7,
+                    }
+                )
+                if res.status_code == 200:
+                    data = res.json()
+                    return data["choices"][0]["message"]["content"]
+                else:
+                    logger.warning("OpenAI API returned %s: %s", res.status_code, res.text)
+        except Exception as e:
+            logger.error("OpenAI chat error: %s", e)
+
+    # 2. Anthropic Claude (Alternative)
+    if anthropic_key and anthropic_key.startswith("sk-ant-"):
+        try:
+            response = _get_anthropic_client().messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=512,
+                system=_build_system_prompt(profile, db=db),
+                messages=messages,
+            )
+            return response.content[0].text
+        except Exception as e:
+            logger.error("Anthropic chat error: %s", e)
+
+    # 3. Smart Fashion Intelligence Mock Fallback
+    return mock_chat(messages, profile)

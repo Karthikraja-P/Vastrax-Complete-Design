@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { 
   ChevronRight, Heart, Star, Share2, Ruler, Truck, ShieldCheck, 
   Minus, Plus, ChevronLeft, ArrowRight, Menu, Search, User, ShoppingBag,
-  Phone, Link as LinkIcon, RefreshCw, Check
+  Phone, Link as LinkIcon, RefreshCw, Check, Sparkles, Shirt
 } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { AuthModal } from "@/components/auth/AuthModal";
@@ -12,6 +12,7 @@ import { useSession, signOut } from "next-auth/react";
 import Link from "next/link";
 import { CartDrawer } from "@/components/layout/CartDrawer";
 import { StylistDrawer } from "@/components/stylist/StylistDrawer";
+import { VirtualTryOnModal } from "@/components/products/VirtualTryOnModal";
 
 const relatedProducts = [
   { id: 101, name: "Camel Wool Flat Cap", price: 45, originalPrice: 55, rating: 3.8, image: "https://images.unsplash.com/photo-1551028719-00167b16eac5?q=80&w=400&auto=format&fit=crop" },
@@ -32,6 +33,7 @@ export default function ProductPage() {
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isStylistOpen, setIsStylistOpen] = useState(false);
+  const [isTryOnOpen, setIsTryOnOpen] = useState(false);
   const [bagItems, setBagItems] = useState<number[]>([101]);
   const [activeColor, setActiveColor] = useState('Black');
   const [activeSize, setActiveSize] = useState('One Size');
@@ -112,6 +114,14 @@ export default function ProductPage() {
     
     localStorage.setItem("vastrax_cart", JSON.stringify(currentCart));
     setBagItems([101]);
+  };
+
+  const toggleBag = (id: number) => {
+    if (bagItems.includes(id)) {
+      setBagItems(prev => prev.filter(item => item !== id));
+    } else {
+      setBagItems(prev => [...prev, id]);
+    }
   };
 
   return (
@@ -264,6 +274,13 @@ export default function ProductPage() {
                   >
                     <Heart className={`w-5 h-5 ${favorites.includes(999) ? 'fill-[#e07a3f] text-[#e07a3f]' : ''}`} />
                   </button>
+                  <button 
+                    onClick={() => setIsTryOnOpen(true)}
+                    className="absolute bottom-6 right-6 px-4 py-2.5 rounded-full bg-[#0A192F]/90 hover:bg-[#0A192F] text-white text-xs font-semibold backdrop-blur-md border border-white/10 flex items-center gap-2 shadow-xl hover:scale-105 transition-all z-10"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-[#e07a3f]" />
+                    <span>Virtual Try-On</span>
+                  </button>
                   <img 
                     src="https://images.unsplash.com/photo-1588850561407-ed78c282e89b?q=80&w=800&auto=format&fit=crop" 
                     alt="Teal Five-Panel Cap" 
@@ -361,22 +378,32 @@ export default function ProductPage() {
                   <span className="text-xs text-foreground/50 font-medium">In stock and ready to ship</span>
                 </div>
 
-                <div className="flex flex-col sm:flex-row gap-4 mb-8">
-                  <a 
-                    href="/storefront/checkout"
-                    className="flex-1 bg-[#e07a3f] hover:bg-[#d06a2f] text-white h-[52px] rounded-full font-medium text-sm transition-colors shadow-lg shadow-[#e07a3f]/20 flex items-center justify-center"
-                  >
-                    Buy Now
-                  </a>
+                <div className="space-y-3 mb-8">
                   <button 
-                    onClick={() => {
-                      addToCart();
-                      setIsCartOpen(true);
-                    }}
-                    className="flex-1 bg-transparent border border-foreground/20 hover:border-foreground/50 hover:bg-foreground/5 text-foreground h-[52px] rounded-full font-medium text-sm transition-all flex items-center justify-center gap-2"
+                    onClick={() => setIsTryOnOpen(true)}
+                    className="w-full bg-[#0A192F] hover:bg-[#112240] text-white border border-[#D4AF37]/50 h-[52px] rounded-full font-medium text-sm transition-all flex items-center justify-center gap-2 shadow-lg shadow-black/10 group"
                   >
-                    Add to Cart
+                    <Sparkles className="w-4 h-4 text-[#D4AF37] group-hover:rotate-12 transition-transform" />
+                    <span>Virtual Try-On (AI Fitting Room)</span>
                   </button>
+
+                  <div className="flex flex-col sm:flex-row gap-4">
+                    <a 
+                      href="/storefront/checkout"
+                      className="flex-1 bg-[#e07a3f] hover:bg-[#d06a2f] text-white h-[52px] rounded-full font-medium text-sm transition-colors shadow-lg shadow-[#e07a3f]/20 flex items-center justify-center"
+                    >
+                      Buy Now
+                    </a>
+                    <button 
+                      onClick={() => {
+                        addToCart();
+                        setIsCartOpen(true);
+                      }}
+                      className="flex-1 bg-transparent border border-foreground/20 hover:border-foreground/50 hover:bg-foreground/5 text-foreground h-[52px] rounded-full font-medium text-sm transition-all flex items-center justify-center gap-2"
+                    >
+                      Add to Cart
+                    </button>
+                  </div>
                 </div>
 
                 {/* Trust Badges */}
@@ -539,6 +566,13 @@ export default function ProductPage() {
       <AuthModal isOpen={isAuthOpen} onClose={() => setIsAuthOpen(false)} />
       <CartDrawer isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} />
       <StylistDrawer isOpen={isStylistOpen} onClose={() => setIsStylistOpen(false)} />
+      <VirtualTryOnModal 
+        isOpen={isTryOnOpen} 
+        onClose={() => setIsTryOnOpen(false)} 
+        productImage="https://images.unsplash.com/photo-1588850561407-ed78c282e89b?q=80&w=800&auto=format&fit=crop" 
+        productName="Teal Five-Panel Cap" 
+        productId={999} 
+      />
     </div>
   );
 }

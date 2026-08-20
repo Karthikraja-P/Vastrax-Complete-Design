@@ -10,6 +10,7 @@ from .order_item import OrderItem
 from .payment import Payment
 from .tryon_session import TryonSession
 from .otp import OTP
+from .chat_message import ChatMessage
 
 __all__ = [
     "User",
@@ -24,4 +25,5 @@ __all__ = [
     "Payment",
     "TryonSession",
     "OTP",
+    "ChatMessage",
 ]

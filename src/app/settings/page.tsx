@@ -35,6 +35,16 @@ export default function SettingsPage() {
   const [lowStockThreshold, setLowStockThreshold] = useState("5");
   const [autoArchiveOrders, setAutoArchiveOrders] = useState(false);
   const [maintenanceMode, setMaintenanceMode] = useState(false);
+  const [stylistSystemPrompt, setStylistSystemPrompt] = useState(
+    "You are Vastra, the premier personal style advisor for VastraX Haute Couture boutique.\n" +
+    "Tone: Sophisticated, welcoming, and concise (2-3 sentences per reply). Always ask ONE clear question at a time.\n" +
+    "Guidance: Match silhouettes and colors based on customer skin tone, height, and occasion.\n" +
+    "Sales & Offers: Mention our active promotions naturally when recommending outfits.\n" +
+    "Encourage customers to click 'Try On' to preview outfits in the AI Fitting Room."
+  );
+  const [activeOffers, setActiveOffers] = useState(
+    "Use code VASTRA10 for 10% off your first luxury order; Complimentary express shipping on orders over ₹2,500."
+  );
   const [isSavingAppSettings, setIsSavingAppSettings] = useState(false);
   const [appSettingsSaved, setAppSettingsSaved] = useState(false);
 
@@ -53,6 +63,8 @@ export default function SettingsPage() {
         if (data.lowStockThreshold !== undefined) setLowStockThreshold(String(data.lowStockThreshold));
         if (data.autoArchiveOrders !== undefined) setAutoArchiveOrders(data.autoArchiveOrders);
         if (data.maintenanceMode !== undefined) setMaintenanceMode(data.maintenanceMode);
+        if (data.stylistSystemPrompt) setStylistSystemPrompt(data.stylistSystemPrompt);
+        if (data.activeOffers) setActiveOffers(data.activeOffers);
       }
     }
     loadSettings();
@@ -71,7 +83,9 @@ export default function SettingsPage() {
       enableLowStockAlerts,
       lowStockThreshold: Number(lowStockThreshold),
       autoArchiveOrders,
-      maintenanceMode
+      maintenanceMode,
+      stylistSystemPrompt,
+      activeOffers
     });
     setIsSavingAppSettings(false);
     setAppSettingsSaved(true);
@@ -555,7 +569,65 @@ export default function SettingsPage() {
                   </div>
                 </div>
 
-                {/* Section 4: Maintenance Mode */}
+                {/* Section 4: AI Stylist & Concierge Intelligence */}
+                <div className="space-y-4 pt-4 border-t border-border">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-semibold text-foreground uppercase tracking-wider flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-accent" /> AI Stylist & Concierge (GPT-4o mini)
+                    </h3>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setStylistSystemPrompt(
+                          "You are Vastra, the premier personal style advisor for VastraX Haute Couture boutique.\n" +
+                          "Tone: Sophisticated, welcoming, and concise (2-3 sentences per reply). Always ask ONE clear question at a time.\n" +
+                          "Guidance: Match silhouettes and colors based on customer skin tone, height, and occasion.\n" +
+                          "Sales & Offers: Mention our active promotions naturally when recommending outfits.\n" +
+                          "Encourage customers to click 'Try On' to preview outfits in the AI Fitting Room."
+                        );
+                        setActiveOffers("Use code VASTRA10 for 10% off your first luxury order; Complimentary express shipping on orders over ₹2,500.");
+                      }}
+                      className="text-xs text-accent hover:underline cursor-pointer"
+                    >
+                      Reset to Default Prompt
+                    </button>
+                  </div>
+
+                  <div className="space-y-4 bg-background/50 p-4 rounded-xl border border-border">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-foreground flex items-center justify-between">
+                        <span>Active Boutique Promotions & Offers</span>
+                        <span className="text-[11px] text-muted-foreground">Injected directly into chat context</span>
+                      </label>
+                      <input 
+                        type="text" 
+                        value={activeOffers}
+                        onChange={(e) => setActiveOffers(e.target.value)}
+                        placeholder="e.g. Use code VASTRA10 for 10% off; Free express shipping on orders over ₹2,500"
+                        className="w-full px-4 py-2.5 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-accent transition-all text-foreground"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-foreground flex items-center justify-between">
+                        <span>Stylist Persona & System Instructions</span>
+                        <span className="text-[11px] text-muted-foreground">Guides how AI talks to customers</span>
+                      </label>
+                      <textarea 
+                        rows={5}
+                        value={stylistSystemPrompt}
+                        onChange={(e) => setStylistSystemPrompt(e.target.value)}
+                        className="w-full px-4 py-2.5 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-accent transition-all text-foreground font-mono text-xs leading-relaxed resize-y"
+                        placeholder="Enter system prompt instructions for the AI stylist..."
+                      />
+                      <p className="text-[11px] text-muted-foreground">
+                        Live products from your database and catalog stock are automatically attached to this prompt in real time.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Section 5: Maintenance Mode */}
                 <div className="space-y-4 pt-4 border-t border-border">
                   <h3 className="text-sm font-semibold text-foreground uppercase tracking-wider flex items-center gap-2">
                     <ShieldAlert className="w-4 h-4 text-amber-500" /> Maintenance & VIP Lock

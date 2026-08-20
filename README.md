@@ -22,7 +22,7 @@ This is a complete Next.js 16 + FastAPI PostgreSQL project integrating a modern,
   - `MainLayout.tsx` - Layout wrapper managing the sidebar state and grid layout.
   - `CartDrawer.tsx` - Glassmorphic slide-over shopping bag drawer with promo validation and live checkout link.
 - `/src/components/stylist/` - AI Haute Couture Stylist.
-  - `StylistDrawer.tsx` - Conversational concierge powered by Claude chat endpoint with outfit recommendations & instant try-on.
+  - `StylistDrawer.tsx` - Conversational concierge powered by OpenAI GPT-4o mini with persistent database chat history, interactive chips, active promotions, and instant virtual try-on.
 - `/src/components/products/` - Product management and interactive modules.
   - `ProductTable.tsx` - Products listing wired to `productsApi`.
   - `VirtualTryOnModal.tsx` - AI Virtual Try-on dialog wired to `tryonApi.submit`.
@@ -31,9 +31,9 @@ This is a complete Next.js 16 + FastAPI PostgreSQL project integrating a modern,
 - `/src/lib/api.ts` - Unified typed API client with offline graceful fallback for all frontend components.
 - `/backend/` - FastAPI backend application (PostgreSQL + SQLAlchemy 2.0 + Alembic).
   - `app/main.py` - FastAPI entrypoint.
-  - `app/api/routes/` - REST endpoints: `auth`, `products`, `categories`, `orders`, `payments`, `shipping`, `tryon`, `chat`, `analytics`, `settings`.
-  - `app/models/` - SQLAlchemy models.
-  - `app/services/` - Business logic services (PhonePe, Fashn VTON, Shiprocket, Anthropic Stylist).
+  - `app/api/routes/` - REST endpoints: `auth`, `products`, `categories`, `orders`, `payments`, `shipping`, `tryon`, `chat` (`POST /`, `GET /history`, `DELETE /history`), `analytics`, `settings`.
+  - `app/models/` - SQLAlchemy models (`User`, `Product`, `Order`, `ChatMessage`, `TryonSession`, etc.).
+  - `app/services/` - Business logic services (PhonePe, Fashn VTON, Shiprocket, OpenAI GPT-4o mini Stylist).
 - `/virtual-try-on/` - Standalone Virtual Try-On sub-system (FASHN VTON 1.5 engine + Fitting Room UI).
   - `backend/` - Dedicated VTON FastAPI service with GPU inference execution.
   - `frontend/` - Standalone luxury boutique UI and modal fitting room.

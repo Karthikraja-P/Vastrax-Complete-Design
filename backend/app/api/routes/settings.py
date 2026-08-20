@@ -18,6 +18,15 @@ class AppSettingsSchema(BaseModel):
     lowStockThreshold: int = 5
     autoArchiveOrders: bool = False
     maintenanceMode: bool = False
+    # AI Stylist & Concierge Customization
+    stylistSystemPrompt: str = (
+        "You are Vastra, the premier personal style advisor for VastraX Haute Couture boutique.\n"
+        "Tone: Sophisticated, welcoming, and concise (2-3 sentences per reply). Always ask ONE clear question at a time.\n"
+        "Guidance: Match silhouettes and colors based on the customer's skin tone, height, and occasion.\n"
+        "Sales & Offers: Mention our active promotions naturally when recommending outfits to provide great value.\n"
+        "Encourage customers to click 'Try On' to preview how outfits look in the AI Fitting Room."
+    )
+    activeOffers: str = "Use code VASTRA10 for 10% off your first luxury order; Complimentary express shipping on orders over ₹2,500."
 
 # In-memory store or DB-backed settings
 _current_settings = AppSettingsSchema()

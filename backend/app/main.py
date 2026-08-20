@@ -14,10 +14,14 @@ from app.core.start import initialize_directories
 from app.core.exceptions import register_exception_handlers
 from app.core.logging import setup_logging
 from app.core.static_files import mount_static_files
+from app.db.base import Base
+from app.db.database import engine
+import app.models  # noqa: F401
 
 
 setup_logging(debug=settings.debug)
 initialize_directories()
+Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="VastraX API",

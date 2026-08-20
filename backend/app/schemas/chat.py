@@ -1,12 +1,24 @@
-from typing import List
+from typing import List, Optional
+from datetime import datetime
 from pydantic import BaseModel
 
 
-class ChatMessage(BaseModel):
+class ChatMessageSchema(BaseModel):
     role: str
     content: str
 
 
 class ChatRequest(BaseModel):
-    messages: List[ChatMessage]
+    messages: List[ChatMessageSchema]
     profile: dict = {}
+    session_id: Optional[str] = None
+    user_id: Optional[str] = None
+
+
+class ChatHistoryItem(BaseModel):
+    id: str
+    sender: str
+    text: str
+    timestamp: str
+    suggested_products: Optional[list] = None
+

@@ -14,7 +14,9 @@ interface Message {
   sender: "user" | "stylist";
   text: string;
   timestamp: string;
+  chips?: string[];
   suggestedProducts?: {
+    id?: string;
     name: string;
     price: string;
     image: string;
@@ -28,16 +30,17 @@ const initialMessages: Message[] = [
     sender: "stylist",
     text: "Welcome to VASTRAX Concierge. I am your personal AI Haute Couture Stylist. How may I tailor your aesthetic today?",
     timestamp: "Just now",
+    chips: ["Wedding / Festive", "Office / Work", "Casual / Everyday", "Current Offers"],
     suggestedProducts: [
       {
         name: "Noir Silk Evening Blazer",
-        price: "$480.00",
+        price: "₹4,800",
         image: "https://images.unsplash.com/photo-1598033129183-c4f50c736f10?q=80&w=400&auto=format&fit=crop",
         category: "tops"
       },
       {
         name: "Minimalist Cashmere Turtleneck",
-        price: "$380.00",
+        price: "₹3,800",
         image: "https://images.unsplash.com/photo-1624542313043-30df84aee15d?q=80&w=400&auto=format&fit=crop",
         category: "tops"
       }
@@ -46,11 +49,31 @@ const initialMessages: Message[] = [
 ];
 
 const samplePrompts = [
+  "What active discounts do you have?",
   "Curate a minimalist evening gala outfit",
   "How to style the Silk Evening Blazer?",
-  "Recommend monochrome autumn essentials",
-  "Pairing suggestions for Cashmere Turtleneck"
+  "Recommend monochrome autumn essentials"
 ];
+
+function parseTagsFromReply(rawText: string) {
+  let cleanText = rawText;
+  let chips: string[] = [];
+
+  // Extract [CHIPS:Option1|Option2]
+  const chipsMatch = cleanText.match(/\[CHIPS:([^\]]+)\]/);
+  if (chipsMatch) {
+    chips = chipsMatch[1].split("|").map(c => c.trim()).filter(Boolean);
+    cleanText = cleanText.replace(chipsMatch[0], "").trim();
+  }
+
+  // Remove [PROFILE:{...}]
+  cleanText = cleanText.replace(/\[PROFILE:[^\]]+\]/g, "").trim();
+
+  // Remove [PRODUCT:id] tags from visible message text (products are rendered in the card grid)
+  cleanText = cleanText.replace(/\[PRODUCT:[^\]]+\]/g, "").trim();
+
+  return { cleanText, chips };
+}
 
 interface StylistDrawerProps {
   isOpen: boolean;
@@ -61,8 +84,39 @@ export function StylistDrawer({ isOpen, onClose }: StylistDrawerProps) {
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
+  const [sessionId, setSessionId] = useState<string>("");
   const [vtoProduct, setVtoProduct] = useState<{ name: string; image: string } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Initialize or load session & history
+  useEffect(() => {
+    let sid = localStorage.getItem("vastrax_stylist_session_id");
+    if (!sid) {
+      sid = `ses_${Math.random().toString(36).substring(2, 11)}_${Date.now()}`;
+      localStorage.setItem("vastrax_stylist_session_id", sid);
+    }
+    setSessionId(sid);
+
+    async function loadHistory() {
+      if (!sid) return;
+      const history = await chatApi.getHistory(sid);
+      if (history && history.length > 0) {
+        const parsed: Message[] = history.map(h => {
+          const { cleanText, chips } = parseTagsFromReply(h.text);
+          return {
+            id: h.id,
+            sender: h.sender,
+            text: cleanText,
+            timestamp: h.timestamp,
+            chips,
+            suggestedProducts: h.suggestedProducts
+          };
+        });
+        setMessages(parsed);
+      }
+    }
+    loadHistory();
+  }, [isOpen]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -84,20 +138,23 @@ export function StylistDrawer({ isOpen, onClose }: StylistDrawerProps) {
     setIsTyping(true);
 
     try {
-      const replyText = await chatApi.sendMessage(query);
+      const historyPayload = messages.map(m => ({
+        role: m.sender === "user" ? "user" : "assistant",
+        content: m.text
+      }));
+
+      const res = await chatApi.sendMessage(query, sessionId, historyPayload);
+      const { cleanText, chips } = parseTagsFromReply(res.message);
+
       const stylistMsg: Message = {
         id: `s-${Date.now()}`,
         sender: "stylist",
-        text: replyText,
+        text: cleanText,
         timestamp: "Just now",
-        suggestedProducts: [
-          {
-            name: "Silk Crepe Tailored Trousers",
-            price: "$320.00",
-            image: "https://images.unsplash.com/photo-1594938298603-c8148c4dae35?q=80&w=400&auto=format&fit=crop",
-            category: "bottoms"
-          }
-        ]
+        chips,
+        suggestedProducts: res.suggested_products && res.suggested_products.length > 0 
+          ? res.suggested_products 
+          : undefined
       };
       setMessages(prev => [...prev, stylistMsg]);
     } catch {
@@ -110,6 +167,16 @@ export function StylistDrawer({ isOpen, onClose }: StylistDrawerProps) {
       setMessages(prev => [...prev, fallbackMsg]);
     } finally {
       setIsTyping(false);
+    }
+  };
+
+  const handleClearChat = async () => {
+    if (confirm("Reset and clear your styling conversation history?")) {
+      await chatApi.clearHistory(sessionId);
+      const newSid = `ses_${Math.random().toString(36).substring(2, 11)}_${Date.now()}`;
+      localStorage.setItem("vastrax_stylist_session_id", newSid);
+      setSessionId(newSid);
+      setMessages(initialMessages);
     }
   };
 
@@ -146,16 +213,25 @@ export function StylistDrawer({ isOpen, onClose }: StylistDrawerProps) {
                       VASTRAX AI Stylist
                       <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                     </h3>
-                    <p className="text-[11px] text-muted-foreground">Claude 3.5 Haute Couture Concierge</p>
+                    <p className="text-[11px] text-muted-foreground">GPT-4o mini Haute Couture Concierge</p>
                   </div>
                 </div>
 
-                <button 
-                  onClick={onClose}
-                  className="p-2 rounded-full hover:bg-white/5 text-muted-foreground hover:text-white transition-colors"
-                >
-                  <X className="w-4 h-4" />
-                </button>
+                <div className="flex items-center gap-1">
+                  <button 
+                    onClick={handleClearChat}
+                    title="Reset chat history"
+                    className="p-2 rounded-full hover:bg-white/5 text-muted-foreground hover:text-white transition-colors"
+                  >
+                    <RefreshCcw className="w-4 h-4" />
+                  </button>
+                  <button 
+                    onClick={onClose}
+                    className="p-2 rounded-full hover:bg-white/5 text-muted-foreground hover:text-white transition-colors"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
 
               {/* Message Flow */}
@@ -174,7 +250,7 @@ export function StylistDrawer({ isOpen, onClose }: StylistDrawerProps) {
                       
                       <div>
                         <div 
-                          className={`p-4 rounded-2xl text-sm leading-relaxed ${
+                          className={`p-4 rounded-2xl text-sm leading-relaxed whitespace-pre-line ${
                             msg.sender === "user"
                               ? "bg-accent text-white rounded-tr-none shadow-[0_0_15px_rgba(224,122,63,0.25)]"
                               : "bg-[#18191d] border border-white/5 text-zinc-200 rounded-tl-none"
@@ -183,11 +259,26 @@ export function StylistDrawer({ isOpen, onClose }: StylistDrawerProps) {
                           {msg.text}
                         </div>
 
+                        {/* Interactive Suggestion Chips */}
+                        {msg.chips && msg.chips.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5 mt-2.5">
+                            {msg.chips.map((chip, idx) => (
+                              <button
+                                key={idx}
+                                onClick={() => handleSend(chip)}
+                                className="px-3 py-1 rounded-full bg-accent/15 hover:bg-accent text-accent hover:text-white text-xs font-medium border border-accent/30 transition-all cursor-pointer shadow-sm hover:scale-105"
+                              >
+                                {chip}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+
                         {/* Suggested Products attached to message */}
                         {msg.suggestedProducts && msg.suggestedProducts.length > 0 && (
                           <div className="mt-3 space-y-2">
                             <p className="text-[10px] uppercase font-bold tracking-wider text-accent flex items-center gap-1">
-                              <Sparkles className="w-3 h-3" /> Recommended Silhouettes
+                              <Sparkles className="w-3 h-3" /> Recommended Boutique Pieces
                             </p>
                             <div className="grid grid-cols-2 gap-2.5">
                               {msg.suggestedProducts.map((p, idx) => (
@@ -202,7 +293,7 @@ export function StylistDrawer({ isOpen, onClose }: StylistDrawerProps) {
                                   <p className="text-[11px] text-accent font-bold mt-0.5">{p.price}</p>
                                   <button 
                                     onClick={() => setVtoProduct({ name: p.name, image: p.image })}
-                                    className="mt-2 w-full py-1.5 rounded bg-accent/15 hover:bg-accent text-accent hover:text-white text-[10px] font-bold uppercase tracking-wider transition-colors flex items-center justify-center gap-1"
+                                    className="mt-2 w-full py-1.5 rounded bg-accent/15 hover:bg-accent text-accent hover:text-white text-[10px] font-bold uppercase tracking-wider transition-colors flex items-center justify-center gap-1 cursor-pointer"
                                   >
                                     <Shirt className="w-3 h-3" /> Try On
                                   </button>
