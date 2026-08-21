@@ -8,6 +8,7 @@ import { CartDrawer } from "@/components/layout/CartDrawer";
 import { StylistDrawer } from "@/components/stylist/StylistDrawer";
 import { useSession, signOut } from "next-auth/react";
 import Link from "next/link";
+import { productsApi, categoriesApi } from "@/lib/api";
 
 const defaultCategories = [
   { name: "T-Shirts", image: "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?q=80&w=300&auto=format&fit=crop" },
@@ -37,21 +38,18 @@ export default function StorefrontHome() {
     }
   }, [session]);
   
-  // Fetch real products and categories from backend
+  // Fetch real products and categories from unified API
   useEffect(() => {
     async function fetchData() {
       try {
-        const prodRes = await fetch("http://localhost:8000/api/v1/products/featured");
-        if (prodRes.ok) {
-          const data = await prodRes.json();
-          const mapped = data.map((p: any, idx: number) => ({
-            id: String(idx + 1).padStart(2, '0'),
-            dbId: p.id,
-            title: p.name,
-            image: p.images?.[0]?.s3_url || ""
-          }));
-          setCollections(mapped);
-        }
+        const data = await productsApi.list();
+        const mapped = data.map((p: any, idx: number) => ({
+          id: String(idx + 1).padStart(2, '0'),
+          dbId: p.id,
+          title: p.name || p.title,
+          image: p.image || p.images?.[0]?.s3_url || (typeof p.images?.[0] === 'string' ? p.images[0] : "") || "https://images.unsplash.com/photo-1551028719-00167b16eac5?q=80&w=400&auto=format&fit=crop"
+        }));
+        setCollections(mapped);
       } catch (err) {
         console.error("Failed to fetch featured products:", err);
       }

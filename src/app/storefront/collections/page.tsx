@@ -8,6 +8,7 @@ import { useSession, signOut } from "next-auth/react";
 import Link from "next/link";
 import { CartDrawer } from "@/components/layout/CartDrawer";
 import { StylistDrawer } from "@/components/stylist/StylistDrawer";
+import { productsApi, categoriesApi } from "@/lib/api";
 
 // --- Mock Data ---
 
@@ -37,6 +38,7 @@ const banners = [
 
 const categories = [
   { name: "All Categories", count: 120, icon: "❖" },
+  { name: "Dresses & Frocks", count: 16, icon: "👗" },
   { name: "T-Shirts", count: 45, icon: "👕" },
   { name: "Hoodies & Sweatshirts", count: 32, icon: "🧥" },
   { name: "Jackets & Outerwear", count: 18, icon: "🧥" },
@@ -72,37 +74,35 @@ export default function CollectionsPage() {
   useEffect(() => {
     async function fetchProducts() {
       try {
-        const res = await fetch("http://localhost:8000/api/v1/products");
-        if (res.ok) {
-          const data = await res.json();
-          const mapped = data.map((p: any) => {
-            const fallbackImg = "https://images.unsplash.com/photo-1551028719-00167b16eac5?q=80&w=400&auto=format&fit=crop";
-            let img = p.images?.[0]?.s3_url;
-            if (!img || img === "") {
-              if (/frock|dress/i.test(p.name)) img = "https://images.unsplash.com/photo-1572804013309-59a88b7e92f1?q=80&w=400&auto=format&fit=crop";
-              else if (/jacket|coat|outerwear|puffer/i.test(p.name)) img = "https://images.unsplash.com/photo-1551028719-00167b16eac5?q=80&w=400&auto=format&fit=crop";
-              else if (/hoodie|sweatshirt/i.test(p.name)) img = "https://images.unsplash.com/photo-1556821840-3a63f95609a7?q=80&w=400&auto=format&fit=crop";
-              else if (/pant|trouser|cargo/i.test(p.name)) img = "https://images.unsplash.com/photo-1542272604-787c3835535d?q=80&w=400&auto=format&fit=crop";
-              else if (/shirt/i.test(p.name)) img = "https://images.unsplash.com/photo-1596755094514-f87e34085b2c?q=80&w=400&auto=format&fit=crop";
-              else if (/shoe|sneaker|loafer/i.test(p.name)) img = "https://images.unsplash.com/photo-1549298916-b41d501d3772?q=80&w=400&auto=format&fit=crop";
-              else if (/hat|cap|bucket/i.test(p.name)) img = "https://images.unsplash.com/photo-1588850561407-ed78c282e89b?q=80&w=400&auto=format&fit=crop";
-              else img = fallbackImg;
-            }
+        const data = await productsApi.list();
+        const mapped = data.map((p: any) => {
+          const fallbackImg = "https://images.unsplash.com/photo-1551028719-00167b16eac5?q=80&w=400&auto=format&fit=crop";
+          let img = p.image || p.images?.[0]?.s3_url || (typeof p.images?.[0] === 'string' ? p.images[0] : "");
+          if (!img || img === "") {
+            const pTitle = p.name || p.title || "";
+            if (/frock|dress|gown/i.test(pTitle)) img = "https://images.unsplash.com/photo-1572804013309-59a88b7e92f1?q=80&w=400&auto=format&fit=crop";
+            else if (/jacket|coat|outerwear|puffer/i.test(pTitle)) img = "https://images.unsplash.com/photo-1551028719-00167b16eac5?q=80&w=400&auto=format&fit=crop";
+            else if (/hoodie|sweatshirt/i.test(pTitle)) img = "https://images.unsplash.com/photo-1556821840-3a63f95609a7?q=80&w=400&auto=format&fit=crop";
+            else if (/pant|trouser|cargo/i.test(pTitle)) img = "https://images.unsplash.com/photo-1542272604-787c3835535d?q=80&w=400&auto=format&fit=crop";
+            else if (/shirt/i.test(pTitle)) img = "https://images.unsplash.com/photo-1596755094514-f87e34085b2c?q=80&w=400&auto=format&fit=crop";
+            else if (/shoe|sneaker|loafer/i.test(pTitle)) img = "https://images.unsplash.com/photo-1549298916-b41d501d3772?q=80&w=400&auto=format&fit=crop";
+            else if (/hat|cap|bucket/i.test(pTitle)) img = "https://images.unsplash.com/photo-1588850561407-ed78c282e89b?q=80&w=400&auto=format&fit=crop";
+            else img = fallbackImg;
+          }
 
-            return {
-              id: p.id,
-              name: p.name,
-              price: Number(p.price_selling || 0),
-              originalPrice: p.price_mrp ? Number(p.price_mrp) : undefined,
-              rating: 4.8,
-              image: img,
-              isNew: p.is_featured,
-              categoryId: p.category_id,
-              categoryName: p.category?.name || "Jackets & Outerwear"
-            };
-          });
-          setProducts(mapped);
-        }
+          return {
+            id: p.id,
+            name: p.name || p.title,
+            price: Number(p.price || p.price_selling || 0),
+            originalPrice: p.originalPrice || p.price_mrp || p.compareAtPrice ? Number(p.originalPrice || p.price_mrp || p.compareAtPrice) : undefined,
+            rating: p.rating || 4.8,
+            image: img,
+            isNew: p.isNew || p.is_featured,
+            categoryId: p.categoryId || p.category_id,
+            categoryName: p.category?.name || p.category || "Apparel"
+          };
+        });
+        setProducts(mapped);
       } catch (err) {
         console.error("Failed to fetch products:", err);
       }
@@ -232,7 +232,10 @@ export default function CollectionsPage() {
       const pName = (p.name || "").toLowerCase();
       const pCatId = (p.categoryId || "").toLowerCase();
       
-      if (selectedCategory.includes("Jackets")) {
+      if (selectedCategory.includes("Dress") || selectedCategory.includes("Frock")) {
+        const isDress = pCat.includes("dress") || pCat.includes("frock") || /dress|frock|gown|skirt/i.test(pName) || pCatId.includes("dress") || pCatId.includes("frock");
+        if (!isDress) return false;
+      } else if (selectedCategory.includes("Jackets")) {
         const isJacket = pCat.includes("jacket") || pCat.includes("outerwear") || /jacket|coat|outerwear|puffer|trench/i.test(pName) || pCatId.includes("jacket");
         if (!isJacket) return false;
       } else if (selectedCategory.includes("Hoodies")) {

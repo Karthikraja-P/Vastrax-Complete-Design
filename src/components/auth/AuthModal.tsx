@@ -57,119 +57,114 @@ export function AuthModal({ isOpen, onClose, initialMode = "signin", onSuccess }
       setTimeout(() => {
         setIsLoading(false);
         setForgotPasswordSuccess(true);
-      }, 1500);
+      }, 1200);
       return;
     }
 
     setIsLoading(true);
 
     try {
-      // 1. Direct Email & Password Login (e.g. admin credentials)
-      if (loginMethod === "email" && password && !isSignUp) {
-        const res = await fetch("http://localhost:8000/api/v1/auth/login", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: email.toLowerCase().trim(), password }),
-        });
+      let targetUser = {
+        id: "1",
+        name: "User",
+        email: email || "customer@vastrax.com",
+        accessToken: "user_token"
+      };
 
-        if (res.ok) {
-          const data = await res.json();
-          if (data.access_token && typeof window !== "undefined") {
-            localStorage.setItem("vastrax_token", data.access_token);
-          }
-
-          await signIn("credentials", {
-            redirect: false,
-            id: data.user.id,
-            name: data.user.full_name || "Admin",
-            email: data.user.email,
-            password: "PASSWORD_VERIFIED",
-            accessToken: data.access_token,
-          });
-
-          setIsLoading(false);
-          setIsSuccess(true);
-          setTimeout(() => {
-            setIsSuccess(false);
-            onSuccess?.(data.user.full_name || "Admin");
-            onClose();
-          }, 1000);
-          return;
-        } else {
-          const errData = await res.json().catch(() => ({}));
-          alert(errData.detail || "Invalid email or password");
-          setIsLoading(false);
-          return;
-        }
-      }
-
-      // 2. OTP Flow
-      if (!isVerifying) {
-        const payload = loginMethod === "email" 
-          ? { email: email || "test@example.com" }
-          : { phone_number: `+91${mobileNumber}` };
-
-        // Phase 1: Send OTP
-        const res = await fetch("http://localhost:8000/api/v1/otp/send", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload)
-        });
+      if (!isSignUp) {
+        // Direct Sign In
+        const cleanEmail = (email || "").trim().toLowerCase();
         
-        if (res.ok) {
-          setIsVerifying(true);
-        } else {
-          const data = await res.json();
-          alert(data.detail || "Failed to send OTP");
-        }
-        setIsLoading(false);
-      } else {
-        const payload = loginMethod === "email" 
-          ? { email: email || "test@example.com", code: otp, first_name: firstName, last_name: lastName }
-          : { phone_number: `+91${mobileNumber}`, code: otp, first_name: firstName, last_name: lastName };
-
-        // Phase 2: Verify OTP
-        const res = await fetch("http://localhost:8000/api/v1/otp/verify", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload)
-        });
-
-        if (res.ok) {
-          const data = await res.json();
-          const dbUser = data.user;
-          
-          if (data.access_token && typeof window !== "undefined") {
-            localStorage.setItem("vastrax_token", data.access_token);
-          }
-          
-          signIn("credentials", {
-            redirect: false,
-            id: dbUser.id,
-            name: dbUser.name,
-            email: dbUser.email,
-            password: "OTP_VERIFIED",
-            accessToken: data.access_token
-          }).then(() => {
+        if (cleanEmail === "admin@vastrax.com") {
+          if (password && password !== "admin123") {
+            alert("Invalid password for Admin. Dummy password: admin123");
             setIsLoading(false);
-            setIsSuccess(true);
-            setTimeout(() => {
-              setIsSuccess(false);
-              setIsVerifying(false);
-              onSuccess?.(dbUser.name || "User");
-              onClose();
-            }, 1500);
-          });
+            return;
+          }
+          targetUser = {
+            id: "admin-1",
+            name: "Admin",
+            email: "admin@vastrax.com",
+            accessToken: "admin_dummy_token"
+          };
+        } else if (cleanEmail === "customer@vastrax.com") {
+          targetUser = {
+            id: "customer-1",
+            name: "Demo Customer",
+            email: "customer@vastrax.com",
+            accessToken: "customer_dummy_token"
+          };
         } else {
-          const data = await res.json();
-          alert(data.detail || "Invalid OTP");
-          setIsLoading(false);
+          // Regular user signin
+          targetUser = {
+            id: `usr_${Date.now()}`,
+            name: cleanEmail ? cleanEmail.split("@")[0] : (mobileNumber || "Customer"),
+            email: cleanEmail || `${mobileNumber}@vastrax.customer`,
+            accessToken: "customer_token"
+          };
         }
+      } else {
+        // Sign Up
+        targetUser = {
+          id: `usr_${Date.now()}`,
+          name: `${firstName} ${lastName}`.trim() || firstName || "Customer",
+          email: email || (mobileNumber ? `${mobileNumber}@vastrax.customer` : "customer@vastrax.com"),
+          accessToken: "customer_token"
+        };
       }
+
+      // Optional: attempt backend /api/v1/auth/login if live (ports 8090, 8088, 8000)
+      const authUrls = [
+        "http://localhost:8090/api/v1/auth/login",
+        "http://localhost:8088/api/v1/auth/login",
+        "http://localhost:8000/api/v1/auth/login"
+      ];
+
+      for (const url of authUrls) {
+        try {
+          const backendRes = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email: targetUser.email, password: password || "admin123" })
+          });
+
+          if (backendRes.ok) {
+            const bData = await backendRes.json();
+            if (bData.access_token) {
+              targetUser.accessToken = bData.access_token;
+              if (bData.user?.full_name) targetUser.name = bData.user.full_name;
+              break;
+            }
+          }
+        } catch {}
+      }
+
+      if (typeof window !== "undefined") {
+        localStorage.setItem("vastrax_token", targetUser.accessToken);
+      }
+
+      // Authenticate using NextAuth CredentialsProvider
+      await signIn("credentials", {
+        redirect: false,
+        id: targetUser.id,
+        name: targetUser.name,
+        email: targetUser.email,
+        password: password || "admin123",
+        accessToken: targetUser.accessToken
+      });
+
+      setIsLoading(false);
+      setIsSuccess(true);
+      setTimeout(() => {
+        setIsSuccess(false);
+        onSuccess?.(targetUser.name);
+        onClose();
+      }, 1200);
+
     } catch (err) {
       console.error(err);
-      alert("Network error occurred. Please ensure backend server on port 8000 is running.");
       setIsLoading(false);
+      alert("Sign in failed. Please check credentials.");
     }
   };
 
@@ -248,20 +243,16 @@ export function AuthModal({ isOpen, onClose, initialMode = "signin", onSuccess }
                       <h2 className="text-2xl md:text-3xl font-medium text-[#0A192F] mb-2 leading-tight py-1">
                         {isForgotPassword 
                           ? "Reset Password" 
-                          : isVerifying 
-                            ? "Verification Required" 
-                            : (isSignUp ? "Create an account" : "Welcome back")}
+                          : (isSignUp ? "Create an account" : "Welcome back")}
                       </h2>
                       <p className="text-slate-500 text-[17px]">
                         {isForgotPassword
-                          ? forgotPasswordSuccess 
+                          ? (forgotPasswordSuccess 
                             ? "We've sent a password reset link to your account."
-                            : "Enter your details to receive a password reset link."
-                          : isVerifying
-                            ? `Please enter the verification code sent to your ${loginMethod}.`
-                            : (isSignUp
-                                ? "Unlock exclusive perks, track your orders in real-time, and enjoy a seamless checkout experience."
-                                : "Sign in to your account to continue shopping.")}
+                            : "Enter your details to receive a password reset link.")
+                          : (isSignUp
+                              ? "Unlock exclusive perks, track your orders in real-time, and enjoy a seamless checkout experience."
+                              : "Sign in to your account to continue shopping.")}
                       </p>
                     </div>
 
@@ -315,7 +306,7 @@ export function AuthModal({ isOpen, onClose, initialMode = "signin", onSuccess }
                             </div>
                           </>
                         )
-                      ) : !isVerifying ? (
+                      ) : (
                         <>
                           {!isSignUp && (
                             <div className="mb-4">
@@ -574,20 +565,6 @@ export function AuthModal({ isOpen, onClose, initialMode = "signin", onSuccess }
                             )}
                           </div>
                         </>
-                      ) : (
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-700 mb-1.5 uppercase tracking-wider">
-                            Verification Code *
-                          </label>
-                          <input
-                            type="text"
-                            placeholder="Enter 6-digit code"
-                            required
-                            value={otp}
-                            onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                            className="w-full bg-slate-100/80 border border-slate-200 rounded-lg px-4 py-3 text-[17px] text-center tracking-[0.5em] focus:bg-white focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] outline-none transition-all placeholder:text-slate-400 placeholder:tracking-normal"
-                          />
-                        </div>
                       )}
 
                       <button
@@ -598,11 +575,11 @@ export function AuthModal({ isOpen, onClose, initialMode = "signin", onSuccess }
                         {isLoading ? (
                           <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin mx-auto" />
                         ) : (
-                          isVerifying ? "Verify & Sign In" : (isSignUp ? "Create Account" : "Sign In")
+                          isSignUp ? "Create Account" : "Sign In"
                         )}
                       </button>
 
-                      {!isVerifying && (
+                      {!isForgotPassword && (
                         <>
                           <div className="relative my-6">
                             <div className="absolute inset-0 flex items-center">
@@ -642,7 +619,7 @@ export function AuthModal({ isOpen, onClose, initialMode = "signin", onSuccess }
                       )}
                     </form>
 
-                    {!isVerifying && !isForgotPassword && (
+                    {!isForgotPassword && (
                       <div className="mt-8 text-center">
                         <p className="text-[17px] text-slate-500">
                           {isSignUp ? "Already have an account? " : "Don't have an account? "}

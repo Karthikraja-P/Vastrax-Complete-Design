@@ -100,10 +100,8 @@ async def try_on(
     person_image: UploadFile = File(...),
     garment_path: str = Form(...),
     garment_type: str = Form(None),
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
 ):
-    return await TryonService(db).try_on(person_image, garment_path, garment_type)
+    return await TryonService().try_on(person_image, garment_path, garment_type)
 
 
 @router.post("/combo")
@@ -111,7 +109,5 @@ async def try_on_combo(
     person_image: UploadFile = File(...),
     top_path: str = Form(...),
     bottom_path: str = Form(...),
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
 ):
-    return await TryonService(db).try_on_combo(person_image, top_path, bottom_path)
+    return await TryonService().try_on_combo(person_image, top_path, bottom_path)

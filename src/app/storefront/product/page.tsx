@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { 
   ChevronRight, Heart, Star, Share2, Ruler, Truck, ShieldCheck, 
   Minus, Plus, ChevronLeft, ArrowRight, Menu, Search, User, ShoppingBag,
@@ -13,7 +13,8 @@ import { useSession, signOut } from "next-auth/react";
 import Link from "next/link";
 import { CartDrawer } from "@/components/layout/CartDrawer";
 import { StylistDrawer } from "@/components/stylist/StylistDrawer";
-import { VirtualTryOnModal } from "@/components/products/VirtualTryOnModal";
+
+import { productsApi } from "@/lib/api";
 
 const colors = [
   { name: 'Black', value: '#1a1a1a' },
@@ -24,13 +25,13 @@ const colors = [
 
 function ProductContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const productId = searchParams.get("id") || searchParams.get("product_id");
 
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isStylistOpen, setIsStylistOpen] = useState(false);
-  const [isTryOnOpen, setIsTryOnOpen] = useState(false);
   const [bagItems, setBagItems] = useState<any[]>([]);
   const [activeColor, setActiveColor] = useState('Black');
   const [activeSize, setActiveSize] = useState('M');
@@ -88,57 +89,57 @@ function ProductContent() {
     async function loadProduct() {
       try {
         if (productId) {
-          const res = await fetch(`http://localhost:8000/api/v1/products/${productId}`);
-          if (res.ok) {
-            const data = await res.json();
-            const catName = data.category?.name || "Apparel";
-            const img = data.images?.[0]?.s3_url || getFallbackImage(data.name, catName);
-            const allImgs = data.images?.length ? data.images.map((i: any) => i.s3_url) : [img];
+          const item: any = await productsApi.getById(productId);
+          if (item) {
+            const catName = item.category?.name || item.category || "Apparel";
+            const img = item.image || item.images?.[0]?.s3_url || (typeof item.images?.[0] === 'string' ? item.images[0] : "") || getFallbackImage(item.name || item.title || "", catName);
+            const allImgs = item.images?.length 
+              ? item.images.map((i: any) => typeof i === 'string' ? i : i.s3_url || img) 
+              : [img];
 
             setProduct({
-              id: data.id,
-              name: data.name,
+              id: String(item.id),
+              name: item.name || item.title || "Luxury Item",
               categoryName: catName,
-              price: Number(data.price_selling || 0),
-              originalPrice: data.price_mrp ? Number(data.price_mrp) : undefined,
-              description: data.description || "Crafted with premium materials and designed for supreme comfort and modern elegance.",
-              fabric: data.fabric || "Premium Cotton Blend",
-              colour: data.colour || "Onyx Black",
+              price: Number(item.price_selling || item.price || 0),
+              originalPrice: item.price_mrp || item.originalPrice ? Number(item.price_mrp || item.originalPrice) : undefined,
+              description: item.description || "Crafted with premium materials and designed for supreme comfort and modern elegance.",
+              fabric: item.fabric || "Premium Cotton Blend",
+              colour: item.colour || "Default",
               image: img,
               images: allImgs,
-              rating: 4.8,
-              reviewsCount: 9
+              rating: item.rating || 4.8,
+              reviewsCount: item.reviewsCount || 9
             });
-            if (data.colour) setActiveColor(data.colour);
+            if (item.colour) setActiveColor(item.colour);
             return;
           }
         }
 
-        const listRes = await fetch("http://localhost:8000/api/v1/products");
-        if (listRes.ok) {
-          const list = await listRes.json();
-          if (list.length > 0) {
-            const data = list[0];
-            const catName = data.category?.name || "Jackets & Outerwear";
-            const img = data.images?.[0]?.s3_url || getFallbackImage(data.name, catName);
-            const allImgs = data.images?.length ? data.images.map((i: any) => i.s3_url) : [img];
+        const allItems = await productsApi.list();
+        if (allItems.length > 0) {
+          const item: any = allItems[0];
+          const catName = item.category?.name || item.category || "Jackets & Outerwear";
+          const img = item.image || item.images?.[0]?.s3_url || (typeof item.images?.[0] === 'string' ? item.images[0] : "") || getFallbackImage(item.name || item.title || "", catName);
+          const allImgs = item.images?.length 
+            ? item.images.map((i: any) => typeof i === 'string' ? i : i.s3_url || img) 
+            : [img];
 
-            setProduct({
-              id: data.id,
-              name: data.name,
-              categoryName: catName,
-              price: Number(data.price_selling || 0),
-              originalPrice: data.price_mrp ? Number(data.price_mrp) : undefined,
-              description: data.description || "Crafted with premium materials and designed for supreme comfort and modern elegance.",
-              fabric: data.fabric || "Silk Blend",
-              colour: data.colour || "Onyx Black",
-              image: img,
-              images: allImgs,
-              rating: 4.9,
-              reviewsCount: 14
-            });
-            if (data.colour) setActiveColor(data.colour);
-          }
+          setProduct({
+            id: String(item.id),
+            name: item.name || item.title || "Cyber Silk Trench Coat",
+            categoryName: catName,
+            price: Number(item.price_selling || item.price || 0),
+            originalPrice: item.price_mrp || item.originalPrice ? Number(item.price_mrp || item.originalPrice) : undefined,
+            description: item.description || "Crafted with premium materials and designed for supreme comfort and modern elegance.",
+            fabric: item.fabric || "Silk Blend",
+            colour: item.colour || "Onyx Black",
+            image: img,
+            images: allImgs,
+            rating: item.rating || 4.9,
+            reviewsCount: item.reviewsCount || 14
+          });
+          if (item.colour) setActiveColor(item.colour);
         }
       } catch (err) {
         console.error("Failed to load product details:", err);
@@ -221,7 +222,7 @@ function ProductContent() {
       setIsAuthOpen(true);
       return;
     }
-    setIsTryOnOpen(true);
+    router.push(`/storefront/product/${product.id}/tryon`);
   };
 
   return (
@@ -295,7 +296,7 @@ function ProductContent() {
                     <Heart className={`w-5 h-5 ${favorites.includes(product.id) ? 'fill-[#e07a3f] text-[#e07a3f]' : ''}`} />
                   </button>
                   <button 
-                    onClick={() => setIsTryOnOpen(true)}
+                    onClick={handleOpenTryOn}
                     className="absolute bottom-6 right-6 px-4 py-2.5 rounded-full bg-[#0A192F]/90 hover:bg-[#0A192F] text-white text-xs font-semibold backdrop-blur-md border border-white/10 flex items-center gap-2 shadow-xl hover:scale-105 transition-all z-10 cursor-pointer"
                   >
                     <Sparkles className="w-3.5 h-3.5 text-[#e07a3f]" />
@@ -485,18 +486,11 @@ function ProductContent() {
           setIsLoggedIn(true);
           setUserName(name);
           setIsAuthOpen(false);
-          setIsTryOnOpen(true);
+          router.push(`/storefront/product/${product.id}/tryon`);
         }}
       />
       <CartDrawer isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} />
       <StylistDrawer isOpen={isStylistOpen} onClose={() => setIsStylistOpen(false)} />
-      <VirtualTryOnModal 
-        isOpen={isTryOnOpen} 
-        onClose={() => setIsTryOnOpen(false)} 
-        productImage={product.image} 
-        productName={product.name} 
-        productId={product.id as any} 
-      />
     </div>
   );
 }

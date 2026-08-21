@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     # Database
-    DATABASE_URL: str
+    DATABASE_URL: str = "sqlite:///./vastrax.db"
 
     # AWS (S3 for image uploads only — no DynamoDB)
     aws_access_key_id: str = ""
@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     results_dir: str = ""
 
     # FASHN VTON
-    fashn_tryon_url: str = "http://192.168.1.3:8001"
+    fashn_tryon_url: str = ""
     fashn_venv: str = "/home/pkr/fashn-tryon/venv/bin/python"
     fashn_script: str = "/home/pkr/fashn-tryon/fashn-vton-1.5/examples/basic_inference.py"
     fashn_weights: str = "/home/pkr/fashn-tryon/fashn-vton-1.5/weights"

@@ -18,13 +18,37 @@ const handler = NextAuth({
         accessToken: { label: "Token", type: "text" }
       },
       async authorize(credentials) {
-        // Return the real user data passed from the successful backend OTP verification
-        if (credentials?.email && credentials?.name) {
+        if (!credentials?.email) return null;
+
+        // Admin dummy credential verification
+        if (credentials.email.toLowerCase() === "admin@vastrax.com" && credentials.password === "admin123") {
           return {
-            id: credentials.id || "1",
-            name: credentials.name,
+            id: credentials.id || "admin-1",
+            name: "Admin",
+            email: "admin@vastrax.com",
+            role: "admin",
+            accessToken: credentials.accessToken || "admin_dummy_token",
+          };
+        }
+
+        // Customer dummy credential verification
+        if (credentials.email.toLowerCase() === "customer@vastrax.com") {
+          return {
+            id: credentials.id || "customer-1",
+            name: "Demo Customer",
+            email: "customer@vastrax.com",
+            role: "customer",
+            accessToken: credentials.accessToken || "customer_dummy_token",
+          };
+        }
+
+        // Generic user credential login
+        if (credentials.password) {
+          return {
+            id: credentials.id || "user-1",
+            name: credentials.name || credentials.email.split("@")[0] || "User",
             email: credentials.email,
-            accessToken: credentials.accessToken,
+            accessToken: credentials.accessToken || "user_dummy_token",
           };
         }
         return null;

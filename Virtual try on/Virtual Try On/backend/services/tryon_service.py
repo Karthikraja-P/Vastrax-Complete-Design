@@ -1,25 +1,31 @@
+"""Business logic for virtual try-on sessions."""
 import os
 import shutil
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import UploadFile
-from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.core.exceptions import BadRequestError, ForbiddenError, InternalError, NotFoundError
+from app.core.exceptions import NotFoundError, ForbiddenError, BadRequestError, InternalError
 from app.core.logging import get_logger
-from app.models.product import Product
-from app.models.tryon_session import TryonSession
-from app.models.user import User
-from app.schemas.tryon import TryonSessionResponse
+from app.repositories.product_repository import ProductRepository
+from app.repositories.tryon_repository import TryonRepository
 from app.utils.file_utils import resolve_garment, try_remove
 
 logger = get_logger(__name__)
 
 
 class TryonService:
-    def __init__(self, db: Session | None = None) -> None:
-        self.db = db
+    """Handles try-on session creation, status tracking, and history retrieval."""
+
+    def __init__(
+        self,
+        tryon_repo: TryonRepository | None = None,
+        product_repo: ProductRepository | None = None,
+    ) -> None:
+        self._tryon_repo = tryon_repo or TryonRepository()
+        self._product_repo = product_repo or ProductRepository()
 
     async def start_tryon(
         self,
@@ -27,11 +33,13 @@ class TryonService:
         product_id: str,
         garment_type: str | None,
         save_history: bool,
-        user: User,
+        current_user: dict,
     ) -> dict:
+        """Run FASHN inference for a product and persist the session record."""
         from app.services.fashn_service import detect_category, run_fashn
 
         session_id = str(uuid.uuid4())
+        now = datetime.now(timezone.utc).isoformat()
         person_path: str | None = None
         garment_local: str | None = None
         garment_is_tmp = False
@@ -45,13 +53,14 @@ class TryonService:
             with open(person_path, "wb") as f:
                 shutil.copyfileobj(person_image.file, f)
 
-            product = self.db.query(Product).filter(Product.id == product_id).first()
+            product = self._product_repo.get_by_id(product_id)
             if not product:
                 raise NotFoundError("Product not found")
-            if not product.images:
+            images = product.get("images", [])
+            if not images:
                 raise BadRequestError("Product has no images for try-on")
 
-            garment_url = product.images[0].s3_url
+            garment_url = images[0].get("s3_url", "")
             garment_local, garment_is_tmp = resolve_garment(garment_url)
 
             if not os.path.exists(garment_local):
@@ -63,17 +72,17 @@ class TryonService:
                 else detect_category(garment_url)
             )
 
-            session = TryonSession(
-                id=session_id,
-                user_id=user.id,
-                product_id=product_id,
-                user_photo_url=person_path if save_history else None,
-                result_image_url=None,
-                fashn_job_id=session_id,
-                status="processing",
-            )
-            self.db.add(session)
-            self.db.commit()
+            session = {
+                "id": session_id,
+                "user_id": current_user["id"],
+                "product_id": product_id,
+                "user_photo_url": person_path if save_history else "",
+                "result_image_url": "",
+                "fashn_job_id": session_id,
+                "status": "processing",
+                "created_at": now,
+            }
+            self._tryon_repo.create(session)
 
             result_path = run_fashn(
                 person_image_path=person_path,
@@ -82,19 +91,16 @@ class TryonService:
                 results_dir=settings.results_dir,
             )
             result_url = f"/results/{os.path.basename(result_path)}"
-
-            session.status = "done"
-            session.result_image_url = result_url
-            self.db.commit()
-            logger.info("Try-on complete: %s for user: %s", session_id, user.id)
+            self._tryon_repo.mark_done(session_id, result_url)
+            logger.info("Try-on complete: %s for user: %s", session_id, current_user["id"])
 
             return {"status": "done", "job_id": session_id, "result_url": result_url, "category_used": category}
 
         except (NotFoundError, BadRequestError, ForbiddenError):
-            self._mark_failed(session_id)
+            self._tryon_repo.mark_failed(session_id)
             raise
         except Exception as exc:
-            self._mark_failed(session_id)
+            self._tryon_repo.mark_failed(session_id)
             logger.error("Try-on failed for session %s: %s", session_id, exc)
             raise InternalError(str(exc))
         finally:
@@ -102,42 +108,31 @@ class TryonService:
             if garment_is_tmp:
                 try_remove(garment_local)
 
-    def _mark_failed(self, session_id: str) -> None:
-        session = self.db.query(TryonSession).filter(TryonSession.id == session_id).first()
-        if session:
-            session.status = "failed"
-            self.db.commit()
-
-    def get_status(self, job_id: str, user: User) -> dict:
-        session = self.db.query(TryonSession).filter(TryonSession.id == job_id).first()
+    def get_status(self, job_id: str, current_user: dict) -> dict:
+        """Return the current processing status of a try-on session."""
+        session = self._tryon_repo.get_by_id(job_id)
         if not session:
             raise NotFoundError("Session not found")
-        if session.user_id != user.id:
+        if session.get("user_id") != current_user["id"]:
             raise ForbiddenError("Access denied")
-        return {
-            "job_id": job_id,
-            "status": session.status,
-            "result_url": session.result_image_url or "",
-        }
+        return {"job_id": job_id, "status": session.get("status"), "result_url": session.get("result_image_url", "")}
 
-    def get_result(self, job_id: str, user: User) -> dict:
-        session = self.db.query(TryonSession).filter(TryonSession.id == job_id).first()
+    def get_result(self, job_id: str, current_user: dict) -> dict:
+        """Return the result image URL for a completed try-on session."""
+        session = self._tryon_repo.get_by_id(job_id)
         if not session:
             raise NotFoundError("Session not found")
-        if session.user_id != user.id:
+        if session.get("user_id") != current_user["id"]:
             raise ForbiddenError("Access denied")
-        if session.status != "done":
+        if session.get("status") != "done":
             raise BadRequestError("Result not yet ready")
-        return {"result_url": session.result_image_url or ""}
+        return {"result_url": session.get("result_image_url", "")}
 
-    def get_history(self, user: User) -> list[TryonSessionResponse]:
-        sessions = (
-            self.db.query(TryonSession)
-            .filter(TryonSession.user_id == user.id)
-            .order_by(TryonSession.created_at.desc())
-            .all()
-        )
-        return [TryonSessionResponse.model_validate(s) for s in sessions]
+    def get_history(self, current_user: dict) -> list:
+        """Return all try-on sessions for the authenticated user, newest first."""
+        sessions = self._tryon_repo.list_by_user(current_user["id"])
+        sessions.sort(key=lambda s: s.get("created_at", ""), reverse=True)
+        return sessions
 
     async def try_on(
         self,
@@ -145,6 +140,7 @@ class TryonService:
         garment_path: str,
         garment_type: str | None = None,
     ) -> dict:
+        """Legacy single-garment try-on endpoint (no session persistence)."""
         from app.services.fashn_service import detect_category, run_fashn
 
         person_path: str | None = None
@@ -158,6 +154,7 @@ class TryonService:
                 shutil.copyfileobj(person_image.file, fh)
 
             garment_local, is_tmp = resolve_garment(garment_path)
+
             if not os.path.exists(garment_local):
                 raise NotFoundError(f"Garment image not found: {garment_path}")
 
@@ -166,18 +163,21 @@ class TryonService:
                 if garment_type in ("tops", "bottoms", "one-pieces")
                 else detect_category(garment_path)
             )
+
             result_path = run_fashn(
                 person_image_path=person_path,
                 garment_image_path=garment_local,
                 garment_type=category,
                 results_dir=settings.results_dir,
             )
+
             return {
                 "status": "success",
                 "result_url": f"/results/{os.path.basename(result_path)}",
                 "category_used": category,
                 "model": "FASHN VTON 1.5",
             }
+
         except (NotFoundError, BadRequestError):
             raise
         except Exception as exc:
@@ -193,6 +193,7 @@ class TryonService:
         top_path: str,
         bottom_path: str,
     ) -> dict:
+        """Legacy combo try-on: applies top garment then bottom garment sequentially."""
         from app.services.fashn_service import run_fashn
 
         person_path: str | None = None
@@ -221,18 +222,21 @@ class TryonService:
                 garment_type="tops",
                 results_dir=settings.upload_dir,
             )
+
             result_path = run_fashn(
                 person_image_path=intermediate,
                 garment_image_path=bottom_local,
                 garment_type="bottoms",
                 results_dir=settings.results_dir,
             )
+
             return {
                 "status": "success",
                 "result_url": f"/results/{os.path.basename(result_path)}",
                 "category_used": "combo (tops + bottoms)",
                 "model": "FASHN VTON 1.5",
             }
+
         except (NotFoundError, BadRequestError):
             raise
         except Exception as exc:

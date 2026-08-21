@@ -7,7 +7,7 @@ import {
   Shirt, RefreshCcw, Loader2, CheckCircle2, MessageSquare
 } from "lucide-react";
 import { chatApi, tryonApi } from "@/lib/api";
-import { VirtualTryOnModal } from "@/components/products/VirtualTryOnModal";
+import { useRouter } from "next/navigation";
 
 interface Message {
   id: string;
@@ -81,11 +81,11 @@ interface StylistDrawerProps {
 }
 
 export function StylistDrawer({ isOpen, onClose }: StylistDrawerProps) {
+  const router = useRouter();
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [sessionId, setSessionId] = useState<string>("");
-  const [vtoProduct, setVtoProduct] = useState<{ name: string; image: string } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Initialize or load session & history
@@ -292,7 +292,7 @@ export function StylistDrawer({ isOpen, onClose }: StylistDrawerProps) {
                                   <h5 className="text-xs font-semibold text-white truncate">{p.name}</h5>
                                   <p className="text-[11px] text-accent font-bold mt-0.5">{p.price}</p>
                                   <button 
-                                    onClick={() => setVtoProduct({ name: p.name, image: p.image })}
+                                    onClick={() => router.push(`/storefront/product/${p.id || 1}/tryon`)}
                                     className="mt-2 w-full py-1.5 rounded bg-accent/15 hover:bg-accent text-accent hover:text-white text-[10px] font-bold uppercase tracking-wider transition-colors flex items-center justify-center gap-1 cursor-pointer"
                                   >
                                     <Shirt className="w-3 h-3" /> Try On
@@ -375,15 +375,7 @@ export function StylistDrawer({ isOpen, onClose }: StylistDrawerProps) {
         </motion.button>
       )}
 
-      {/* Try-on Modal triggered from chat */}
-      {vtoProduct && (
-        <VirtualTryOnModal 
-          isOpen={!!vtoProduct}
-          onClose={() => setVtoProduct(null)}
-          productName={vtoProduct.name}
-          productImage={vtoProduct.image}
-        />
-      )}
+      {/* Try-on Modal removed, using dedicated page routing */}
     </>
   );
 }

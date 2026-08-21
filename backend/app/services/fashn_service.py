@@ -36,11 +36,15 @@ def run_fashn(
     import httpx
 
     logger = logging.getLogger(__name__)
-    category = (
-        garment_type
-        if garment_type in ("tops", "bottoms", "one-pieces")
-        else detect_category(garment_image_path)
-    )
+    cat_str = str(garment_type or "").lower()
+    if cat_str in ("dresses", "one-pieces", "dress", "frock", "gown", "lehenga"):
+        category = "one-pieces"
+    elif cat_str in ("bottoms", "pants", "bottom", "skirt", "trouser", "shorts", "jeans"):
+        category = "bottoms"
+    elif cat_str in ("tops", "top", "shirt", "hoodie", "jacket"):
+        category = "tops"
+    else:
+        category = detect_category(garment_image_path)
 
     # 1. Check Remote GPU Server (e.g. http://192.168.1.3:8001)
     remote_url = getattr(settings, "fashn_tryon_url", "").rstrip("/")
@@ -50,8 +54,8 @@ def run_fashn(
                 files = {"person_image": (os.path.basename(person_image_path), pf, "image/jpeg")}
                 data = {"garment_path": garment_image_path, "garment_type": category}
                 
-                # Fast 3.0s connect check, up to 90s read timeout for heavy GPU diffusion inference
-                timeout_config = httpx.Timeout(90.0, connect=3.0)
+                # Fast 0.5s connect check, up to 90s read timeout for heavy GPU diffusion inference
+                timeout_config = httpx.Timeout(90.0, connect=0.5)
                 with httpx.Client(timeout=timeout_config) as client:
                     resp = None
                     for path in ("/api/try-on", "/api/v1/try-on", "/try-on", "/api/v1/try-on/submit"):
@@ -99,67 +103,9 @@ def run_fashn(
                 shutil.copy2(settings.fashn_output, dest)
                 return dest
             return settings.fashn_output
+        else:
+            err_msg = result.stderr[-400:] if result.stderr else f"Exit code {result.returncode}"
+            logger.error("FASHN AI GPU execution failed: %s", err_msg)
+            raise RuntimeError(f"FASHN AI GPU execution failed: {err_msg}")
 
-    # 3. Intelligent fashion try-on compositor fallback
-    if results_dir:
-        os.makedirs(results_dir, exist_ok=True)
-        dest = os.path.join(results_dir, f"result_{uuid.uuid4().hex[:8]}.png")
-        try:
-            from PIL import Image
-
-            if os.path.exists(person_image_path) and os.path.exists(garment_image_path):
-                person_img = Image.open(person_image_path).convert("RGBA")
-                garment_img = Image.open(garment_image_path).convert("RGBA")
-
-                pw, ph = person_img.size
-                gw, gh = garment_img.size
-
-                # Target dimensions based on category
-                if category == "bottoms":
-                    target_w = int(pw * 0.58)
-                    target_h = int(gh * (target_w / max(1, gw)))
-                    if target_h > int(ph * 0.5):
-                        target_h = int(ph * 0.5)
-                        target_w = int(gw * (target_h / max(1, gh)))
-                    pos_x = (pw - target_w) // 2
-                    pos_y = int(ph * 0.48)
-                elif category == "one-pieces":
-                    target_w = int(pw * 0.68)
-                    target_h = int(gh * (target_w / max(1, gw)))
-                    if target_h > int(ph * 0.65):
-                        target_h = int(ph * 0.65)
-                        target_w = int(gw * (target_h / max(1, gh)))
-                    pos_x = (pw - target_w) // 2
-                    pos_y = int(ph * 0.22)
-                else:  # tops
-                    target_w = int(pw * 0.62)
-                    target_h = int(gh * (target_w / max(1, gw)))
-                    if target_h > int(ph * 0.48):
-                        target_h = int(ph * 0.48)
-                        target_w = int(gw * (target_h / max(1, gh)))
-                    pos_x = (pw - target_w) // 2
-                    pos_y = int(ph * 0.24)
-
-                garment_resized = garment_img.resize((target_w, target_h), Image.Resampling.LANCZOS)
-                
-                # Composite with alpha blending
-                composite = person_img.copy()
-                composite.paste(garment_resized, (pos_x, pos_y), garment_resized)
-                composite.convert("RGB").save(dest, "PNG", quality=95)
-                return dest
-
-            elif os.path.exists(person_image_path):
-                shutil.copy2(person_image_path, dest)
-                return dest
-            elif os.path.exists(garment_image_path):
-                shutil.copy2(garment_image_path, dest)
-                return dest
-        except Exception as exc:
-            logger.warning("Try-on composite error: %s. Using file fallback.", exc)
-            if os.path.exists(person_image_path):
-                shutil.copy2(person_image_path, dest)
-            elif os.path.exists(garment_image_path):
-                shutil.copy2(garment_image_path, dest)
-            return dest
-
-    return person_image_path
+    raise RuntimeError("FASHN AI GPU environment not found at " + settings.fashn_venv)

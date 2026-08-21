@@ -38,10 +38,23 @@ def _is_safe_url(url_str: str) -> bool:
 
 
 def resolve_garment(garment_path: str) -> tuple[str, bool]:
-    """Return (local_path, is_tmp) for a garment that may be a URL or a local catalog path.
+    """Return (local_path, is_tmp) for a garment that may be a URL, base64 data, or a local catalog path.
 
-    Remote URLs are downloaded to a temp file; caller is responsible for cleanup.
+    Remote URLs and base64 strings are saved to a temp file; caller is responsible for cleanup.
     """
+    if garment_path.startswith("data:image"):
+        import base64
+        try:
+            header, encoded = garment_path.split(",", 1)
+            ext = ".png" if "png" in header else ".jpg"
+            os.makedirs(settings.upload_dir, exist_ok=True)
+            tmp = os.path.join(settings.upload_dir, f"garment_{uuid.uuid4().hex[:8]}{ext}")
+            with open(tmp, "wb") as out_file:
+                out_file.write(base64.b64decode(encoded))
+            return tmp, True
+        except Exception as exc:
+            raise BadRequestError(f"Could not parse base64 garment image: {exc}")
+
     if garment_path.startswith(("http://", "https://")):
         if not _is_safe_url(garment_path):
             raise BadRequestError("Invalid or restricted garment image URL")

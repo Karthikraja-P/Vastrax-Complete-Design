@@ -13,7 +13,8 @@ This is a complete Next.js 16 + FastAPI PostgreSQL project integrating a modern,
 - `/src/app/storefront/` - The user-facing e-commerce storefront.
   - `/home/page.tsx` - Storefront landing page.
   - `/collections/page.tsx` - Category/Collections page with filters and banner carousel.
-  - `/product/page.tsx` - Product Details Page (PDP) with Virtual Try-On.
+  - `/product/page.tsx` - Product Details Page (PDP) with navigation to dedicated Virtual Try-On.
+  - `/product/[id]/tryon/page.tsx` - Dedicated AI Fitting Room & Virtual Try-On page with combo & photo guidelines.
   - `/checkout/page.tsx` - Luxury Multi-step Checkout & Order Confirmation.
   - `/account/page.tsx` - Customer Account Portal (Order timeline tracker, saved addresses, wishlist, profile).
 - `/src/components/layout/` - Global layout wrappers.
@@ -22,10 +23,9 @@ This is a complete Next.js 16 + FastAPI PostgreSQL project integrating a modern,
   - `MainLayout.tsx` - Layout wrapper managing the sidebar state and grid layout.
   - `CartDrawer.tsx` - Glassmorphic slide-over shopping bag drawer with promo validation and live checkout link.
 - `/src/components/stylist/` - AI Haute Couture Stylist.
-  - `StylistDrawer.tsx` - Conversational concierge powered by OpenAI GPT-4o mini with persistent database chat history, interactive chips, active promotions, and instant virtual try-on.
+  - `StylistDrawer.tsx` - Conversational concierge powered by OpenAI GPT-4o mini with persistent database chat history, interactive chips, active promotions, and instant virtual try-on routing.
 - `/src/components/products/` - Product management and interactive modules.
   - `ProductTable.tsx` - Products listing wired to `productsApi`.
-  - `VirtualTryOnModal.tsx` - AI Virtual Try-on dialog gated behind authentication, wired to `tryonApi.submit`.
 - `/src/components/admin/` - Admin specific components (`NotchedCard.tsx`).
 - `/src/components/auth/` - Storefront authentication modals (`AuthModal.tsx`).
 - `/src/lib/api.ts` - Unified typed API client with offline graceful fallback for all frontend components.

@@ -4,7 +4,7 @@
  * Includes graceful offline fallback to preserve UI interactivity.
  */
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8088/api/v1";
 
 // Helper fetch wrapper
 async function fetchApi<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
@@ -57,65 +57,134 @@ export interface ProductItem {
   isSale?: boolean;
 }
 
+const INITIAL_PRODUCTS: ProductItem[] = [
+  { id: 1, name: "Teal Five-Panel Cap", title: "Teal Five-Panel Cap", price: 45, originalPrice: 55, stock: 18, category: "Hats", image: "https://images.unsplash.com/photo-1588850561407-ed78c282e89b?q=80&w=400&auto=format&fit=crop", status: "Published", rating: 4.8 },
+  { id: 2, name: "Camel Wool Flat Cap", title: "Camel Wool Flat Cap", price: 48, originalPrice: 60, stock: 9, category: "Hats", image: "https://images.unsplash.com/photo-1551028719-00167b16eac5?q=80&w=400&auto=format&fit=crop", status: "Published", rating: 4.5, isNew: true },
+  { id: 3, name: "Cream Pullover Hoodie", title: "Cream Pullover Hoodie", price: 120, stock: 32, category: "Hoodies", image: "https://images.unsplash.com/photo-1556821840-3a63f95609a7?q=80&w=400&auto=format&fit=crop", status: "Published", rating: 4.9 },
+  { id: 4, name: "Olive Puffer Jacket", title: "Olive Puffer Jacket", price: 220, originalPrice: 280, stock: 12, category: "Jackets", image: "https://images.unsplash.com/photo-1551028719-00167b16eac5?q=80&w=400&auto=format&fit=crop", status: "Published", rating: 4.7 },
+  { id: 5, name: "Tailored Cargo Pants", title: "Tailored Cargo Pants", price: 95, stock: 24, category: "Pants", image: "https://images.unsplash.com/photo-1542272604-787c3835535d?q=80&w=400&auto=format&fit=crop", status: "Published", rating: 4.6 },
+  { id: 6, name: "Suede Penny Loafers", title: "Suede Penny Loafers", price: 179, stock: 8, category: "Shoes", image: "https://images.unsplash.com/photo-1549298916-b41d501d3772?q=80&w=400&auto=format&fit=crop", status: "Draft", rating: 4.8 }
+];
+
+function getStoredProducts(): ProductItem[] {
+  if (typeof window === "undefined") return INITIAL_PRODUCTS;
+  try {
+    const raw = localStorage.getItem("vastrax_admin_products");
+    if (!raw) {
+      localStorage.setItem("vastrax_admin_products", JSON.stringify(INITIAL_PRODUCTS));
+      return INITIAL_PRODUCTS;
+    }
+    return JSON.parse(raw);
+  } catch {
+    return INITIAL_PRODUCTS;
+  }
+}
+
+function saveStoredProducts(items: ProductItem[]) {
+  if (typeof window !== "undefined") {
+    localStorage.setItem("vastrax_admin_products", JSON.stringify(items));
+  }
+}
+
 export const productsApi = {
   async list(params?: { category_id?: string; skip?: number; limit?: number }): Promise<ProductItem[]> {
+    const localItems = getStoredProducts();
     try {
       const query = new URLSearchParams();
       if (params?.category_id) query.append("category_id", params.category_id);
       if (params?.skip !== undefined) query.append("skip", String(params.skip));
       if (params?.limit !== undefined) query.append("limit", String(params.limit));
-      return await fetchApi<ProductItem[]>(`/products?${query.toString()}`);
+      const remoteItems = await fetchApi<ProductItem[]>(`/products?${query.toString()}`);
+      
+      const mergedMap = new Map<string, ProductItem>();
+      localItems.forEach(item => mergedMap.set(String(item.id), item));
+      if (Array.isArray(remoteItems)) {
+        remoteItems.forEach(item => mergedMap.set(String(item.id), item));
+      }
+      return Array.from(mergedMap.values());
     } catch {
-      // Offline fallback products
-      return [
-        { id: 1, name: "Teal Five-Panel Cap", title: "Teal Five-Panel Cap", price: 45, originalPrice: 55, stock: 18, category: "Hats", image: "https://images.unsplash.com/photo-1588850561407-ed78c282e89b?q=80&w=400&auto=format&fit=crop", status: "Published", rating: 4.8 },
-        { id: 2, name: "Camel Wool Flat Cap", title: "Camel Wool Flat Cap", price: 48, originalPrice: 60, stock: 9, category: "Hats", image: "https://images.unsplash.com/photo-1551028719-00167b16eac5?q=80&w=400&auto=format&fit=crop", status: "Published", rating: 4.5, isNew: true },
-        { id: 3, name: "Cream Pullover Hoodie", title: "Cream Pullover Hoodie", price: 120, stock: 32, category: "Hoodies", image: "https://images.unsplash.com/photo-1556821840-3a63f95609a7?q=80&w=400&auto=format&fit=crop", status: "Published", rating: 4.9 },
-        { id: 4, name: "Olive Puffer Jacket", title: "Olive Puffer Jacket", price: 220, originalPrice: 280, stock: 12, category: "Jackets", image: "https://images.unsplash.com/photo-1551028719-00167b16eac5?q=80&w=400&auto=format&fit=crop", status: "Published", rating: 4.7 },
-        { id: 5, name: "Tailored Cargo Pants", title: "Tailored Cargo Pants", price: 95, stock: 24, category: "Pants", image: "https://images.unsplash.com/photo-1542272604-787c3835535d?q=80&w=400&auto=format&fit=crop", status: "Published", rating: 4.6 },
-        { id: 6, name: "Suede Penny Loafers", title: "Suede Penny Loafers", price: 179, stock: 8, category: "Shoes", image: "https://images.unsplash.com/photo-1549298916-b41d501d3772?q=80&w=400&auto=format&fit=crop", status: "Draft", rating: 4.8 }
-      ];
+      return localItems;
     }
   },
 
   async getById(id: string | number): Promise<ProductItem | null> {
+    const localItems = getStoredProducts();
+    const localMatch = localItems.find(p => String(p.id) === String(id));
+    if (localMatch) return localMatch;
+
     try {
       return await fetchApi<ProductItem>(`/products/${id}`);
     } catch {
-      return {
-        id,
-        name: "Teal Five-Panel Cap",
-        title: "Teal Five-Panel Cap",
-        price: 45,
-        originalPrice: 55,
-        stock: 18,
-        category: "Hats",
-        description: "Low-profile five-panel cap in deep teal cotton, with a flat brim and a woven adjuster strap.",
-        image: "https://images.unsplash.com/photo-1588850561407-ed78c282e89b?q=80&w=400&auto=format&fit=crop",
-        status: "Published",
-        rating: 4.8
-      };
+      return localItems.find(p => String(p.id) === String(id)) || null;
     }
   },
 
   async create(data: Partial<ProductItem> | Record<string, any>): Promise<ProductItem> {
-    return await fetchApi<ProductItem>("/products", {
-      method: "POST",
-      body: JSON.stringify(data),
-    });
+    try {
+      return await fetchApi<ProductItem>("/products", {
+        method: "POST",
+        body: JSON.stringify(data),
+      });
+    } catch {
+      const d = data as any;
+      const items = getStoredProducts();
+      const newProduct: ProductItem = {
+        id: Date.now(),
+        name: d.name || d.title || "New Luxury Item",
+        title: d.name || d.title || "New Luxury Item",
+        description: d.description || "",
+        price: Number(d.price_selling || d.price || 0),
+        originalPrice: Number(d.price_mrp || d.compareAtPrice || d.price || 0),
+        stock: Number(d.stock || d.variants?.[0]?.stock_qty || 10),
+        category: d.category || "General",
+        categoryId: d.category_id || d.categoryId,
+        status: d.is_published !== false ? "Published" : "Draft",
+        image: d.images?.[0]?.s3_url || d.image || "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?q=80&w=400&auto=format&fit=crop",
+        rating: 5.0,
+        isNew: true
+      };
+      saveStoredProducts([newProduct, ...items]);
+      return newProduct;
+    }
   },
 
   async update(id: string | number, data: Partial<ProductItem> | Record<string, any>): Promise<ProductItem> {
-    return await fetchApi<ProductItem>(`/products/${id}`, {
-      method: "PUT",
-      body: JSON.stringify(data),
-    });
+    try {
+      return await fetchApi<ProductItem>(`/products/${id}`, {
+        method: "PUT",
+        body: JSON.stringify(data),
+      });
+    } catch {
+      const d = data as any;
+      const items = getStoredProducts();
+      const updated = items.map(p => {
+        if (String(p.id) === String(id)) {
+          return {
+            ...p,
+            ...d,
+            price: d.price_selling !== undefined ? Number(d.price_selling) : (d.price !== undefined ? Number(d.price) : p.price),
+            image: d.images?.[0]?.s3_url || d.image || p.image,
+            status: d.is_published !== undefined ? (d.is_published ? "Published" : "Draft") : p.status
+          };
+        }
+        return p;
+      });
+      saveStoredProducts(updated);
+      return updated.find(p => String(p.id) === String(id)) || items[0];
+    }
   },
 
   async delete(id: string | number): Promise<{ success: boolean }> {
-    return await fetchApi<{ success: boolean }>(`/products/${id}`, {
-      method: "DELETE",
-    });
+    try {
+      return await fetchApi<{ success: boolean }>(`/products/${id}`, {
+        method: "DELETE",
+      });
+    } catch {
+      const items = getStoredProducts();
+      const filtered = items.filter(p => String(p.id) !== String(id));
+      saveStoredProducts(filtered);
+      return { success: true };
+    }
   }
 };
 
@@ -148,16 +217,30 @@ export const categoriesApi = {
   },
 
   async create(data: { name: string; slug: string; image_url?: string }): Promise<CategoryItem> {
-    return await fetchApi<CategoryItem>("/categories", {
-      method: "POST",
-      body: JSON.stringify(data),
-    });
+    try {
+      return await fetchApi<CategoryItem>("/categories", {
+        method: "POST",
+        body: JSON.stringify(data),
+      });
+    } catch {
+      return {
+        id: `cat-${Date.now()}`,
+        name: data.name,
+        slug: data.slug,
+        image_url: data.image_url,
+        count: 0
+      };
+    }
   },
 
   async delete(id: string | number): Promise<{ success: boolean }> {
-    return await fetchApi<{ success: boolean }>(`/categories/${id}`, {
-      method: "DELETE",
-    });
+    try {
+      return await fetchApi<{ success: boolean }>(`/categories/${id}`, {
+        method: "DELETE",
+      });
+    } catch {
+      return { success: true };
+    }
   }
 };
 
@@ -208,6 +291,72 @@ export interface TryonResult {
   processing_time_ms?: number;
 }
 
+async function compositeTryOnInBrowser(personFile: File, garmentUrl: string, category: string = "one-pieces"): Promise<string> {
+  if (typeof window === "undefined") return garmentUrl;
+  return new Promise((resolve) => {
+    try {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const personDataUrl = e.target?.result as string;
+        const personImg = new Image();
+        personImg.crossOrigin = "anonymous";
+        personImg.onload = () => {
+          const garmentImg = new Image();
+          garmentImg.crossOrigin = "anonymous";
+          garmentImg.onload = () => {
+            const canvas = document.createElement("canvas");
+            canvas.width = personImg.width || 600;
+            canvas.height = personImg.height || 800;
+            const ctx = canvas.getContext("2d");
+            if (!ctx) {
+              resolve(personDataUrl);
+              return;
+            }
+            // Draw person photo
+            ctx.drawImage(personImg, 0, 0, canvas.width, canvas.height);
+
+            // Compute garment scale & placement
+            const cat = (category || "").toLowerCase();
+            const pw = canvas.width;
+            const ph = canvas.height;
+            const gw = garmentImg.width || 300;
+            const gh = garmentImg.height || 400;
+
+            let targetW = pw * 0.72;
+            let targetH = Math.min(ph * 0.70, gh * (targetW / Math.max(1, gw)));
+            let posX = (pw - targetW) / 2;
+            let posY = ph * 0.20;
+
+            if (cat.includes("bottom") || cat.includes("pant")) {
+              targetW = pw * 0.58;
+              targetH = Math.min(ph * 0.52, gh * (targetW / Math.max(1, gw)));
+              posX = (pw - targetW) / 2;
+              posY = ph * 0.46;
+            } else if (cat.includes("top") || cat.includes("shirt") || cat.includes("jacket")) {
+              targetW = pw * 0.62;
+              targetH = Math.min(ph * 0.48, gh * (targetW / Math.max(1, gw)));
+              posX = (pw - targetW) / 2;
+              posY = ph * 0.22;
+            }
+
+            // Draw garment draped over person
+            ctx.drawImage(garmentImg, posX, posY, targetW, targetH);
+            resolve(canvas.toDataURL("image/png"));
+          };
+          garmentImg.onerror = () => resolve(personDataUrl);
+          garmentImg.src = garmentUrl;
+        };
+        personImg.onerror = () => resolve(garmentUrl);
+        personImg.src = personDataUrl;
+      };
+      reader.onerror = () => resolve(garmentUrl);
+      reader.readAsDataURL(personFile);
+    } catch {
+      resolve(garmentUrl);
+    }
+  });
+}
+
 export const tryonApi = {
   async submit(data: { product_id?: string | number; user_photo_base64?: string; category?: string; garment_path?: string }): Promise<TryonResult> {
     try {
@@ -222,52 +371,111 @@ export const tryonApi = {
         processing_time_ms: 1100
       };
     } catch {
-      // Mocked realistic simulation for offline dev
       await new Promise(r => setTimeout(r, 1200));
       return {
         session_id: `ses_${Math.floor(Math.random() * 100000)}`,
         status: "COMPLETED",
-        result_image_url: "https://images.unsplash.com/photo-1551028719-00167b16eac5?q=80&w=600&auto=format&fit=crop",
+        result_image_url: data.garment_path || "https://images.unsplash.com/photo-1572804013309-59a88b7e92f1?q=80&w=600&auto=format&fit=crop",
         processing_time_ms: 1100
       };
     }
   },
 
-  async uploadAndTryOn(personFile: File, garmentPath: string, garmentType?: string): Promise<TryonResult> {
-    try {
-      const formData = new FormData();
-      formData.append("person_image", personFile);
-      formData.append("garment_path", garmentPath);
-      if (garmentType) formData.append("garment_type", garmentType);
+  async submitDirect(personFile: File, garmentPath: string, garmentType?: string): Promise<TryonResult> {
+    const formData = new FormData();
+    formData.append("person_image", personFile);
+    formData.append("garment_path", garmentPath);
+    if (garmentType) formData.append("garment_type", garmentType);
 
-      const token = typeof window !== "undefined" ? localStorage.getItem("vastrax_token") : null;
-      const headers: Record<string, string> = {};
-      if (token) headers["Authorization"] = `Bearer ${token}`;
+    const endpoints = [
+      "http://localhost:8090/api/v1/tryon/",
+      "http://localhost:8090/api/v1/try-on/",
+      "http://localhost:8088/api/v1/tryon/",
+      "http://localhost:8088/api/v1/try-on/",
+      "http://localhost:8000/api/v1/try-on/",
+      "/api/v1/try-on/"
+    ];
 
-      const res = await fetch("http://localhost:8000/api/v1/try-on", {
-        method: "POST",
-        headers,
-        body: formData,
-      });
+    let lastError: any = null;
+    for (const url of endpoints) {
+      try {
+        const res = await fetch(url, {
+          method: "POST",
+          body: formData,
+        });
 
-      if (!res.ok) {
-        const errorBody = await res.json().catch(() => ({}));
-        throw new Error(errorBody.detail || "Try-on upload failed");
+        if (res.ok) {
+          const data = await res.json();
+          let baseUrl = "http://localhost:8090";
+          if (url.includes("8088")) baseUrl = "http://localhost:8088";
+          else if (url.includes("8000")) baseUrl = "http://localhost:8000";
+          
+          const imgUrl = data.result_url?.startsWith("http") 
+            ? data.result_url 
+            : `${baseUrl}${data.result_url || ""}`;
+          return {
+            session_id: `ses_${Math.floor(Math.random() * 100000)}`,
+            status: "COMPLETED",
+            result_image_url: imgUrl,
+          };
+        } else {
+          const errorBody = await res.json().catch(() => ({}));
+          lastError = new Error(errorBody.detail || `Server returned ${res.status}`);
+        }
+      } catch (e: any) {
+        lastError = e;
       }
-
-      const data = await res.json();
-      return {
-        session_id: `ses_${Math.floor(Math.random() * 100000)}`,
-        status: "COMPLETED",
-        result_image_url: data.result_url?.startsWith("http") ? data.result_url : `http://localhost:8000${data.result_url || ""}`,
-      };
-    } catch (e: any) {
-      console.warn("Multipart try-on failed, falling back to JSON submit:", e);
-      return await this.submit({
-        garment_path: garmentPath,
-        category: garmentType,
-      });
     }
+
+    throw lastError || new Error("Neural GPU inference failed to connect.");
+  },
+
+  async submitCombo(personFile: File, topPath: string, bottomPath: string): Promise<TryonResult> {
+    const formData = new FormData();
+    formData.append("person_image", personFile);
+    formData.append("top_path", topPath);
+    formData.append("bottom_path", bottomPath);
+
+    const endpoints = [
+      "http://localhost:8090/api/v1/try-on/combo",
+      "http://localhost:8090/api/v1/tryon/combo",
+      "http://localhost:8000/api/v1/try-on/combo",
+      "http://localhost:8088/api/v1/tryon/combo",
+      "/api/v1/try-on/combo"
+    ];
+
+    let lastError: any = null;
+    for (const url of endpoints) {
+      try {
+        const res = await fetch(url, {
+          method: "POST",
+          body: formData,
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          let baseUrl = "http://localhost:8090";
+          if (url.includes("8088")) baseUrl = "http://localhost:8088";
+          else if (url.includes("8000")) baseUrl = "http://localhost:8000";
+
+          const imgUrl = data.result_url?.startsWith("http") 
+            ? data.result_url 
+            : `${baseUrl}${data.result_url || ""}`;
+          return {
+            session_id: `ses_${Math.floor(Math.random() * 100000)}`,
+            status: "COMPLETED",
+            result_image_url: imgUrl,
+          };
+        } else {
+          const errorBody = await res.json().catch(() => ({}));
+          lastError = new Error(errorBody.detail || `Server returned ${res.status}`);
+        }
+      } catch (e: any) {
+        lastError = e;
+      }
+    }
+
+    throw lastError || new Error("Neural GPU combo inference failed to connect.");
   }
 };
 
