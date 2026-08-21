@@ -64,6 +64,46 @@ export function AuthModal({ isOpen, onClose, initialMode = "signin", onSuccess }
     setIsLoading(true);
 
     try {
+      // 1. Direct Email & Password Login (e.g. admin credentials)
+      if (loginMethod === "email" && password && !isSignUp) {
+        const res = await fetch("http://localhost:8000/api/v1/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: email.toLowerCase().trim(), password }),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          if (data.access_token && typeof window !== "undefined") {
+            localStorage.setItem("vastrax_token", data.access_token);
+          }
+
+          await signIn("credentials", {
+            redirect: false,
+            id: data.user.id,
+            name: data.user.full_name || "Admin",
+            email: data.user.email,
+            password: "PASSWORD_VERIFIED",
+            accessToken: data.access_token,
+          });
+
+          setIsLoading(false);
+          setIsSuccess(true);
+          setTimeout(() => {
+            setIsSuccess(false);
+            onSuccess?.(data.user.full_name || "Admin");
+            onClose();
+          }, 1000);
+          return;
+        } else {
+          const errData = await res.json().catch(() => ({}));
+          alert(errData.detail || "Invalid email or password");
+          setIsLoading(false);
+          return;
+        }
+      }
+
+      // 2. OTP Flow
       if (!isVerifying) {
         const payload = loginMethod === "email" 
           ? { email: email || "test@example.com" }
@@ -103,7 +143,6 @@ export function AuthModal({ isOpen, onClose, initialMode = "signin", onSuccess }
             localStorage.setItem("vastrax_token", data.access_token);
           }
           
-          // Authenticate using NextAuth CredentialsProvider to create global session
           signIn("credentials", {
             redirect: false,
             id: dbUser.id,
@@ -129,7 +168,7 @@ export function AuthModal({ isOpen, onClose, initialMode = "signin", onSuccess }
       }
     } catch (err) {
       console.error(err);
-      alert("Network error occurred");
+      alert("Network error occurred. Please ensure backend server on port 8000 is running.");
       setIsLoading(false);
     }
   };
