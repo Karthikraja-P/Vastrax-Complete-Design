@@ -28,7 +28,7 @@ This is a complete Next.js 16 + FastAPI PostgreSQL project integrating a modern,
   - `ProductTable.tsx` - Products listing wired to `productsApi`.
 - `/src/components/admin/` - Admin specific components (`NotchedCard.tsx`).
 - `/src/components/auth/` - Storefront authentication modals (`AuthModal.tsx`).
-- `/src/lib/api.ts` - Unified typed API client with offline graceful fallback for all frontend components.
+- `/src/lib/api.ts` - Unified typed API client connecting directly to live FastAPI / PostgreSQL backend REST endpoints (/api/v1) without mock data.
 - `/backend/` - FastAPI backend application (PostgreSQL + SQLAlchemy 2.0 + Alembic).
   - `app/main.py` - FastAPI entrypoint.
   - `app/api/routes/` - REST endpoints: `auth`, `products`, `categories`, `orders`, `payments`, `shipping`, `tryon`, `chat` (`POST /`, `GET /history`, `DELETE /history`), `analytics`, `settings`.

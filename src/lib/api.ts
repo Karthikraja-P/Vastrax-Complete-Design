@@ -1,13 +1,20 @@
 /**
  * VASTRAX Unified API Client
- * Connects Next.js Frontend to FastAPI / PostgreSQL Backend (/api/v1)
- * Includes graceful offline fallback to preserve UI interactivity.
+ * Connects Next.js Frontend directly to FastAPI / PostgreSQL Backend (/api/v1)
+ * Without mock data or hardcoded credentials.
  */
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8088/api/v1";
+const CANDIDATE_API_BASES = [
+  process.env.NEXT_PUBLIC_API_URL,
+  "http://localhost:8090/api/v1",
+  "http://localhost:8088/api/v1",
+  "http://localhost:8000/api/v1",
+].filter(Boolean) as string[];
+
+let activeApiBase = CANDIDATE_API_BASES[0] || "http://localhost:8090/api/v1";
 
 // Helper fetch wrapper
-async function fetchApi<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+export async function fetchApi<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const token = typeof window !== "undefined" ? localStorage.getItem("vastrax_token") : null;
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -18,17 +25,29 @@ async function fetchApi<T>(endpoint: string, options: RequestInit = {}): Promise
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const res = await fetch(`${API_BASE}${endpoint}`, {
-    ...options,
-    headers,
-  });
+  const basesToTry = [activeApiBase, ...CANDIDATE_API_BASES.filter((b) => b !== activeApiBase)];
+  let lastError: any = null;
 
-  if (!res.ok) {
-    const errorBody = await res.json().catch(() => ({}));
-    throw new Error(errorBody.detail || errorBody.message || `API Error: ${res.statusText}`);
+  for (const base of basesToTry) {
+    try {
+      const res = await fetch(`${base}${endpoint}`, {
+        ...options,
+        headers,
+      });
+
+      if (res.ok) {
+        activeApiBase = base;
+        return await res.json();
+      }
+
+      const errorBody = await res.json().catch(() => ({}));
+      lastError = new Error(errorBody.detail || errorBody.message || `API Error: ${res.statusText}`);
+    } catch (err: any) {
+      lastError = err;
+    }
   }
 
-  return res.json();
+  throw lastError || new Error("Failed to connect to backend service");
 }
 
 // -------------------------------------------------------------
@@ -57,135 +76,49 @@ export interface ProductItem {
   isSale?: boolean;
 }
 
-const INITIAL_PRODUCTS: ProductItem[] = [
-  { id: 1, name: "Teal Five-Panel Cap", title: "Teal Five-Panel Cap", price: 45, originalPrice: 55, stock: 18, category: "Hats", image: "https://images.unsplash.com/photo-1588850561407-ed78c282e89b?q=80&w=400&auto=format&fit=crop", status: "Published", rating: 4.8 },
-  { id: 2, name: "Camel Wool Flat Cap", title: "Camel Wool Flat Cap", price: 48, originalPrice: 60, stock: 9, category: "Hats", image: "https://images.unsplash.com/photo-1551028719-00167b16eac5?q=80&w=400&auto=format&fit=crop", status: "Published", rating: 4.5, isNew: true },
-  { id: 3, name: "Cream Pullover Hoodie", title: "Cream Pullover Hoodie", price: 120, stock: 32, category: "Hoodies", image: "https://images.unsplash.com/photo-1556821840-3a63f95609a7?q=80&w=400&auto=format&fit=crop", status: "Published", rating: 4.9 },
-  { id: 4, name: "Olive Puffer Jacket", title: "Olive Puffer Jacket", price: 220, originalPrice: 280, stock: 12, category: "Jackets", image: "https://images.unsplash.com/photo-1551028719-00167b16eac5?q=80&w=400&auto=format&fit=crop", status: "Published", rating: 4.7 },
-  { id: 5, name: "Tailored Cargo Pants", title: "Tailored Cargo Pants", price: 95, stock: 24, category: "Pants", image: "https://images.unsplash.com/photo-1542272604-787c3835535d?q=80&w=400&auto=format&fit=crop", status: "Published", rating: 4.6 },
-  { id: 6, name: "Suede Penny Loafers", title: "Suede Penny Loafers", price: 179, stock: 8, category: "Shoes", image: "https://images.unsplash.com/photo-1549298916-b41d501d3772?q=80&w=400&auto=format&fit=crop", status: "Draft", rating: 4.8 }
-];
-
-function getStoredProducts(): ProductItem[] {
-  if (typeof window === "undefined") return INITIAL_PRODUCTS;
-  try {
-    const raw = localStorage.getItem("vastrax_admin_products");
-    if (!raw) {
-      localStorage.setItem("vastrax_admin_products", JSON.stringify(INITIAL_PRODUCTS));
-      return INITIAL_PRODUCTS;
-    }
-    return JSON.parse(raw);
-  } catch {
-    return INITIAL_PRODUCTS;
-  }
-}
-
-function saveStoredProducts(items: ProductItem[]) {
-  if (typeof window !== "undefined") {
-    localStorage.setItem("vastrax_admin_products", JSON.stringify(items));
-  }
-}
-
 export const productsApi = {
   async list(params?: { category_id?: string; skip?: number; limit?: number }): Promise<ProductItem[]> {
-    const localItems = getStoredProducts();
     try {
       const query = new URLSearchParams();
       if (params?.category_id) query.append("category_id", params.category_id);
       if (params?.skip !== undefined) query.append("skip", String(params.skip));
       if (params?.limit !== undefined) query.append("limit", String(params.limit));
-      const remoteItems = await fetchApi<ProductItem[]>(`/products?${query.toString()}`);
-      
-      const mergedMap = new Map<string, ProductItem>();
-      localItems.forEach(item => mergedMap.set(String(item.id), item));
-      if (Array.isArray(remoteItems)) {
-        remoteItems.forEach(item => mergedMap.set(String(item.id), item));
-      }
-      return Array.from(mergedMap.values());
-    } catch {
-      return localItems;
+      const res = await fetchApi<ProductItem[]>(`/products?${query.toString()}`);
+      return Array.isArray(res) ? res : [];
+    } catch (err) {
+      console.error("Failed to fetch products:", err);
+      return [];
     }
   },
 
   async getById(id: string | number): Promise<ProductItem | null> {
-    const localItems = getStoredProducts();
-    const localMatch = localItems.find(p => String(p.id) === String(id));
-    if (localMatch) return localMatch;
-
     try {
       return await fetchApi<ProductItem>(`/products/${id}`);
-    } catch {
-      return localItems.find(p => String(p.id) === String(id)) || null;
+    } catch (err) {
+      console.error(`Failed to fetch product ${id}:`, err);
+      return null;
     }
   },
 
   async create(data: Partial<ProductItem> | Record<string, any>): Promise<ProductItem> {
-    try {
-      return await fetchApi<ProductItem>("/products", {
-        method: "POST",
-        body: JSON.stringify(data),
-      });
-    } catch {
-      const d = data as any;
-      const items = getStoredProducts();
-      const newProduct: ProductItem = {
-        id: Date.now(),
-        name: d.name || d.title || "New Luxury Item",
-        title: d.name || d.title || "New Luxury Item",
-        description: d.description || "",
-        price: Number(d.price_selling || d.price || 0),
-        originalPrice: Number(d.price_mrp || d.compareAtPrice || d.price || 0),
-        stock: Number(d.stock || d.variants?.[0]?.stock_qty || 10),
-        category: d.category || "General",
-        categoryId: d.category_id || d.categoryId,
-        status: d.is_published !== false ? "Published" : "Draft",
-        image: d.images?.[0]?.s3_url || d.image || "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?q=80&w=400&auto=format&fit=crop",
-        rating: 5.0,
-        isNew: true
-      };
-      saveStoredProducts([newProduct, ...items]);
-      return newProduct;
-    }
+    return await fetchApi<ProductItem>("/products", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
   },
 
   async update(id: string | number, data: Partial<ProductItem> | Record<string, any>): Promise<ProductItem> {
-    try {
-      return await fetchApi<ProductItem>(`/products/${id}`, {
-        method: "PUT",
-        body: JSON.stringify(data),
-      });
-    } catch {
-      const d = data as any;
-      const items = getStoredProducts();
-      const updated = items.map(p => {
-        if (String(p.id) === String(id)) {
-          return {
-            ...p,
-            ...d,
-            price: d.price_selling !== undefined ? Number(d.price_selling) : (d.price !== undefined ? Number(d.price) : p.price),
-            image: d.images?.[0]?.s3_url || d.image || p.image,
-            status: d.is_published !== undefined ? (d.is_published ? "Published" : "Draft") : p.status
-          };
-        }
-        return p;
-      });
-      saveStoredProducts(updated);
-      return updated.find(p => String(p.id) === String(id)) || items[0];
-    }
+    return await fetchApi<ProductItem>(`/products/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
   },
 
   async delete(id: string | number): Promise<{ success: boolean }> {
-    try {
-      return await fetchApi<{ success: boolean }>(`/products/${id}`, {
-        method: "DELETE",
-      });
-    } catch {
-      const items = getStoredProducts();
-      const filtered = items.filter(p => String(p.id) !== String(id));
-      saveStoredProducts(filtered);
-      return { success: true };
-    }
-  }
+    return await fetchApi<{ success: boolean }>(`/products/${id}`, {
+      method: "DELETE",
+    });
+  },
 };
 
 // -------------------------------------------------------------
@@ -203,45 +136,26 @@ export interface CategoryItem {
 export const categoriesApi = {
   async list(): Promise<CategoryItem[]> {
     try {
-      return await fetchApi<CategoryItem[]>("/categories");
-    } catch {
-      return [
-        { id: "cat-1", name: "T-Shirts", slug: "t-shirts", count: 45, icon: "❖", image_url: "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?q=80&w=300&auto=format&fit=crop" },
-        { id: "cat-2", name: "Hoodies & Sweatshirts", slug: "hoodies-sweatshirts", count: 32, icon: "❖", image_url: "https://images.unsplash.com/photo-1556821840-3a63f95609a7?q=80&w=300&auto=format&fit=crop" },
-        { id: "cat-3", name: "Jackets & Outerwear", slug: "jackets-outerwear", count: 18, icon: "❖", image_url: "https://images.unsplash.com/photo-1551028719-00167b16eac5?q=80&w=300&auto=format&fit=crop" },
-        { id: "cat-4", name: "Pants & Trousers", slug: "pants-trousers", count: 24, icon: "❖", image_url: "https://images.unsplash.com/photo-1542272604-787c3835535d?q=80&w=300&auto=format&fit=crop" },
-        { id: "cat-5", name: "Shoes & Sneakers", slug: "shoes-sneakers", count: 28, icon: "❖", image_url: "https://images.unsplash.com/photo-1549298916-b41d501d3772?q=80&w=300&auto=format&fit=crop" },
-        { id: "cat-6", name: "Hats", slug: "hats", count: 12, icon: "❖", image_url: "https://images.unsplash.com/photo-1588850561407-ed78c282e89b?q=80&w=300&auto=format&fit=crop" }
-      ];
+      const res = await fetchApi<CategoryItem[]>("/categories");
+      return Array.isArray(res) ? res : [];
+    } catch (err) {
+      console.error("Failed to fetch categories:", err);
+      return [];
     }
   },
 
   async create(data: { name: string; slug: string; image_url?: string }): Promise<CategoryItem> {
-    try {
-      return await fetchApi<CategoryItem>("/categories", {
-        method: "POST",
-        body: JSON.stringify(data),
-      });
-    } catch {
-      return {
-        id: `cat-${Date.now()}`,
-        name: data.name,
-        slug: data.slug,
-        image_url: data.image_url,
-        count: 0
-      };
-    }
+    return await fetchApi<CategoryItem>("/categories", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
   },
 
   async delete(id: string | number): Promise<{ success: boolean }> {
-    try {
-      return await fetchApi<{ success: boolean }>(`/categories/${id}`, {
-        method: "DELETE",
-      });
-    } catch {
-      return { success: true };
-    }
-  }
+    return await fetchApi<{ success: boolean }>(`/categories/${id}`, {
+      method: "DELETE",
+    });
+  },
 };
 
 // -------------------------------------------------------------
@@ -262,14 +176,11 @@ export interface OrderItemRecord {
 export const ordersApi = {
   async list(): Promise<OrderItemRecord[]> {
     try {
-      return await fetchApi<OrderItemRecord[]>("/orders/admin");
-    } catch {
-      return [
-        { id: "ord-1", orderNumber: "#VX-9021", customerName: "Elena Rostova", customerEmail: "elena@rostova.com", totalAmount: 460.00, status: "CONFIRMED", itemsCount: 3, createdAt: "2026-08-18T14:32:00Z", deliveryMethod: "Express" },
-        { id: "ord-2", orderNumber: "#VX-9020", customerName: "Marcus Sterling", customerEmail: "marcus@sterling.co", totalAmount: 185.00, status: "SHIPPED", itemsCount: 1, createdAt: "2026-08-18T11:20:00Z", deliveryMethod: "Standard" },
-        { id: "ord-3", orderNumber: "#VX-9019", customerName: "Sarah Jenkins", customerEmail: "sarah.j@gmail.com", totalAmount: 890.00, status: "PROCESSING", itemsCount: 4, createdAt: "2026-08-17T18:45:00Z", deliveryMethod: "Concierge" },
-        { id: "ord-4", orderNumber: "#VX-9018", customerName: "David Chen", customerEmail: "d.chen@apex.io", totalAmount: 240.00, status: "DELIVERED", itemsCount: 2, createdAt: "2026-08-16T09:15:00Z", deliveryMethod: "Express" }
-      ];
+      const res = await fetchApi<OrderItemRecord[]>("/orders/admin");
+      return Array.isArray(res) ? res : [];
+    } catch (err) {
+      console.error("Failed to fetch orders:", err);
+      return [];
     }
   },
 
@@ -278,7 +189,7 @@ export const ordersApi = {
       method: "PUT",
       body: JSON.stringify({ status }),
     });
-  }
+  },
 };
 
 // -------------------------------------------------------------
@@ -291,94 +202,18 @@ export interface TryonResult {
   processing_time_ms?: number;
 }
 
-async function compositeTryOnInBrowser(personFile: File, garmentUrl: string, category: string = "one-pieces"): Promise<string> {
-  if (typeof window === "undefined") return garmentUrl;
-  return new Promise((resolve) => {
-    try {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const personDataUrl = e.target?.result as string;
-        const personImg = new Image();
-        personImg.crossOrigin = "anonymous";
-        personImg.onload = () => {
-          const garmentImg = new Image();
-          garmentImg.crossOrigin = "anonymous";
-          garmentImg.onload = () => {
-            const canvas = document.createElement("canvas");
-            canvas.width = personImg.width || 600;
-            canvas.height = personImg.height || 800;
-            const ctx = canvas.getContext("2d");
-            if (!ctx) {
-              resolve(personDataUrl);
-              return;
-            }
-            // Draw person photo
-            ctx.drawImage(personImg, 0, 0, canvas.width, canvas.height);
-
-            // Compute garment scale & placement
-            const cat = (category || "").toLowerCase();
-            const pw = canvas.width;
-            const ph = canvas.height;
-            const gw = garmentImg.width || 300;
-            const gh = garmentImg.height || 400;
-
-            let targetW = pw * 0.72;
-            let targetH = Math.min(ph * 0.70, gh * (targetW / Math.max(1, gw)));
-            let posX = (pw - targetW) / 2;
-            let posY = ph * 0.20;
-
-            if (cat.includes("bottom") || cat.includes("pant")) {
-              targetW = pw * 0.58;
-              targetH = Math.min(ph * 0.52, gh * (targetW / Math.max(1, gw)));
-              posX = (pw - targetW) / 2;
-              posY = ph * 0.46;
-            } else if (cat.includes("top") || cat.includes("shirt") || cat.includes("jacket")) {
-              targetW = pw * 0.62;
-              targetH = Math.min(ph * 0.48, gh * (targetW / Math.max(1, gw)));
-              posX = (pw - targetW) / 2;
-              posY = ph * 0.22;
-            }
-
-            // Draw garment draped over person
-            ctx.drawImage(garmentImg, posX, posY, targetW, targetH);
-            resolve(canvas.toDataURL("image/png"));
-          };
-          garmentImg.onerror = () => resolve(personDataUrl);
-          garmentImg.src = garmentUrl;
-        };
-        personImg.onerror = () => resolve(garmentUrl);
-        personImg.src = personDataUrl;
-      };
-      reader.onerror = () => resolve(garmentUrl);
-      reader.readAsDataURL(personFile);
-    } catch {
-      resolve(garmentUrl);
-    }
-  });
-}
-
 export const tryonApi = {
   async submit(data: { product_id?: string | number; user_photo_base64?: string; category?: string; garment_path?: string }): Promise<TryonResult> {
-    try {
-      const res = await fetchApi<any>("/try-on/submit", {
-        method: "POST",
-        body: JSON.stringify(data),
-      });
-      return {
-        session_id: res.session_id || `ses_${Math.floor(Math.random() * 100000)}`,
-        status: "COMPLETED",
-        result_image_url: res.result_image_url?.startsWith("http") ? res.result_image_url : `http://localhost:8000${res.result_image_url || ""}`,
-        processing_time_ms: 1100
-      };
-    } catch {
-      await new Promise(r => setTimeout(r, 1200));
-      return {
-        session_id: `ses_${Math.floor(Math.random() * 100000)}`,
-        status: "COMPLETED",
-        result_image_url: data.garment_path || "https://images.unsplash.com/photo-1572804013309-59a88b7e92f1?q=80&w=600&auto=format&fit=crop",
-        processing_time_ms: 1100
-      };
-    }
+    const res = await fetchApi<any>("/try-on/submit", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+    return {
+      session_id: res.session_id || `ses_${Date.now()}`,
+      status: "COMPLETED",
+      result_image_url: res.result_image_url?.startsWith("http") ? res.result_image_url : `${activeApiBase.replace(/\/api\/v1\/?$/, "")}${res.result_image_url || ""}`,
+      processing_time_ms: 1100,
+    };
   },
 
   async submitDirect(personFile: File, garmentPath: string, garmentType?: string): Promise<TryonResult> {
@@ -393,7 +228,7 @@ export const tryonApi = {
       "http://localhost:8088/api/v1/tryon/",
       "http://localhost:8088/api/v1/try-on/",
       "http://localhost:8000/api/v1/try-on/",
-      "/api/v1/try-on/"
+      "/api/v1/try-on/",
     ];
 
     let lastError: any = null;
@@ -409,12 +244,10 @@ export const tryonApi = {
           let baseUrl = "http://localhost:8090";
           if (url.includes("8088")) baseUrl = "http://localhost:8088";
           else if (url.includes("8000")) baseUrl = "http://localhost:8000";
-          
-          const imgUrl = data.result_url?.startsWith("http") 
-            ? data.result_url 
-            : `${baseUrl}${data.result_url || ""}`;
+
+          const imgUrl = data.result_url?.startsWith("http") ? data.result_url : `${baseUrl}${data.result_url || ""}`;
           return {
-            session_id: `ses_${Math.floor(Math.random() * 100000)}`,
+            session_id: `ses_${Date.now()}`,
             status: "COMPLETED",
             result_image_url: imgUrl,
           };
@@ -441,7 +274,7 @@ export const tryonApi = {
       "http://localhost:8090/api/v1/tryon/combo",
       "http://localhost:8000/api/v1/try-on/combo",
       "http://localhost:8088/api/v1/tryon/combo",
-      "/api/v1/try-on/combo"
+      "/api/v1/try-on/combo",
     ];
 
     let lastError: any = null;
@@ -458,11 +291,9 @@ export const tryonApi = {
           if (url.includes("8088")) baseUrl = "http://localhost:8088";
           else if (url.includes("8000")) baseUrl = "http://localhost:8000";
 
-          const imgUrl = data.result_url?.startsWith("http") 
-            ? data.result_url 
-            : `${baseUrl}${data.result_url || ""}`;
+          const imgUrl = data.result_url?.startsWith("http") ? data.result_url : `${baseUrl}${data.result_url || ""}`;
           return {
-            session_id: `ses_${Math.floor(Math.random() * 100000)}`,
+            session_id: `ses_${Date.now()}`,
             status: "COMPLETED",
             result_image_url: imgUrl,
           };
@@ -476,7 +307,7 @@ export const tryonApi = {
     }
 
     throw lastError || new Error("Neural GPU combo inference failed to connect.");
-  }
+  },
 };
 
 // -------------------------------------------------------------
@@ -485,11 +316,13 @@ export const tryonApi = {
 export const usersApi = {
   async listAll(): Promise<any[]> {
     try {
-      return await fetchApi<any[]>("/users/admin");
-    } catch {
+      const res = await fetchApi<any[]>("/users/admin");
+      return Array.isArray(res) ? res : [];
+    } catch (err) {
+      console.error("Failed to fetch users:", err);
       return [];
     }
-  }
+  },
 };
 
 // -------------------------------------------------------------
@@ -501,11 +334,11 @@ export const analyticsApi = {
       return await fetchApi<any>("/analytics/overview");
     } catch {
       return {
-        revenue: { total: 319200.00, changePercent: 14.6, trend: "UP", avgOrderValue: 128.50 },
-        customers: { total: 8420, growthPercent: 8.2, retentionRate: 74.5 },
-        salesWeekly: { labels: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"], values: [4200, 6800, 5100, 9200, 8400, 11500, 13400] },
-        conversionRate: { rate: 3.42, change: 0.8 },
-        activeCampaigns: { count: 4, reach: "128.4K", roi: "340%" }
+        revenue: { total: 0, growthPercent: 0, avgOrderValue: 0, ordersCount: 0 },
+        customers: { total: 0, growthPercent: 0 },
+        salesWeekly: { labels: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"], values: [0, 0, 0, 0, 0, 0, 0] },
+        conversionRate: { rate: 0, change: 0 },
+        activeCampaigns: { count: 0, reach: "0", roi: "0%" },
       };
     }
   },
@@ -514,16 +347,9 @@ export const analyticsApi = {
     try {
       return await fetchApi<any>("/analytics/regional-sales");
     } catch {
-      return {
-        regions: [
-          { countryCode: "US", countryName: "United States", revenue: 142000, orders: 890 },
-          { countryCode: "GB", countryName: "United Kingdom", revenue: 68000, orders: 410 },
-          { countryCode: "SA", countryName: "Saudi Arabia", revenue: 54000, orders: 290 },
-          { countryCode: "AE", countryName: "United Arab Emirates", revenue: 38000, orders: 210 }
-        ]
-      };
+      return { regions: [] };
     }
-  }
+  },
 };
 
 export const settingsApi = {
@@ -543,22 +369,18 @@ export const settingsApi = {
         lowStockThreshold: 5,
         autoArchiveOrders: false,
         maintenanceMode: false,
-        stylistSystemPrompt: "You are Vastra, the premier personal style advisor for VastraX Haute Couture boutique.\nTone: Sophisticated, welcoming, and concise (2-3 sentences per reply). Always ask ONE clear question at a time.\nGuidance: Match silhouettes and colors based on customer skin tone, height, and occasion.\nSales & Offers: Mention our active promotions naturally when recommending outfits.\nEncourage customers to click 'Try On' to preview outfits in the AI Fitting Room.",
-        activeOffers: "Use code VASTRA10 for 10% off your first luxury order; Complimentary express shipping on orders over ₹2,500."
+        stylistSystemPrompt: "You are Vastra, personal style advisor for VastraX.",
+        activeOffers: "",
       };
     }
   },
 
   async updateApp(data: any) {
-    try {
-      return await fetchApi<any>("/settings/app", {
-        method: "PUT",
-        body: JSON.stringify(data),
-      });
-    } catch {
-      return { success: true, settings: data };
-    }
-  }
+    return await fetchApi<any>("/settings/app", {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  },
 };
 
 // -------------------------------------------------------------
@@ -591,31 +413,20 @@ export interface ChatHistoryMessage {
 
 export const chatApi = {
   async sendMessage(
-    message: string, 
-    sessionId?: string, 
+    message: string,
+    sessionId?: string,
     history: { role: string; content: string }[] = [],
     profile: Record<string, any> = {}
   ): Promise<ChatResponse> {
-    try {
-      const messagesPayload = [
-        ...history,
-        { role: "user", content: message }
-      ];
-      const res = await fetchApi<ChatResponse>("/chat", {
-        method: "POST",
-        body: JSON.stringify({ 
-          messages: messagesPayload, 
-          session_id: sessionId,
-          profile 
-        }),
-      });
-      return res;
-    } catch {
-      return {
-        message: "For a refined architectural silhouette, pair structured tailored blazers with fluid silk bottoms and matte leather accents. [CHIPS:Tell me more|How to try on|Wedding outfits]",
-        session_id: sessionId || "session-default"
-      };
-    }
+    const messagesPayload = [...history, { role: "user", content: message }];
+    return await fetchApi<ChatResponse>("/chat", {
+      method: "POST",
+      body: JSON.stringify({
+        messages: messagesPayload,
+        session_id: sessionId,
+        profile,
+      }),
+    });
   },
 
   async getHistory(sessionId?: string, userId?: string): Promise<ChatHistoryMessage[]> {
@@ -636,13 +447,13 @@ export const chatApi = {
       if (sessionId) params.append("session_id", sessionId);
       if (userId) params.append("user_id", userId);
       const res = await fetchApi<{ success: boolean }>(`/chat/history?${params.toString()}`, {
-        method: "DELETE"
+        method: "DELETE",
       });
       return res.success;
     } catch {
       return true;
     }
-  }
+  },
 };
 
 // -------------------------------------------------------------
@@ -665,7 +476,7 @@ export const promosApi = {
         code: clean,
         discountPercentage: 10,
         discountAmount: Number((cartTotal * 0.1).toFixed(2)),
-        message: "10% VIP Private Invitation applied."
+        message: "10% VIP Private Invitation applied.",
       };
     } else if (clean === "VIP20") {
       return {
@@ -673,7 +484,7 @@ export const promosApi = {
         code: clean,
         discountPercentage: 20,
         discountAmount: Number((cartTotal * 0.2).toFixed(2)),
-        message: "20% Concierge Patron discount applied."
+        message: "20% Concierge Patron discount applied.",
       };
     } else if (clean === "FREESHIP") {
       return {
@@ -681,16 +492,16 @@ export const promosApi = {
         code: clean,
         discountPercentage: 0,
         discountAmount: 25,
-        message: "Complimentary Global Express Delivery applied."
+        message: "Complimentary Global Express Delivery applied.",
       };
     } else {
       return {
         valid: false,
         code: clean,
         discountPercentage: 0,
-        message: "Invalid promotion or expired invitation code."
+        discountAmount: 0,
+        message: "Invalid promotion code.",
       };
     }
-  }
+  },
 };
-

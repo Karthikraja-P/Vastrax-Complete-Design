@@ -4,14 +4,12 @@ import { useState, useEffect } from "react";
 import { MoreHorizontal, Edit, Trash, Video, Image as ImageIcon, Box, Shirt, Loader2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
-import { VirtualTryOnModal } from "@/components/products/VirtualTryOnModal";
 import { productsApi, ProductItem } from "@/lib/api";
 
 export function ProductTable() {
   const [products, setProducts] = useState<ProductItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [openActionId, setOpenActionId] = useState<string | number | null>(null);
-  const [vtoProduct, setVtoProduct] = useState<{name: string, image: string} | null>(null);
 
   const loadProducts = async () => {
     setLoading(true);
@@ -32,14 +30,6 @@ export function ProductTable() {
 
   const toggleActions = (id: string | number) => {
     setOpenActionId(openActionId === id ? null : id);
-  };
-
-  const openVto = (product: ProductItem) => {
-    setVtoProduct({
-      name: product.name || product.title || "Product",
-      image: product.image || product.images?.[0] || ""
-    });
-    setOpenActionId(null);
   };
 
   return (
@@ -119,12 +109,9 @@ export function ProductTable() {
                           <Link href="/products/edit" className="flex items-center px-4 py-2 text-sm text-foreground hover:bg-surface-hover hover:text-accent transition-colors">
                             <Edit className="w-4 h-4 mr-3" /> Edit
                           </Link>
-                          <button onClick={() => openVto(product)} className="w-full flex items-center px-4 py-2 text-sm text-foreground hover:bg-surface-hover hover:text-accent transition-colors">
+                          <Link href={`/storefront/product/${product.id}/tryon`} className="flex items-center px-4 py-2 text-sm text-foreground hover:bg-surface-hover hover:text-accent transition-colors">
                             <Shirt className="w-4 h-4 mr-3" /> Virtual Try-On
-                          </button>
-                          <button className="w-full flex items-center px-4 py-2 text-sm text-foreground hover:bg-surface-hover hover:text-accent transition-colors">
-                            <Video className="w-4 h-4 mr-3" /> Generate AI Video
-                          </button>
+                          </Link>
                           <div className="h-px bg-border my-1" />
                           <button 
                             onClick={() => handleDelete(product.id)}
@@ -142,15 +129,6 @@ export function ProductTable() {
           </tbody>
         </table>
       </div>
-
-      {vtoProduct && (
-        <VirtualTryOnModal 
-          isOpen={!!vtoProduct} 
-          onClose={() => setVtoProduct(null)} 
-          productImage={vtoProduct.image} 
-          productName={vtoProduct.name} 
-        />
-      )}
     </div>
   );
 }

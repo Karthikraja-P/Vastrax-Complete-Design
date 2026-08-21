@@ -12,43 +12,47 @@ import { productsApi } from "@/lib/api";
 
 // const productsData = [ ... ] // Replaced by dynamic fetch
 
-const metrics = [
-  { label: "Total Products", value: "35", icon: Package, color: "text-accent", glow: "shadow-[-4px_0_15px_rgba(224,122,63,0.3)]", border: "border-l-accent" },
-  { label: "Active", value: "35", icon: Check, color: "text-emerald-500", glow: "shadow-[-4px_0_15px_rgba(16,185,129,0.2)]", border: "border-l-emerald-500" },
-  { label: "Inactive", value: "0", icon: EyeOff, color: "text-muted-foreground", glow: "shadow-[-4px_0_15px_rgba(161,161,170,0.1)]", border: "border-l-border" },
-  { label: "Out of Stock", value: "0", icon: AlertTriangle, color: "text-red-500", glow: "shadow-[-4px_0_15px_rgba(239,68,68,0.2)]", border: "border-l-red-500" },
-  { label: "Featured", value: "22", icon: Star, color: "text-yellow-500", glow: "shadow-[-4px_0_15px_rgba(234,179,8,0.2)]", border: "border-l-yellow-500" },
-];
-
 export default function ProductsPage() {
   const [openActionId, setOpenActionId] = useState<string | null>(null);
   const [productToDelete, setProductToDelete] = useState<string | null>(null);
   const [productsData, setProductsData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
   React.useEffect(() => {
     async function loadProducts() {
+      setLoading(true);
       try {
         const data = await productsApi.list();
-        if (data && data.length > 0) {
+        if (data && Array.isArray(data)) {
           const mapped = data.map((p) => ({
             id: p.id,
             name: p.name || p.title,
             sku: p.sku || `PRD-${p.id}`,
-            price: `$${p.price?.toFixed(2) || '0.00'}`,
-            oldPrice: p.originalPrice ? `$${p.originalPrice?.toFixed(2)}` : null,
-            stock: p.stock || p.inventoryCount || 0,
+            price: `$${typeof p.price === 'number' ? p.price.toFixed(2) : p.price}`,
+            oldPrice: p.originalPrice ? `$${Number(p.originalPrice).toFixed(2)}` : null,
+            stock: p.stock ?? p.inventoryCount ?? 0,
             status: p.status || "Active",
-            date: "Recent", // backend might not return created_at for products in schema
-            image: p.image || p.images?.[0]
+            date: "Recent",
+            image: p.image || p.images?.[0]?.s3_url || p.images?.[0] || "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?q=80&w=400&auto=format&fit=crop"
           }));
           setProductsData(mapped);
         }
       } catch(err) {
         console.error(err);
+      } finally {
+        setLoading(false);
       }
     }
     loadProducts();
   }, []);
+
+  const metrics = [
+    { label: "Total Products", value: String(productsData.length), icon: Package, color: "text-accent", glow: "shadow-[-4px_0_15px_rgba(224,122,63,0.3)]", border: "border-l-accent" },
+    { label: "Active", value: String(productsData.filter(p => p.status === "Active" || p.status === "Published").length), icon: Check, color: "text-emerald-500", glow: "shadow-[-4px_0_15px_rgba(16,185,129,0.2)]", border: "border-l-emerald-500" },
+    { label: "Draft", value: String(productsData.filter(p => p.status === "Draft" || p.status === "Inactive").length), icon: EyeOff, color: "text-muted-foreground", glow: "shadow-[-4px_0_15px_rgba(161,161,170,0.1)]", border: "border-l-border" },
+    { label: "Out of Stock", value: String(productsData.filter(p => p.stock <= 0).length), icon: AlertTriangle, color: "text-red-500", glow: "shadow-[-4px_0_15px_rgba(239,68,68,0.2)]", border: "border-l-red-500" },
+    { label: "In Stock", value: String(productsData.filter(p => p.stock > 0).length), icon: Star, color: "text-yellow-500", glow: "shadow-[-4px_0_15px_rgba(234,179,8,0.2)]", border: "border-l-yellow-500" },
+  ];
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-12">

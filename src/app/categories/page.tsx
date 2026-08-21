@@ -9,14 +9,6 @@ import { categoriesApi, CategoryItem } from "@/lib/api";
 
 // const initialCategories = [ ... ] // Removed static array
 
-const metrics = [
-  { label: "Total Categories", value: "7", icon: LayoutGrid, color: "text-accent", glow: "shadow-[-4px_0_15px_rgba(224,122,63,0.3)]", border: "border-l-accent" },
-  { label: "Active", value: "7", icon: Check, color: "text-emerald-500", glow: "shadow-[-4px_0_15px_rgba(16,185,129,0.2)]", border: "border-l-emerald-500" },
-  { label: "Inactive", value: "0", icon: XIcon, color: "text-yellow-500", glow: "shadow-[-4px_0_15px_rgba(234,179,8,0.2)]", border: "border-l-yellow-500" },
-  { label: "Deleted", value: "0", icon: Trash2, color: "text-red-500", glow: "shadow-[-4px_0_15px_rgba(239,68,68,0.2)]", border: "border-l-red-500" },
-  { label: "With Products", value: "7", icon: Boxes, color: "text-blue-500", glow: "shadow-[-4px_0_15px_rgba(59,130,246,0.2)]", border: "border-l-blue-500" },
-];
-
 export default function CategoriesPage() {
   const [categories, setCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -28,22 +20,34 @@ export default function CategoriesPage() {
   const [newCatDesc, setNewCatDesc] = useState("");
   const [isActiveStatus, setIsActiveStatus] = useState(true);
 
+  const metrics = [
+    { label: "Total Categories", value: String(categories.length), icon: LayoutGrid, color: "text-accent", glow: "shadow-[-4px_0_15px_rgba(224,122,63,0.3)]", border: "border-l-accent" },
+    { label: "Active", value: String(categories.filter(c => c.status === "Active").length), icon: Check, color: "text-emerald-500", glow: "shadow-[-4px_0_15px_rgba(16,185,129,0.2)]", border: "border-l-emerald-500" },
+    { label: "Empty", value: String(categories.filter(c => !c.count).length), icon: XIcon, color: "text-yellow-500", glow: "shadow-[-4px_0_15px_rgba(234,179,8,0.2)]", border: "border-l-yellow-500" },
+    { label: "With Products", value: String(categories.filter(c => c.count > 0).length), icon: Boxes, color: "text-blue-500", glow: "shadow-[-4px_0_15px_rgba(59,130,246,0.2)]", border: "border-l-blue-500" },
+  ];
+
   const loadCategories = async () => {
     setLoading(true);
-    const data = await categoriesApi.list();
-    if (data && data.length > 0) {
-      const mapped = data.map((c: any, index: number) => ({
-        id: c.id,
-        name: c.name,
-        slug: c.slug,
-        desc: "Category description", // Missing in backend schema
-        status: "Active",
-        count: c.count || 0,
-        sort: String(index + 1)
-      }));
-      setCategories(mapped);
+    try {
+      const data = await categoriesApi.list();
+      if (data && Array.isArray(data)) {
+        const mapped = data.map((c: any, index: number) => ({
+          id: c.id,
+          name: c.name,
+          slug: c.slug,
+          desc: "Category collection",
+          status: "Active",
+          count: c.count || 0,
+          sort: String(index + 1)
+        }));
+        setCategories(mapped);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   useEffect(() => {

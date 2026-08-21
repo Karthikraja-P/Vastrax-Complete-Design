@@ -7,47 +7,42 @@ import {
 } from "lucide-react";
 import { ordersApi, OrderItemRecord } from "@/lib/api";
 
-const initialOrders = [
-  { id: "#ORD-2026-1030", customer: "James Garcia", email: "james.garcia@example.com", items: 2, total: "$811.65", progress: 20, status: "Confirmed", statusColor: "text-accent border-accent", date: "Aug 17, 2026" },
-  { id: "#ORD-2026-1000", customer: "James Garcia", email: "james.garcia@example.com", items: 4, total: "$1095.15", progress: 55, status: "Processing", statusColor: "text-accent border-accent", date: "Aug 17, 2026" },
-  { id: "#ORD-2026-1031", customer: "John Doe", email: "john.doe@example.com", items: 4, total: "$639.45", progress: 80, status: "Shipped", statusColor: "text-accent border-accent", date: "Aug 16, 2026" },
-  { id: "#ORD-2026-1001", customer: "John Doe", email: "john.doe@example.com", items: 1, total: "$77.19", progress: 100, status: "Delivered", statusColor: "text-emerald-500 border-emerald-500", date: "Aug 16, 2026" },
-  { id: "#ORD-2026-1032", customer: "Jane Smith", email: "jane.smith@example.com", items: 1, total: "$138.24", progress: 55, status: "Processing", statusColor: "text-accent border-accent", date: "Aug 15, 2026" },
-  { id: "#ORD-2026-1002", customer: "Jane Smith", email: "jane.smith@example.com", items: 4, total: "$582.75", progress: 20, status: "Confirmed", statusColor: "text-accent border-accent", date: "Aug 15, 2026" },
-  { id: "#ORD-2026-1033", customer: "Emily Davis", email: "emily.davis@example.com", items: 1, total: "$196.65", progress: 20, status: "Confirmed", statusColor: "text-accent border-accent", date: "Aug 14, 2026" },
-];
-
-const metrics = [
-  { label: "Total Orders", value: "70", icon: ShoppingCart, color: "text-accent", glow: "shadow-[-4px_0_15px_rgba(224,122,63,0.3)]", border: "border-l-accent" },
-  { label: "Pending", value: "5", icon: Clock, color: "text-yellow-500", glow: "shadow-[-4px_0_15px_rgba(234,179,8,0.2)]", border: "border-l-yellow-500" },
-  { label: "Processing", value: "20", icon: Truck, color: "text-blue-500", glow: "shadow-[-4px_0_15px_rgba(59,130,246,0.2)]", border: "border-l-blue-500" },
-  { label: "Delivered", value: "21", icon: CheckCircle2, color: "text-emerald-500", glow: "shadow-[-4px_0_15px_rgba(16,185,129,0.2)]", border: "border-l-emerald-500" },
-  { label: "Cancelled", value: "1", icon: Ban, color: "text-red-500", glow: "shadow-[-4px_0_15px_rgba(239,68,68,0.2)]", border: "border-l-red-500" },
-];
-
 export default function OrdersPage() {
-  const [orders, setOrders] = useState<any[]>(initialOrders);
+  const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
+  const metrics = [
+    { label: "Total Orders", value: String(orders.length), icon: ShoppingCart, color: "text-accent", glow: "shadow-[-4px_0_15px_rgba(224,122,63,0.3)]", border: "border-l-accent" },
+    { label: "Pending", value: String(orders.filter(o => o.status === "Pending").length), icon: Clock, color: "text-yellow-500", glow: "shadow-[-4px_0_15px_rgba(234,179,8,0.2)]", border: "border-l-yellow-500" },
+    { label: "Processing", value: String(orders.filter(o => o.status === "Processing").length), icon: Truck, color: "text-blue-500", glow: "shadow-[-4px_0_15px_rgba(59,130,246,0.2)]", border: "border-l-blue-500" },
+    { label: "Delivered", value: String(orders.filter(o => o.status === "Delivered").length), icon: CheckCircle2, color: "text-emerald-500", glow: "shadow-[-4px_0_15px_rgba(16,185,129,0.2)]", border: "border-l-emerald-500" },
+    { label: "Cancelled", value: String(orders.filter(o => o.status === "Cancelled").length), icon: Ban, color: "text-red-500", glow: "shadow-[-4px_0_15px_rgba(239,68,68,0.2)]", border: "border-l-red-500" },
+  ];
+
   const loadOrders = async () => {
     setLoading(true);
-    const data = await ordersApi.list();
-    if (data && data.length > 0) {
-      const formatted = data.map((o: any, idx: number) => ({
-        id: o.id.split('-')[0].toUpperCase(),
-        customer: "Customer", // Would fetch from user object if included
-        email: "customer@example.com", 
-        items: o.items ? o.items.length : (o.itemsCount || 1),
-        total: `$${typeof o.total_amount === 'number' ? o.total_amount.toFixed(2) : o.total_amount}`,
-        progress: String(o.status).toUpperCase() === "DELIVERED" ? 100 : String(o.status).toUpperCase() === "SHIPPED" ? 80 : String(o.status).toUpperCase() === "PROCESSING" ? 55 : 20,
-        status: String(o.status).charAt(0).toUpperCase() + String(o.status).slice(1),
-        statusColor: String(o.status).toUpperCase() === "DELIVERED" ? "text-emerald-500 border-emerald-500" : "text-accent border-accent",
-        date: new Date(o.placed_at || o.createdAt || Date.now()).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
-      }));
-      setOrders(formatted);
+    try {
+      const data = await ordersApi.list();
+      if (data && Array.isArray(data)) {
+        const formatted = data.map((o: any) => ({
+          id: String(o.orderNumber || o.id || "").split('-')[0].toUpperCase(),
+          customer: o.customerName || "Customer",
+          email: o.customerEmail || "—",
+          items: o.items ? o.items.length : (o.itemsCount || 1),
+          total: `$${typeof o.totalAmount === 'number' ? o.totalAmount.toFixed(2) : (typeof o.total_amount === 'number' ? o.total_amount.toFixed(2) : (o.totalAmount || o.total_amount || '0.00'))}`,
+          progress: String(o.status).toUpperCase() === "DELIVERED" ? 100 : String(o.status).toUpperCase() === "SHIPPED" ? 80 : String(o.status).toUpperCase() === "PROCESSING" ? 55 : 20,
+          status: String(o.status).charAt(0).toUpperCase() + String(o.status).slice(1).toLowerCase(),
+          statusColor: String(o.status).toUpperCase() === "DELIVERED" ? "text-emerald-500 border-emerald-500" : "text-accent border-accent",
+          date: new Date(o.placed_at || o.createdAt || Date.now()).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+        }));
+        setOrders(formatted);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   useEffect(() => {

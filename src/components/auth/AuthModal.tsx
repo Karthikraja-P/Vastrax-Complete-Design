@@ -64,100 +64,117 @@ export function AuthModal({ isOpen, onClose, initialMode = "signin", onSuccess }
     setIsLoading(true);
 
     try {
-      let targetUser = {
-        id: "1",
-        name: "User",
-        email: email || "customer@vastrax.com",
-        accessToken: "user_token"
-      };
-
-      if (!isSignUp) {
-        // Direct Sign In
-        const cleanEmail = (email || "").trim().toLowerCase();
-        
-        if (cleanEmail === "admin@vastrax.com") {
-          if (password && password !== "admin123") {
-            alert("Invalid password for Admin. Dummy password: admin123");
-            setIsLoading(false);
-            return;
-          }
-          targetUser = {
-            id: "admin-1",
-            name: "Admin",
-            email: "admin@vastrax.com",
-            accessToken: "admin_dummy_token"
-          };
-        } else if (cleanEmail === "customer@vastrax.com") {
-          targetUser = {
-            id: "customer-1",
-            name: "Demo Customer",
-            email: "customer@vastrax.com",
-            accessToken: "customer_dummy_token"
-          };
-        } else {
-          // Regular user signin
-          targetUser = {
-            id: `usr_${Date.now()}`,
-            name: cleanEmail ? cleanEmail.split("@")[0] : (mobileNumber || "Customer"),
-            email: cleanEmail || `${mobileNumber}@vastrax.customer`,
-            accessToken: "customer_token"
-          };
-        }
-      } else {
-        // Sign Up
-        targetUser = {
-          id: `usr_${Date.now()}`,
-          name: `${firstName} ${lastName}`.trim() || firstName || "Customer",
-          email: email || (mobileNumber ? `${mobileNumber}@vastrax.customer` : "customer@vastrax.com"),
-          accessToken: "customer_token"
-        };
-      }
-
-      // Optional: attempt backend /api/v1/auth/login if live (ports 8090, 8088, 8000)
-      const authUrls = [
-        "http://localhost:8090/api/v1/auth/login",
-        "http://localhost:8088/api/v1/auth/login",
-        "http://localhost:8000/api/v1/auth/login"
+      const cleanEmail = (email || "").trim().toLowerCase();
+      const authBaseUrls = [
+        "http://localhost:8090/api/v1/auth",
+        "http://localhost:8088/api/v1/auth",
+        "http://localhost:8000/api/v1/auth"
       ];
 
-      for (const url of authUrls) {
+      if (isSignUp) {
+        // Register Real User
+        const fullName = `${firstName} ${lastName}`.trim() || firstName || cleanEmail.split("@")[0] || "Customer";
+        const regPayload = {
+          full_name: fullName,
+          email: cleanEmail,
+          phone_number: mobileNumber ? `+91${mobileNumber}` : undefined,
+          password: password
+        };
+
+        let regSuccess = false;
+        let lastErrorMsg = "Failed to create account. Please check your details.";
+
+        for (const base of authBaseUrls) {
+          try {
+            const res = await fetch(`${base}/register`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(regPayload)
+            });
+
+            const data = await res.json().catch(() => ({}));
+            if (res.ok && data.access_token) {
+              if (typeof window !== "undefined") {
+                localStorage.setItem("vastrax_token", data.access_token);
+              }
+              await signIn("credentials", {
+                redirect: false,
+                id: String(data.user?.id || `usr_${Date.now()}`),
+                name: data.user?.full_name || fullName,
+                email: cleanEmail,
+                password: "AUTHENTICATED",
+                accessToken: data.access_token
+              });
+              regSuccess = true;
+              break;
+            } else if (data.detail) {
+              lastErrorMsg = data.detail;
+            }
+          } catch {}
+        }
+
+        if (!regSuccess) {
+          setIsLoading(false);
+          alert(lastErrorMsg);
+          return;
+        }
+
+        setIsLoading(false);
+        setIsSuccess(true);
+        setTimeout(() => {
+          setIsSuccess(false);
+          onSuccess?.(fullName);
+          onClose();
+        }, 1200);
+        return;
+      }
+
+      // Real User Sign In
+      let loginSuccess = false;
+      let lastLoginError = "Invalid email or password";
+      let loggedUser: any = null;
+
+      for (const base of authBaseUrls) {
         try {
-          const backendRes = await fetch(url, {
+          const res = await fetch(`${base}/login`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ email: targetUser.email, password: password || "admin123" })
+            body: JSON.stringify({ email: cleanEmail, password })
           });
 
-          if (backendRes.ok) {
-            const bData = await backendRes.json();
-            if (bData.access_token) {
-              targetUser.accessToken = bData.access_token;
-              if (bData.user?.full_name) targetUser.name = bData.user.full_name;
-              break;
+          const data = await res.json().catch(() => ({}));
+          if (res.ok && data.access_token) {
+            loggedUser = data.user;
+            if (typeof window !== "undefined") {
+              localStorage.setItem("vastrax_token", data.access_token);
             }
+            await signIn("credentials", {
+              redirect: false,
+              id: String(data.user?.id || `usr_${Date.now()}`),
+              name: data.user?.full_name || cleanEmail.split("@")[0],
+              email: cleanEmail,
+              password: "AUTHENTICATED",
+              accessToken: data.access_token
+            });
+            loginSuccess = true;
+            break;
+          } else if (data.detail) {
+            lastLoginError = data.detail;
           }
         } catch {}
       }
 
-      if (typeof window !== "undefined") {
-        localStorage.setItem("vastrax_token", targetUser.accessToken);
+      if (!loginSuccess) {
+        setIsLoading(false);
+        alert(lastLoginError);
+        return;
       }
-
-      // Authenticate using NextAuth CredentialsProvider
-      await signIn("credentials", {
-        redirect: false,
-        id: targetUser.id,
-        name: targetUser.name,
-        email: targetUser.email,
-        password: password || "admin123",
-        accessToken: targetUser.accessToken
-      });
 
       setIsLoading(false);
       setIsSuccess(true);
       setTimeout(() => {
         setIsSuccess(false);
-        onSuccess?.(targetUser.name);
+        onSuccess?.(loggedUser?.full_name || cleanEmail.split("@")[0]);
         onClose();
       }, 1200);
 

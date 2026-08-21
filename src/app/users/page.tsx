@@ -10,39 +10,39 @@ import { usersApi } from "@/lib/api";
 
 // const allUsersData = [ ... ] // Replaced by dynamic fetch
 
-const metrics = [
-  { label: "Total Users", value: "17", icon: Users, color: "text-accent", glow: "shadow-[-4px_0_15px_rgba(224,122,63,0.3)]", border: "border-l-accent" },
-  { label: "Deleted Users", value: "12", icon: UserMinus, color: "text-red-500", glow: "shadow-[-4px_0_15px_rgba(239,68,68,0.2)]", border: "border-l-red-500" },
-  { label: "Unverified Users", value: "5", icon: ShieldAlert, color: "text-yellow-500", glow: "shadow-[-4px_0_15px_rgba(234,179,8,0.2)]", border: "border-l-yellow-500" },
-  { label: "Verified Users", value: "12", icon: ShieldCheck, color: "text-emerald-500", glow: "shadow-[-4px_0_15px_rgba(16,185,129,0.2)]", border: "border-l-emerald-500" },
-  { label: "New This Week", value: "7", icon: UserPlus, color: "text-blue-500", glow: "shadow-[-4px_0_15px_rgba(59,130,246,0.2)]", border: "border-l-blue-500" },
-];
-
 export default function AllUsersPage() {
   const [openActionId, setOpenActionId] = useState<string | null>(null);
   const [usersData, setUsersData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+
+  const metrics = [
+    { label: "Total Users", value: String(usersData.length), icon: Users, color: "text-accent", glow: "shadow-[-4px_0_15px_rgba(224,122,63,0.3)]", border: "border-l-accent" },
+    { label: "Verified Users", value: String(usersData.filter(u => u.status === "Verified").length), icon: ShieldCheck, color: "text-emerald-500", glow: "shadow-[-4px_0_15px_rgba(16,185,129,0.2)]", border: "border-l-emerald-500" },
+    { label: "Unverified Users", value: String(usersData.filter(u => u.status !== "Verified").length), icon: ShieldAlert, color: "text-yellow-500", glow: "shadow-[-4px_0_15px_rgba(234,179,8,0.2)]", border: "border-l-yellow-500" },
+    { label: "Recent Accounts", value: String(usersData.length), icon: UserPlus, color: "text-blue-500", glow: "shadow-[-4px_0_15px_rgba(59,130,246,0.2)]", border: "border-l-blue-500" },
+  ];
 
   React.useEffect(() => {
     async function loadUsers() {
       setLoading(true);
       try {
         const data = await usersApi.listAll();
-        if (data && data.length > 0) {
+        if (data && Array.isArray(data)) {
           const mapped = data.map((u: any) => ({
             id: u.id,
-            name: `${u.first_name || ''} ${u.last_name || ''}`.trim() || 'No Name',
+            name: `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.full_name || u.name || 'Customer',
             email: u.email,
             phone: u.phone_number || '—',
-            status: u.is_active ? "Verified" : "Unverified",
+            status: u.is_active !== false ? "Verified" : "Unverified",
             date: new Date(u.created_at || Date.now()).toLocaleDateString("en-GB")
           }));
           setUsersData(mapped);
         }
       } catch (error) {
         console.error(error);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     }
     loadUsers();
   }, []);

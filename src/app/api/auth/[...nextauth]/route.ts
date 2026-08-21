@@ -20,37 +20,46 @@ const handler = NextAuth({
       async authorize(credentials) {
         if (!credentials?.email) return null;
 
-        // Admin dummy credential verification
-        if (credentials.email.toLowerCase() === "admin@vastrax.com" && credentials.password === "admin123") {
+        const email = credentials.email.toLowerCase().trim();
+
+        // If an authenticated token from backend is already present
+        if (credentials.accessToken && credentials.accessToken !== "undefined") {
           return {
-            id: credentials.id || "admin-1",
-            name: "Admin",
-            email: "admin@vastrax.com",
-            role: "admin",
-            accessToken: credentials.accessToken || "admin_dummy_token",
+            id: credentials.id || `usr_${Date.now()}`,
+            name: credentials.name || email.split("@")[0] || "User",
+            email: email,
+            accessToken: credentials.accessToken,
           };
         }
 
-        // Customer dummy credential verification
-        if (credentials.email.toLowerCase() === "customer@vastrax.com") {
-          return {
-            id: credentials.id || "customer-1",
-            name: "Demo Customer",
-            email: "customer@vastrax.com",
-            role: "customer",
-            accessToken: credentials.accessToken || "customer_dummy_token",
-          };
+        // Direct authentication against FastAPI backend
+        const backendUrls = [
+          "http://localhost:8090/api/v1/auth/login",
+          "http://localhost:8088/api/v1/auth/login",
+          "http://localhost:8000/api/v1/auth/login"
+        ];
+
+        for (const url of backendUrls) {
+          try {
+            const res = await fetch(url, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ email, password: credentials.password || "" }),
+            });
+
+            if (res.ok) {
+              const data = await res.json();
+              return {
+                id: String(data.user?.id || credentials.id || "usr_1"),
+                name: data.user?.full_name || credentials.name || email.split("@")[0],
+                email: data.user?.email || email,
+                role: data.user?.role || "CUSTOMER",
+                accessToken: data.access_token || "",
+              };
+            }
+          } catch {}
         }
 
-        // Generic user credential login
-        if (credentials.password) {
-          return {
-            id: credentials.id || "user-1",
-            name: credentials.name || credentials.email.split("@")[0] || "User",
-            email: credentials.email,
-            accessToken: credentials.accessToken || "user_dummy_token",
-          };
-        }
         return null;
       }
     }),
