@@ -5,20 +5,25 @@ This is a complete Next.js 16 + FastAPI PostgreSQL project integrating a modern,
 ## Codebase Architecture & Map
 
 - `/src/app/page.tsx` - The main Admin Dashboard overview (Bento grid, charts, metrics).
-- `/src/app/products/` - Admin Products Management (List, Add, Create, Edit).
-- `/src/app/categories/` - Admin Categories Management & Deleted Archive.
-- `/src/app/orders/` - Admin Orders Tracking & Table.
+- `/src/app/admin/management/page.tsx` - Administrator Management & Security Roles console (Admins/Roles tabs, permission assignment, modals).
+- `/src/app/products/` - Admin Products Management.
+  - `page.tsx` - All products table with filters, search, thumbnails, delete modal, and pagination.
+  - `create/page.tsx` - Create product form with category linkage and variant generation.
+  - `edit/page.tsx` - Edit product form with preloaded garment parameters and category assignment.
+- `/src/app/categories/` - Product Categories Management (active catalog & deleted trash bin).
+- `/src/app/orders/page.tsx` - Orders Management & Live Fulfillment Tracking.
 - `/src/app/users/` - Admin User Directory & Deleted Archive.
+  - `page.tsx` - All users directory (live metrics, search/filters, create user modal, view profile, verification toggle, soft delete).
+  - `deleted/page.tsx` - Deleted users archive (search in trash, restore account, permanent purge).
 - `/src/app/settings/page.tsx` - Settings panel (Profile, Security, and App & Storefront Configuration).
 - `/src/app/storefront/` - The user-facing e-commerce storefront.
   - `/home/page.tsx` - Storefront landing page.
   - `/collections/page.tsx` - Category/Collections page with filters and banner carousel.
-  - `/product/page.tsx` - Product Details Page (PDP) with navigation to dedicated Virtual Try-On.
   - `/product/[id]/tryon/page.tsx` - Dedicated AI Fitting Room & Virtual Try-On page with combo & photo guidelines.
   - `/checkout/page.tsx` - Luxury Multi-step Checkout & Order Confirmation.
   - `/account/page.tsx` - Customer Account Portal (Order timeline tracker, saved addresses, wishlist, profile).
 - `/src/components/layout/` - Global layout wrappers.
-  - `Header.tsx` - Top navigation bar (storefront/dashboard routing, theme toggle, customer account link).
+  - `Header.tsx` - Top navigation bar (storefront/dashboard routing, theme toggle, interactive notifications drawer, customer account link).
   - `Sidebar.tsx` - Collapsible admin sidebar.
   - `MainLayout.tsx` - Layout wrapper managing the sidebar state and grid layout.
   - `CartDrawer.tsx` - Glassmorphic slide-over shopping bag drawer with promo validation and live checkout link.
@@ -26,7 +31,7 @@ This is a complete Next.js 16 + FastAPI PostgreSQL project integrating a modern,
   - `StylistDrawer.tsx` - Conversational concierge powered by OpenAI GPT-4o mini with persistent database chat history, interactive chips, active promotions, and instant virtual try-on routing.
 - `/src/components/products/` - Product management and interactive modules.
   - `ProductTable.tsx` - Products listing wired to `productsApi`.
-- `/src/components/admin/` - Admin specific components (`NotchedCard.tsx`).
+- `/src/components/admin/` - Admin specific components (`NotchedCard.tsx` with interactive `<Bell />` threshold alerts and `<Sparkles />` AI insights popovers).
 - `/src/components/auth/` - Storefront authentication modals (`AuthModal.tsx`).
 - `/src/lib/api.ts` - Unified typed API client connecting directly to live FastAPI / PostgreSQL backend REST endpoints (/api/v1) without mock data.
 - `/backend/` - FastAPI backend application (PostgreSQL + SQLAlchemy 2.0 + Alembic).

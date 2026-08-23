@@ -48,12 +48,6 @@ const categories = [
   { name: "Hats", count: 12, icon: "🧢" },
 ];
 
-const defaultProducts = [
-  { id: 1, name: "Navy Cotton Canvas Cap", price: 37, rating: 4.8, image: "https://images.unsplash.com/photo-1588850561407-ed78c282e89b?q=80&w=400&auto=format&fit=crop" },
-  { id: 2, name: "Camel Wool Ivy Cap", price: 48, originalPrice: 60, rating: 4.5, image: "https://images.unsplash.com/photo-1551028719-00167b16eac5?q=80&w=400&auto=format&fit=crop", isNew: true },
-  { id: 3, name: "Mustard Bucket Hat", price: 39, rating: 4.9, image: "https://images.unsplash.com/photo-1588850561407-ed78c282e89b?q=80&w=400&auto=format&fit=crop" }
-];
-
 export default function CollectionsPage() {
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
@@ -66,27 +60,41 @@ export default function CollectionsPage() {
   const [userName, setUserName] = useState("");
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [products, setProducts] = useState<any[]>([]);
+  const [categoriesList, setCategoriesList] = useState<{ name: string; icon: string; count?: number }[]>([
+    { name: "All Categories", icon: "❖" }
+  ]);
   const [selectedCategory, setSelectedCategory] = useState("All Categories");
   const [searchQuery, setSearchQuery] = useState("");
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
+  const [loading, setLoading] = useState(true);
   
   useEffect(() => {
-    async function fetchProducts() {
+    async function fetchData() {
+      setLoading(true);
       try {
-        const data = await productsApi.list();
-        const mapped = data.map((p: any) => {
+        const [data, cats] = await Promise.all([
+          productsApi.list(),
+          categoriesApi.list()
+        ]);
+
+        if (cats && Array.isArray(cats)) {
+          setCategoriesList([
+            { name: "All Categories", icon: "❖" },
+            ...cats.map((c: any) => ({
+              name: c.name,
+              icon: /frock|dress|gown/i.test(c.name) ? "👗" : /shirt|top/i.test(c.name) ? "👔" : "❖",
+              count: c.count
+            }))
+          ]);
+        }
+
+        const mapped = (data || []).map((p: any) => {
           const fallbackImg = "https://images.unsplash.com/photo-1551028719-00167b16eac5?q=80&w=400&auto=format&fit=crop";
           let img = p.image || p.images?.[0]?.s3_url || (typeof p.images?.[0] === 'string' ? p.images[0] : "");
           if (!img || img === "") {
             const pTitle = p.name || p.title || "";
             if (/frock|dress|gown/i.test(pTitle)) img = "https://images.unsplash.com/photo-1572804013309-59a88b7e92f1?q=80&w=400&auto=format&fit=crop";
-            else if (/jacket|coat|outerwear|puffer/i.test(pTitle)) img = "https://images.unsplash.com/photo-1551028719-00167b16eac5?q=80&w=400&auto=format&fit=crop";
-            else if (/hoodie|sweatshirt/i.test(pTitle)) img = "https://images.unsplash.com/photo-1556821840-3a63f95609a7?q=80&w=400&auto=format&fit=crop";
-            else if (/pant|trouser|cargo/i.test(pTitle)) img = "https://images.unsplash.com/photo-1542272604-787c3835535d?q=80&w=400&auto=format&fit=crop";
-            else if (/shirt/i.test(pTitle)) img = "https://images.unsplash.com/photo-1596755094514-f87e34085b2c?q=80&w=400&auto=format&fit=crop";
-            else if (/shoe|sneaker|loafer/i.test(pTitle)) img = "https://images.unsplash.com/photo-1549298916-b41d501d3772?q=80&w=400&auto=format&fit=crop";
-            else if (/hat|cap|bucket/i.test(pTitle)) img = "https://images.unsplash.com/photo-1588850561407-ed78c282e89b?q=80&w=400&auto=format&fit=crop";
             else img = fallbackImg;
           }
 
@@ -105,11 +113,13 @@ export default function CollectionsPage() {
         setProducts(mapped);
       } catch (err) {
         console.error("Failed to fetch products:", err);
+      } finally {
+        setLoading(false);
       }
     }
-    fetchProducts();
+    fetchData();
   }, []);
-  
+
   useEffect(() => {
     if (session?.user?.name) {
       setIsLoggedIn(true);
@@ -479,7 +489,7 @@ export default function CollectionsPage() {
                   <div className="mb-8">
                     <h4 className="text-[10px] font-bold text-muted-foreground tracking-[0.2em] uppercase mb-4">Category</h4>
                     <div className="space-y-1">
-                      {categories.map((cat, idx) => (
+                      {categoriesList.map((cat, idx) => (
                         <label key={idx} className={`flex items-center gap-3 p-2.5 rounded-xl cursor-pointer transition-colors ${selectedCategory === cat.name ? 'bg-[#e07a3f]/10 text-[#e07a3f]' : 'hover:bg-white/5 text-muted-foreground'}`}>
                           <input type="radio" name="cat" className="hidden" onChange={() => setSelectedCategory(cat.name)} />
                           <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${selectedCategory === cat.name ? 'border-[#e07a3f] bg-[#e07a3f]' : 'border-border dark:border-white/20'}`}>

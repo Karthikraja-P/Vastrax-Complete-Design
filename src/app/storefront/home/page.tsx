@@ -11,13 +11,12 @@ import Link from "next/link";
 import { productsApi, categoriesApi } from "@/lib/api";
 
 const defaultCategories = [
-  { name: "T-Shirts", image: "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?q=80&w=300&auto=format&fit=crop" },
-  { name: "Hoodies & Sweatshirts", image: "https://images.unsplash.com/photo-1556821840-3a63f95609a7?q=80&w=300&auto=format&fit=crop" },
-  { name: "Jackets & Outerwear", image: "https://images.unsplash.com/photo-1551028719-00167b16eac5?q=80&w=300&auto=format&fit=crop" },
-  { name: "Pants & Trousers", image: "https://images.unsplash.com/photo-1542272604-787c3835535d?q=80&w=300&auto=format&fit=crop" },
-  { name: "Shirts", image: "https://images.unsplash.com/photo-1596755094514-f87e32f85e2c?q=80&w=300&auto=format&fit=crop" },
-  { name: "Shoes & Sneakers", image: "https://images.unsplash.com/photo-1549298916-b41d501d3772?q=80&w=300&auto=format&fit=crop" },
-  { name: "Hats", image: "https://images.unsplash.com/photo-1588850561407-ed78c282e89b?q=80&w=300&auto=format&fit=crop" },
+  { name: "Dresses", slug: "dresses", image: "https://images.unsplash.com/photo-1572804013309-59a88b7e92f1?q=80&w=600&auto=format&fit=crop" },
+  { name: "Pants", slug: "pants", image: "https://images.unsplash.com/photo-1542272604-787c3835535d?q=80&w=600&auto=format&fit=crop" },
+  { name: "Tops (All Varieties)", slug: "tops", image: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=600&auto=format&fit=crop" },
+  { name: "Shirts", slug: "shirts", image: "https://images.unsplash.com/photo-1596755094514-f87e34085b2c?q=80&w=600&auto=format&fit=crop" },
+  { name: "Denims", slug: "denims", image: "https://images.unsplash.com/photo-1582418702059-97ebafb35d09?q=80&w=600&auto=format&fit=crop" },
+  { name: "Skirts", slug: "skirts", image: "https://images.unsplash.com/photo-1583496661160-fb5886a0aaaa?q=80&w=600&auto=format&fit=crop" },
 ];
 
 export default function StorefrontHome() {
@@ -38,20 +37,34 @@ export default function StorefrontHome() {
     }
   }, [session]);
   
-  // Fetch real products and categories from unified API
+  // Fetch real categories from unified API
   useEffect(() => {
     async function fetchData() {
       try {
-        const data = await productsApi.list();
-        const mapped = data.map((p: any, idx: number) => ({
-          id: String(idx + 1).padStart(2, '0'),
-          dbId: p.id,
-          title: p.name || p.title,
-          image: p.image || p.images?.[0]?.s3_url || (typeof p.images?.[0] === 'string' ? p.images[0] : "") || "https://images.unsplash.com/photo-1551028719-00167b16eac5?q=80&w=400&auto=format&fit=crop"
-        }));
-        setCollections(mapped);
+        const cats = await categoriesApi.list();
+        if (cats && Array.isArray(cats) && cats.length > 0) {
+          const mapped = cats.map((c: any, idx: number) => ({
+            id: String(idx + 1).padStart(2, '0'),
+            name: c.name,
+            title: c.name,
+            slug: c.slug || c.name.toLowerCase().replace(/\s+/g, '-'),
+            image: c.image_url || defaultCategories.find(dc => dc.name.toLowerCase() === c.name.toLowerCase() || dc.slug === c.slug)?.image || "https://images.unsplash.com/photo-1572804013309-59a88b7e92f1?q=80&w=600&auto=format&fit=crop"
+          }));
+          setCategories(mapped);
+          setCollections(mapped);
+        } else {
+          const defaultMapped = defaultCategories.map((c, idx) => ({
+            id: String(idx + 1).padStart(2, '0'),
+            name: c.name,
+            title: c.name,
+            slug: c.slug,
+            image: c.image
+          }));
+          setCategories(defaultMapped);
+          setCollections(defaultMapped);
+        }
       } catch (err) {
-        console.error("Failed to fetch featured products:", err);
+        console.error("Failed to fetch categories:", err);
       }
     }
     fetchData();
@@ -358,9 +371,9 @@ export default function StorefrontHome() {
                         {col.title}
                       </h3>
                     </div>
-                    <a href={`/storefront/product?id=${col.dbId || col.id}`} className="w-10 h-10 md:w-12 md:h-12 rounded-full border border-white/40 flex items-center justify-center text-white hover:bg-white hover:text-black transition-all shrink-0">
+                    <Link href={`/storefront/collections`} className="w-10 h-10 md:w-12 md:h-12 rounded-full border border-white/40 flex items-center justify-center text-white hover:bg-white hover:text-black transition-all shrink-0">
                       <ArrowRight className="w-4 h-4 md:w-5 md:h-5" />
-                    </a>
+                    </Link>
                   </div>
                 </div>
                 );

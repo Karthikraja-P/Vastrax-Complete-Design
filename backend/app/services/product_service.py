@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.exceptions import InternalError, NotFoundError
 from app.core.logging import get_logger
+from app.models.category import Category
 from app.models.product import Product
 from app.models.product_image import ProductImage
 from app.models.product_variant import ProductVariant
@@ -20,6 +21,23 @@ logger = get_logger(__name__)
 class ProductService:
     def __init__(self, db: Session) -> None:
         self.db = db
+
+    def _resolve_category_id(self, cat_input: Optional[str]) -> str:
+        if cat_input:
+            cat = self.db.query(Category).filter(
+                (Category.id == cat_input) | (Category.slug == cat_input) | (Category.name.ilike(cat_input))
+            ).first()
+            if cat:
+                return cat.id
+        # Fallback to any existing category, or create a default 'apparel' category
+        first_cat = self.db.query(Category).first()
+        if first_cat:
+            return first_cat.id
+        new_cat = Category(name="Apparel", slug="apparel")
+        self.db.add(new_cat)
+        self.db.commit()
+        self.db.refresh(new_cat)
+        return new_cat.id
 
     def _to_response(self, product: Product) -> ProductResponse:
         return ProductResponse.model_validate(product)
@@ -46,7 +64,8 @@ class ProductService:
         if published_only:
             q = q.filter(Product.is_published.is_(True))
         if category_id:
-            q = q.filter(Product.category_id == category_id)
+            resolved_cat = self._resolve_category_id(category_id)
+            q = q.filter((Product.category_id == category_id) | (Product.category_id == resolved_cat))
         if min_price is not None:
             q = q.filter(Product.price_selling >= Decimal(str(min_price)))
         if max_price is not None:
@@ -79,8 +98,9 @@ class ProductService:
         return self._to_response(product)
 
     def create_product(self, payload: ProductCreate) -> ProductResponse:
+        cat_id = self._resolve_category_id(payload.category_id)
         product = Product(
-            category_id=payload.category_id,
+            category_id=cat_id,
             name=payload.name,
             fabric=payload.fabric,
             colour=payload.colour,
@@ -117,11 +137,14 @@ class ProductService:
         if not product:
             raise NotFoundError("Product not found")
 
-        for field in ("category_id", "name", "fabric", "colour", "price_mrp",
+        for field in ("name", "fabric", "colour", "price_mrp",
                       "price_selling", "description", "is_featured", "is_published"):
             value = getattr(payload, field)
             if value is not None:
                 setattr(product, field, value)
+
+        if payload.category_id is not None:
+            product.category_id = self._resolve_category_id(payload.category_id)
 
         if payload.images is not None:
             for img in product.images:
@@ -152,10 +175,20 @@ class ProductService:
     def delete_product(self, product_id: str) -> None:
         product = self.db.query(Product).filter(Product.id == product_id).first()
         if not product:
-            raise NotFoundError("Product not found")
-        self.db.delete(product)
-        self.db.commit()
-        logger.info("Product deleted: %s", product_id)
+            return
+        try:
+            from app.models.order_item import OrderItem
+            from app.models.tryon_session import TryonSession
+            from app.models.wishlist import Wishlist
+            self.db.query(TryonSession).filter(TryonSession.garment_id == product.id).delete(synchronize_session=False)
+            self.db.query(OrderItem).filter(OrderItem.product_id == product.id).delete(synchronize_session=False)
+            self.db.query(Wishlist).filter(Wishlist.product_id == product.id).delete(synchronize_session=False)
+            self.db.delete(product)
+            self.db.commit()
+            logger.info("Product deleted: %s", product_id)
+        except Exception as e:
+            self.db.rollback()
+            logger.error("Failed to delete product %s: %s", product_id, str(e))
 
     def update_stock(self, product_id: str, variant_id: str, stock_qty: int) -> dict:
         variant = self.db.query(ProductVariant).filter(

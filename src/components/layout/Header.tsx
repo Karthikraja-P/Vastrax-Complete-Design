@@ -12,9 +12,71 @@ interface HeaderProps {
   onOpenCart?: () => void;
 }
 
+export interface HeaderNotification {
+  id: string;
+  title: string;
+  description: string;
+  time: string;
+  type: "order" | "stock" | "user" | "ai";
+  read: boolean;
+  href: string;
+}
+
 export function Header({ isSidebarCollapsed, toggleSidebar, onOpenCart }: HeaderProps) {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const { data: session } = useSession();
+
+  const [notifications, setNotifications] = useState<HeaderNotification[]>([
+    {
+      id: "notif-1",
+      title: "New High-Value Order #ORD-2026-1048",
+      description: "Confirmed luxury order for $1,280.00 via Express Shipping.",
+      time: "10m ago",
+      type: "order",
+      read: false,
+      href: "/orders",
+    },
+    {
+      id: "notif-2",
+      title: "Low Inventory Alert",
+      description: "Cream Pullover Hoodie stock dropped below 5 units.",
+      time: "45m ago",
+      type: "stock",
+      read: false,
+      href: "/products",
+    },
+    {
+      id: "notif-3",
+      title: "AI Stylist Recommendation Spike",
+      description: "Over 48 clients generated virtual try-on combinations today.",
+      time: "2h ago",
+      type: "ai",
+      read: true,
+      href: "/storefront/home",
+    },
+    {
+      id: "notif-4",
+      title: "New VIP Customer Registered",
+      description: "Sophia Sterling created a luxury atelier account.",
+      time: "5h ago",
+      type: "user",
+      read: true,
+      href: "/users",
+    },
+  ]);
+
+  const unreadCount = notifications.filter((n) => !n.read).length;
+
+  const markAsRead = (id: string) => {
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, read: true } : n))
+    );
+  };
+
+  const markAllAsRead = () => {
+    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+  };
 
   return (
     <header className="h-16 border-b border-border bg-surface flex items-center justify-between px-6 z-20">
@@ -69,10 +131,89 @@ export function Header({ isSidebarCollapsed, toggleSidebar, onOpenCart }: Header
 
         <ThemeToggle />
         
-        <button className="relative p-2 text-muted-foreground hover:text-foreground transition-colors rounded-full hover:bg-surface-hover">
-          <Bell className="h-4 w-4" />
-          <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-accent rounded-full border border-background"></span>
-        </button>
+        {/* Notification Bell & Popover */}
+        <div className="relative">
+          <button 
+            onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
+            className="relative p-2 text-muted-foreground hover:text-foreground transition-colors rounded-full hover:bg-surface-hover focus:outline-none"
+            aria-label="Notifications"
+          >
+            <Bell className="h-4 w-4" />
+            {unreadCount > 0 && (
+              <span className="absolute top-1 right-1 min-w-[14px] h-[14px] px-1 bg-accent text-[9px] font-bold text-white rounded-full flex items-center justify-center border border-background">
+                {unreadCount}
+              </span>
+            )}
+          </button>
+
+          {isNotificationsOpen && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setIsNotificationsOpen(false)} />
+              <div className="absolute right-0 mt-3 w-80 sm:w-96 bg-background border border-border rounded-2xl shadow-2xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+                {/* Header */}
+                <div className="p-4 border-b border-border flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-bold text-foreground">Notifications</h3>
+                    {unreadCount > 0 && (
+                      <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-accent/15 text-accent rounded-full border border-accent/30">
+                        {unreadCount} new
+                      </span>
+                    )}
+                  </div>
+                  {unreadCount > 0 && (
+                    <button 
+                      onClick={markAllAsRead}
+                      className="text-xs text-accent hover:text-accent-hover font-medium transition-colors"
+                    >
+                      Mark all read
+                    </button>
+                  )}
+                </div>
+
+                {/* Notification List */}
+                <div className="max-h-[340px] overflow-y-auto divide-y divide-border/40">
+                  {notifications.length === 0 ? (
+                    <div className="p-6 text-center text-muted-foreground text-xs">
+                      No notifications at this time.
+                    </div>
+                  ) : (
+                    notifications.map((notif) => (
+                      <Link 
+                        key={notif.id}
+                        href={notif.href}
+                        onClick={() => {
+                          markAsRead(notif.id);
+                          setIsNotificationsOpen(false);
+                        }}
+                        className={`block p-3.5 hover:bg-surface-hover/60 transition-colors ${!notif.read ? 'bg-accent/5' : ''}`}
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${!notif.read ? 'bg-accent' : 'bg-transparent'}`} />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-semibold text-foreground truncate">{notif.title}</p>
+                            <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2 leading-relaxed">{notif.description}</p>
+                            <span className="text-[10px] text-muted-foreground/70 mt-1 block">{notif.time}</span>
+                          </div>
+                        </div>
+                      </Link>
+                    ))
+                  )}
+                </div>
+
+                {/* Footer */}
+                <div className="p-2.5 bg-surface/50 border-t border-border/50 text-center">
+                  <Link 
+                    href="/orders" 
+                    onClick={() => setIsNotificationsOpen(false)}
+                    className="text-[11px] font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    View All Activity →
+                  </Link>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
         
         <div className="relative">
           <button 

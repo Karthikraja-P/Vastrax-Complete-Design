@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     # Database
-    DATABASE_URL: str = "sqlite:///./vastrax.db"
+    DATABASE_URL: str = "sqlite:////home/pkr/Vastrax-Complete-Design/backend/vastrax.db"
 
     # AWS (S3 for image uploads only — no DynamoDB)
     aws_access_key_id: str = ""

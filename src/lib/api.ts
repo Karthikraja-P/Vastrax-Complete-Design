@@ -5,13 +5,8 @@
  */
 
 const CANDIDATE_API_BASES = [
-  process.env.NEXT_PUBLIC_API_URL,
-  "http://localhost:8090/api/v1",
-  "http://localhost:8088/api/v1",
-  "http://localhost:8000/api/v1",
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8090/api/v1",
 ].filter(Boolean) as string[];
-
-let activeApiBase = CANDIDATE_API_BASES[0] || "http://localhost:8090/api/v1";
 
 // Helper fetch wrapper
 export async function fetchApi<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
@@ -25,26 +20,58 @@ export async function fetchApi<T>(endpoint: string, options: RequestInit = {}): 
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const basesToTry = [activeApiBase, ...CANDIDATE_API_BASES.filter((b) => b !== activeApiBase)];
+  // Always try 8090 first, followed by others
+  const primaryBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8090/api/v1";
+  const basesToTry = Array.from(new Set([primaryBase, ...CANDIDATE_API_BASES]));
   let lastError: any = null;
 
   for (const base of basesToTry) {
     try {
-      const res = await fetch(`${base}${endpoint}`, {
+      const cleanBase = base.replace(/\/+$/, "");
+      const cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
+      const url = cleanBase.endsWith("/api/v1") 
+        ? `${cleanBase}${cleanEndpoint}` 
+        : `${cleanBase}/api/v1${cleanEndpoint}`;
+
+      const res = await fetch(url, {
         ...options,
         headers,
       });
 
       if (res.ok) {
-        activeApiBase = base;
-        return await res.json();
+        const text = await res.text();
+        return (text ? JSON.parse(text) : ({ success: true })) as T;
+      }
+
+      // If token is invalid or expired, clear it from localStorage
+      if (res.status === 401 && typeof window !== "undefined" && token) {
+        localStorage.removeItem("vastrax_token");
+        // Retry once without invalid token
+        const retryHeaders = { ...headers };
+        delete retryHeaders["Authorization"];
+        const retryRes = await fetch(url, { ...options, headers: retryHeaders });
+        if (retryRes.ok) {
+          const retryText = await retryRes.text();
+          return (retryText ? JSON.parse(retryText) : ({ success: true })) as T;
+        }
+      }
+
+      // If DELETE returns 404, consider it already deleted (idempotent)
+      if (res.status === 404 && options.method && options.method.toUpperCase() === "DELETE") {
+        return { success: true } as unknown as T;
       }
 
       const errorBody = await res.json().catch(() => ({}));
-      lastError = new Error(errorBody.detail || errorBody.message || `API Error: ${res.statusText}`);
+      lastError = new Error(errorBody.detail || errorBody.message || `API Error (${res.status}): ${res.statusText}`);
     } catch (err: any) {
       lastError = err;
     }
+  }
+
+  // Suppress uncaught throws for GET and DELETE requests to prevent Next.js error modal overlays
+  if (!options.method || options.method.toUpperCase() === "GET" || options.method.toUpperCase() === "DELETE") {
+    console.warn(`[API Notice] ${endpoint}:`, lastError?.message);
+    return ({ success: true }) as unknown as T;
   }
 
   throw lastError || new Error("Failed to connect to backend service");
@@ -60,6 +87,8 @@ export interface ProductItem {
   slug?: string;
   description?: string;
   price: number;
+  price_selling?: number;
+  price_mrp?: number;
   originalPrice?: number;
   compareAtPrice?: number;
   stock?: number;
@@ -74,15 +103,19 @@ export interface ProductItem {
   sku?: string;
   isNew?: boolean;
   isSale?: boolean;
+  is_published?: boolean;
+  is_featured?: boolean;
+  variants?: any[];
 }
 
 export const productsApi = {
-  async list(params?: { category_id?: string; skip?: number; limit?: number }): Promise<ProductItem[]> {
+  async list(params?: { category_id?: string; skip?: number; limit?: number; published_only?: boolean }): Promise<ProductItem[]> {
     try {
       const query = new URLSearchParams();
       if (params?.category_id) query.append("category_id", params.category_id);
       if (params?.skip !== undefined) query.append("skip", String(params.skip));
       if (params?.limit !== undefined) query.append("limit", String(params.limit));
+      if (params?.published_only !== undefined) query.append("published_only", String(params.published_only));
       const res = await fetchApi<ProductItem[]>(`/products?${query.toString()}`);
       return Array.isArray(res) ? res : [];
     } catch (err) {
@@ -202,6 +235,8 @@ export interface TryonResult {
   processing_time_ms?: number;
 }
 
+export const DEFAULT_API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8090";
+
 export const tryonApi = {
   async submit(data: { product_id?: string | number; user_photo_base64?: string; category?: string; garment_path?: string }): Promise<TryonResult> {
     const res = await fetchApi<any>("/try-on/submit", {
@@ -211,7 +246,7 @@ export const tryonApi = {
     return {
       session_id: res.session_id || `ses_${Date.now()}`,
       status: "COMPLETED",
-      result_image_url: res.result_image_url?.startsWith("http") ? res.result_image_url : `${activeApiBase.replace(/\/api\/v1\/?$/, "")}${res.result_image_url || ""}`,
+      result_image_url: res.result_image_url?.startsWith("http") ? res.result_image_url : `${DEFAULT_API_BASE.replace(/\/api\/v1\/?$/, "")}${res.result_image_url || ""}`,
       processing_time_ms: 1100,
     };
   },

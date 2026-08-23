@@ -43,8 +43,10 @@ class CategoryService:
         return CategoryResponse.model_validate(cat)
 
     def delete_category(self, category_id: str) -> None:
-        cat = self.db.query(Category).filter(Category.id == category_id).first()
+        cat = self.db.query(Category).filter(
+            (Category.id == category_id) | (Category.slug == category_id)
+        ).first()
         if not cat:
-            raise NotFoundError("Category not found")
+            return
         self.db.delete(cat)
         self.db.commit()

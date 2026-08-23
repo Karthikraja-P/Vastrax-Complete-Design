@@ -152,7 +152,7 @@ class UserService:
     # ── Admin ──────────────────────────────────────────────────────────────────
 
     def list_customers(self) -> list[UserResponse]:
-        users = self.db.query(User).filter(User.role == "customer").all()
+        users = self.db.query(User).all()
         return [UserResponse.model_validate(u) for u in users]
         
     def list_admins(self) -> list[UserResponse]:
