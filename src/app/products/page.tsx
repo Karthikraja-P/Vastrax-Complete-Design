@@ -86,13 +86,36 @@ export default function ProductsPage() {
   const handleConfirmDelete = async () => {
     if (!productToDelete) return;
     const targetId = productToDelete;
+    const itemToDelete = productsData.find(p => String(p.id) === String(targetId));
     setIsDeleting(true);
-    setProductsData(prev => prev.filter(p => String(p.id) !== String(targetId)));
-    setProductToDelete(null);
     try {
       await productsApi.delete(targetId);
-    } catch (err) {
-      console.warn("Delete request notice:", err);
+      
+      // Archive to deleted products trash store
+      if (itemToDelete) {
+        try {
+          const key = "vastrax_deleted_products";
+          const existing = JSON.parse(localStorage.getItem(key) || "[]");
+          const archived = [
+            {
+              ...itemToDelete,
+              deletedAt: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+              originalStatus: itemToDelete.status || "Active"
+            },
+            ...existing.filter((e: any) => String(e.id) !== String(targetId))
+          ];
+          localStorage.setItem(key, JSON.stringify(archived));
+        } catch (e) {
+          console.warn("Could not save to deleted products archive:", e);
+        }
+      }
+
+      setProductsData(prev => prev.filter(p => String(p.id) !== String(targetId)));
+      setProductToDelete(null);
+    } catch (err: any) {
+      console.error("Delete request error:", err);
+      alert(`Delete failed: ${err?.message || "Server could not delete the product"}`);
+      setProductToDelete(null);
     } finally {
       setIsDeleting(false);
     }

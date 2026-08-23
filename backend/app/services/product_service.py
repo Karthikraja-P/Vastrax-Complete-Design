@@ -173,22 +173,39 @@ class ProductService:
         return self._to_response(product)
 
     def delete_product(self, product_id: str) -> None:
-        product = self.db.query(Product).filter(Product.id == product_id).first()
+        clean_id = str(product_id).strip()
+        product = self.db.query(Product).filter(
+            (Product.id == clean_id) | 
+            (Product.id == f"vtx-{clean_id}") |
+            (Product.name.ilike(clean_id))
+        ).first()
+
+        if not product and "-" in clean_id:
+            product = self.db.query(Product).filter(Product.id.ilike(f"%{clean_id}%")).first()
+
         if not product:
+            logger.warning("Product not found for deletion: %s", product_id)
             return
+
         try:
             from app.models.order_item import OrderItem
             from app.models.tryon_session import TryonSession
             from app.models.wishlist import Wishlist
-            self.db.query(TryonSession).filter(TryonSession.garment_id == product.id).delete(synchronize_session=False)
+            from app.models.product_image import ProductImage
+            from app.models.product_variant import ProductVariant
+
+            self.db.query(TryonSession).filter(TryonSession.product_id == product.id).delete(synchronize_session=False)
             self.db.query(OrderItem).filter(OrderItem.product_id == product.id).delete(synchronize_session=False)
             self.db.query(Wishlist).filter(Wishlist.product_id == product.id).delete(synchronize_session=False)
+            self.db.query(ProductImage).filter(ProductImage.product_id == product.id).delete(synchronize_session=False)
+            self.db.query(ProductVariant).filter(ProductVariant.product_id == product.id).delete(synchronize_session=False)
             self.db.delete(product)
             self.db.commit()
-            logger.info("Product deleted: %s", product_id)
+            logger.info("Product %s (%s) deleted permanently from database", product.id, product.name)
         except Exception as e:
             self.db.rollback()
             logger.error("Failed to delete product %s: %s", product_id, str(e))
+            raise e
 
     def update_stock(self, product_id: str, variant_id: str, stock_qty: int) -> dict:
         variant = self.db.query(ProductVariant).filter(

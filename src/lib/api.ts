@@ -13,6 +13,8 @@ export async function fetchApi<T>(endpoint: string, options: RequestInit = {}): 
   const token = typeof window !== "undefined" ? localStorage.getItem("vastrax_token") : null;
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
+    "Cache-Control": "no-cache, no-store, must-revalidate",
+    Pragma: "no-cache",
     ...(options.headers as Record<string, string>),
   };
 
@@ -34,6 +36,7 @@ export async function fetchApi<T>(endpoint: string, options: RequestInit = {}): 
         : `${cleanBase}/api/v1${cleanEndpoint}`;
 
       const res = await fetch(url, {
+        cache: "no-store",
         ...options,
         headers,
       });
