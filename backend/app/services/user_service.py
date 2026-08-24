@@ -1,10 +1,13 @@
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import ConflictError, NotFoundError, UnauthorizedError
 from app.core.logging import get_logger
 from app.core.security import hash_password, verify_password
 from app.models.address import Address
+from app.models.chat_message import ChatMessage
 from app.models.product import Product
+from app.models.tryon_session import TryonSession
 from app.models.user import User
 from app.models.wishlist import Wishlist
 from app.schemas.user import (
@@ -151,10 +154,37 @@ class UserService:
 
     # ── Admin ──────────────────────────────────────────────────────────────────
 
+    def _usage_counts(self, user_ids: list[str]) -> tuple[dict[str, int], dict[str, int]]:
+        """Batch-fetch try-on and AI-stylist usage counts for a set of users in two queries."""
+        if not user_ids:
+            return {}, {}
+        tryon_counts = dict(
+            self.db.query(TryonSession.user_id, func.count(TryonSession.id))
+            .filter(TryonSession.user_id.in_(user_ids))
+            .group_by(TryonSession.user_id)
+            .all()
+        )
+        chat_counts = dict(
+            self.db.query(ChatMessage.user_id, func.count(ChatMessage.id))
+            .filter(ChatMessage.user_id.in_(user_ids))
+            .group_by(ChatMessage.user_id)
+            .all()
+        )
+        return tryon_counts, chat_counts
+
     def list_customers(self) -> list[UserResponse]:
         users = self.db.query(User).all()
-        return [UserResponse.model_validate(u) for u in users]
-        
+        tryon_counts, chat_counts = self._usage_counts([u.id for u in users])
+        return [
+            UserResponse.model_validate(u).model_copy(
+                update={
+                    "tryon_count": tryon_counts.get(u.id, 0),
+                    "chat_message_count": chat_counts.get(u.id, 0),
+                }
+            )
+            for u in users
+        ]
+
     def list_admins(self) -> list[UserResponse]:
         users = self.db.query(User).filter(User.role == "admin").all()
         return [UserResponse.model_validate(u) for u in users]
@@ -163,4 +193,10 @@ class UserService:
         user = self.db.query(User).filter(User.id == user_id).first()
         if not user:
             raise NotFoundError("User not found")
-        return UserResponse.model_validate(user)
+        tryon_counts, chat_counts = self._usage_counts([user_id])
+        return UserResponse.model_validate(user).model_copy(
+            update={
+                "tryon_count": tryon_counts.get(user_id, 0),
+                "chat_message_count": chat_counts.get(user_id, 0),
+            }
+        )

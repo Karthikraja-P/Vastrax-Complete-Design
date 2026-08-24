@@ -12,7 +12,7 @@ class TryonSession(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
-    product_id: Mapped[str] = mapped_column(ForeignKey("products.id"), nullable=False)
+    product_id: Mapped[str | None] = mapped_column(ForeignKey("products.id"), nullable=True)
     user_photo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     result_image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     fashn_job_id: Mapped[str | None] = mapped_column(String(100), nullable=True)

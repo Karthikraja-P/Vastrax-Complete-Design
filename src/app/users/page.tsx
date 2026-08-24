@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import { 
   Home, ChevronRight, Users, UserMinus, ShieldAlert, ShieldCheck, UserPlus, 
   ChevronDown, Filter, RotateCcw, Plus, Eye, Key, Mail, Check, Trash2,
-  X as XIcon, AlertCircle, Loader2, User, Phone, Calendar
+  X as XIcon, AlertCircle, Loader2, User, Phone, Calendar, Sparkles, MessageCircle
 } from "lucide-react";
 import Link from "next/link";
 import { usersApi } from "@/lib/api";
@@ -57,7 +57,9 @@ export default function AllUsersPage() {
           phone: u.phone_number || u.phone || (u.role === 'admin' ? '+1 (800) 827-8729' : '+1 (555) 234-5678'),
           role: u.role || 'customer',
           status: u.is_active !== false ? "Verified" : "Unverified",
-          date: u.created_at ? new Date(u.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "Recent"
+          date: u.created_at ? new Date(u.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "Recent",
+          tryonCount: u.tryon_count || 0,
+          chatCount: u.chat_message_count || 0,
         }));
         setUsersData(mapped);
       } else {
@@ -71,7 +73,9 @@ export default function AllUsersPage() {
             phone: "+1 (800) 827-8729",
             role: "admin",
             status: "Verified",
-            date: "Aug 20, 2026"
+            date: "Aug 20, 2026",
+            tryonCount: 0,
+            chatCount: 0
           },
           {
             id: "usr-customer-01",
@@ -82,7 +86,9 @@ export default function AllUsersPage() {
             phone: "+1 (555) 234-5678",
             role: "customer",
             status: "Verified",
-            date: "Aug 20, 2026"
+            date: "Aug 20, 2026",
+            tryonCount: 0,
+            chatCount: 0
           }
         ]);
       }
@@ -612,6 +618,23 @@ export default function AllUsersPage() {
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <Calendar className="w-4 h-4 text-accent" />
                   <span>Joined on {selectedUserDetails.date}</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-xl border border-border bg-background p-3">
+                  <div className="flex items-center gap-1.5 text-muted-foreground">
+                    <Sparkles className="w-3.5 h-3.5 text-accent" />
+                    <span className="text-[10px] font-semibold uppercase tracking-wide">Try-Ons</span>
+                  </div>
+                  <p className="mt-1 text-xl font-bold text-foreground">{selectedUserDetails.tryonCount ?? 0}</p>
+                </div>
+                <div className="rounded-xl border border-border bg-background p-3">
+                  <div className="flex items-center gap-1.5 text-muted-foreground">
+                    <MessageCircle className="w-3.5 h-3.5 text-accent" />
+                    <span className="text-[10px] font-semibold uppercase tracking-wide">AI Chats</span>
+                  </div>
+                  <p className="mt-1 text-xl font-bold text-foreground">{selectedUserDetails.chatCount ?? 0}</p>
                 </div>
               </div>
             </div>

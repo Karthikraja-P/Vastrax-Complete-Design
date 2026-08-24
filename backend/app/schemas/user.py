@@ -59,6 +59,8 @@ class UserResponse(BaseModel):
     role: str
     is_active: bool
     created_at: datetime
+    tryon_count: int = 0
+    chat_message_count: int = 0
 
     model_config = ConfigDict(from_attributes=True)
 

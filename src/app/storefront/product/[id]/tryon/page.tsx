@@ -135,9 +135,9 @@ export default function VirtualTryOnPage() {
       const targetGarmentImg = getGarmentImage(product);
       if (isCombo) {
         const topImg = getGarmentImage(selectedTop);
-        res = await tryonApi.submitCombo(personFile, topImg, targetGarmentImg);
+        res = await tryonApi.submitCombo(personFile, topImg, targetGarmentImg, product.id);
       } else {
-        res = await tryonApi.submitDirect(personFile, targetGarmentImg, fashnType);
+        res = await tryonApi.submitDirect(personFile, targetGarmentImg, fashnType, product.id);
       }
 
       if (res && res.result_image_url) {

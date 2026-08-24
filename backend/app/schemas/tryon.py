@@ -14,7 +14,7 @@ class TryonSubmitRequest(BaseModel):
 class TryonSessionResponse(BaseModel):
     id: str
     user_id: str
-    product_id: str
+    product_id: str | None
     status: str
     result_image_url: str | None
     created_at: datetime

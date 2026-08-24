@@ -139,11 +139,34 @@ class TryonService:
         )
         return [TryonSessionResponse.model_validate(s) for s in sessions]
 
+    def _log_session(
+        self, user: User | None, product_id: str | None, status: str, result_image_url: str | None = None
+    ) -> None:
+        """Best-effort usage record for admin analytics. Never lets logging break the try-on response."""
+        if not self.db or not user:
+            return
+        try:
+            self.db.add(
+                TryonSession(
+                    id=str(uuid.uuid4()),
+                    user_id=user.id,
+                    product_id=product_id,
+                    result_image_url=result_image_url,
+                    status=status,
+                )
+            )
+            self.db.commit()
+        except Exception as exc:
+            logger.warning("Failed to log try-on usage session: %s", exc)
+            self.db.rollback()
+
     async def try_on(
         self,
         person_image: UploadFile,
         garment_path: str,
         garment_type: str | None = None,
+        user: User | None = None,
+        product_id: str | None = None,
     ) -> dict:
         from app.services.fashn_service import detect_category, run_fashn
 
@@ -172,15 +195,19 @@ class TryonService:
                 garment_type=category,
                 results_dir=settings.results_dir,
             )
+            result_url = f"/results/{os.path.basename(result_path)}"
+            self._log_session(user, product_id, "done", result_url)
             return {
                 "status": "success",
-                "result_url": f"/results/{os.path.basename(result_path)}",
+                "result_url": result_url,
                 "category_used": category,
                 "model": "FASHN VTON 1.5",
             }
         except (NotFoundError, BadRequestError):
+            self._log_session(user, product_id, "failed")
             raise
         except Exception as exc:
+            self._log_session(user, product_id, "failed")
             raise InternalError(str(exc))
         finally:
             try_remove(person_path)
@@ -192,6 +219,8 @@ class TryonService:
         person_image: UploadFile,
         top_path: str,
         bottom_path: str,
+        user: User | None = None,
+        product_id: str | None = None,
     ) -> dict:
         from app.services.fashn_service import run_fashn
 
@@ -227,15 +256,19 @@ class TryonService:
                 garment_type="bottoms",
                 results_dir=settings.results_dir,
             )
+            result_url = f"/results/{os.path.basename(result_path)}"
+            self._log_session(user, product_id, "done", result_url)
             return {
                 "status": "success",
-                "result_url": f"/results/{os.path.basename(result_path)}",
+                "result_url": result_url,
                 "category_used": "combo (tops + bottoms)",
                 "model": "FASHN VTON 1.5",
             }
         except (NotFoundError, BadRequestError):
+            self._log_session(user, product_id, "failed")
             raise
         except Exception as exc:
+            self._log_session(user, product_id, "failed")
             raise InternalError(str(exc))
         finally:
             try_remove(person_path)
