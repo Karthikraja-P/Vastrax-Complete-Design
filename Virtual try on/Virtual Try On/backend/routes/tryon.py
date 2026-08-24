@@ -1,10 +1,11 @@
 from fastapi import APIRouter, Depends, File, Form, UploadFile
+from sqlalchemy.orm import Session
 
+from app.db.database import get_db
 from app.middleware.auth import get_current_user
 from app.services.tryon_service import TryonService
 
 router = APIRouter(prefix="/tryon", tags=["tryon"])
-_service = TryonService()
 
 
 @router.post("/start")
@@ -14,23 +15,24 @@ async def start_tryon(
     garment_type: str = Form(default=None),
     save_history: bool = Form(default=False),
     current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
-    return await _service.start_tryon(person_image, product_id, garment_type, save_history, current_user)
+    return await TryonService(db).start_tryon(person_image, product_id, garment_type, save_history, current_user)
 
 
 @router.get("/status/{job_id}")
-def get_tryon_status(job_id: str, current_user: dict = Depends(get_current_user)):
-    return _service.get_status(job_id, current_user)
+def get_tryon_status(job_id: str, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    return TryonService(db).get_status(job_id, current_user)
 
 
 @router.get("/result/{job_id}")
-def get_tryon_result(job_id: str, current_user: dict = Depends(get_current_user)):
-    return _service.get_result(job_id, current_user)
+def get_tryon_result(job_id: str, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    return TryonService(db).get_result(job_id, current_user)
 
 
 @router.get("/history")
-def tryon_history(current_user: dict = Depends(get_current_user)):
-    return _service.get_history(current_user)
+def tryon_history(current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    return TryonService(db).get_history(current_user)
 
 
 @router.post("/")
@@ -38,11 +40,16 @@ async def try_on(
     person_image: UploadFile = File(...),
     garment_path: str = Form(...),
     garment_type: str = Form(None),
+    product_id: str = Form(None),
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
-    return await _service.try_on(
+    return await TryonService(db).try_on(
         person_image,
         garment_path,
         garment_type,
+        user=current_user,
+        product_id=product_id,
     )
 
 
@@ -51,9 +58,14 @@ async def try_on_combo(
     person_image: UploadFile = File(...),
     top_path: str = Form(...),
     bottom_path: str = Form(...),
+    product_id: str = Form(None),
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
-    return await _service.try_on_combo(
+    return await TryonService(db).try_on_combo(
         person_image,
         top_path,
         bottom_path,
+        user=current_user,
+        product_id=product_id,
     )

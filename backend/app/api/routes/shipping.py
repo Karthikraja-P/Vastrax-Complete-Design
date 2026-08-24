@@ -1,6 +1,12 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
+from app.core.exceptions import ForbiddenError, NotFoundError
+from app.db.database import get_db
+from app.middleware.auth import get_current_user
+from app.models.order import Order
+from app.models.user import User
 from app.services.shiprocket_service import (
     cancel_shipment_by_awb,
     check_serviceability,
@@ -10,6 +16,14 @@ from app.services.shiprocket_service import (
 )
 
 router = APIRouter(prefix="/shipping", tags=["shipping"])
+
+
+def _authorize_order_access(order: Order | None, current_user: User) -> Order:
+    if not order:
+        raise NotFoundError("Shipment not found")
+    if order.user_id != current_user.id and str(current_user.role).lower() != "admin":
+        raise ForbiddenError("Access denied")
+    return order
 
 
 class ShippingRatesRequest(BaseModel):
@@ -48,7 +62,13 @@ def get_shipping_rates(body: ShippingRatesRequest):
 
 
 @router.post("/label")
-def get_shipping_label(body: LabelRequest):
+def get_shipping_label(
+    body: LabelRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    order = db.query(Order).filter(Order.shipping_shipment_id == body.shipment_id).first()
+    _authorize_order_access(order, current_user)
     result = generate_label(body.shipment_id)
     if result.get("status") != 200:
         raise HTTPException(status_code=400, detail="Failed to generate shipping label")
@@ -56,7 +76,13 @@ def get_shipping_label(body: LabelRequest):
 
 
 @router.post("/pickup")
-def book_shipping_pickup(body: PickupRequest):
+def book_shipping_pickup(
+    body: PickupRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    order = db.query(Order).filter(Order.shipping_shipment_id == body.shipment_id).first()
+    _authorize_order_access(order, current_user)
     result = schedule_pickup(body.shipment_id, body.pickup_date)
     if result.get("status") != 200:
         raise HTTPException(status_code=400, detail="Failed to schedule courier pickup")
@@ -64,7 +90,13 @@ def book_shipping_pickup(body: PickupRequest):
 
 
 @router.post("/cancel")
-def cancel_shipping_shipment(body: CancelRequest):
+def cancel_shipping_shipment(
+    body: CancelRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    order = db.query(Order).filter(Order.shipping_awb == body.awb_code).first()
+    _authorize_order_access(order, current_user)
     result = cancel_shipment_by_awb(body.awb_code)
     if result.get("status") != 200:
         raise HTTPException(status_code=400, detail="Failed to cancel shipment")
@@ -72,7 +104,13 @@ def cancel_shipping_shipment(body: CancelRequest):
 
 
 @router.post("/return")
-def create_reverse_return(body: ReturnRequest):
+def create_reverse_return(
+    body: ReturnRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    order = db.query(Order).filter(Order.id == body.order_id).first()
+    _authorize_order_access(order, current_user)
     result = create_return_shipment(body.order_id, body.return_data)
     if result.get("status") != 200:
         raise HTTPException(status_code=400, detail="Failed to create return shipment")
