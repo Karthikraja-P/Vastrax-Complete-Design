@@ -5,6 +5,7 @@ from datetime import timezone
 from jose import JWTError
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.exceptions import (
     BadRequestError,
     ConflictError,
@@ -20,6 +21,7 @@ from app.core.security import (
     verify_password,
 )
 from app.models.user import User
+from app.services.email_service import send_email
 
 logger = get_logger(__name__)
 
@@ -101,16 +103,27 @@ class AuthService:
         self.db.commit()
         return {"message": "Logged out successfully"}
 
-    def forgot_password(self, email: str) -> dict:
+    async def forgot_password(self, email: str) -> dict:
+        generic_response = {"message": "If that email is registered, a reset link has been sent."}
         user = self.db.query(User).filter(User.email == email.lower().strip()).first()
         if not user:
-            return {"message": "If that email is registered, a reset link has been sent."}
+            return generic_response
+
         reset_token = create_access_token({"sub": user.id, "purpose": "reset"})
+        reset_link = f"{settings.frontend_url.split(',')[0].strip()}/reset-password?token={reset_token}"
+        try:
+            await send_email(
+                user.email,
+                "Reset your VastraX password",
+                f'<p>We received a request to reset your password.</p>'
+                f'<p><a href="{reset_link}">Click here to reset your password</a></p>'
+                f'<p>If you did not request this, you can safely ignore this email.</p>',
+            )
+        except Exception as exc:
+            logger.error("Failed to send password reset email for user %s: %s", user.id, exc)
+
         logger.info("Password reset requested for user: %s", user.id)
-        return {
-            "message": "Password reset token generated (dev mode — use this token directly)",
-            "reset_token": reset_token,
-        }
+        return generic_response
 
     def reset_password(self, token: str, new_password: str) -> dict:
         try:

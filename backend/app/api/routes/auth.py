@@ -32,8 +32,8 @@ def logout(current_user: User = Depends(get_current_user), db: Session = Depends
 
 
 @router.post("/forgot-password")
-def forgot_password(req: ForgotPasswordRequest, db: Session = Depends(get_db)):
-    return AuthService(db).forgot_password(req.email)
+async def forgot_password(req: ForgotPasswordRequest, db: Session = Depends(get_db)):
+    return await AuthService(db).forgot_password(req.email)
 
 
 @router.post("/reset-password")
