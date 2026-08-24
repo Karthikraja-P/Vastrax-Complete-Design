@@ -20,11 +20,10 @@ class Settings(BaseSettings):
     jwt_secret_key: str = ""
     access_token_expire_minutes: int = 60
 
-    # PhonePe
-    phonepe_merchant_id: str = "MERCHANT_ID_MOCK"
-    phonepe_salt_key: str = "SALT_KEY_MOCK"
-    phonepe_salt_index: str = "1"
-    phonepe_env: str = "SANDBOX"
+    # Razorpay
+    razorpay_key_id: str = "rzp_test_MOCK"
+    razorpay_key_secret: str = "MOCK_SECRET"
+    razorpay_webhook_secret: str = "MOCK_WEBHOOK_SECRET"
 
     # App
     allowed_origins: str = "*"

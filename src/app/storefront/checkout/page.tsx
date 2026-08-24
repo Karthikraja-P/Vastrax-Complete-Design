@@ -2,14 +2,31 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
-import { 
-  ChevronLeft, ShieldCheck, Lock, CreditCard, CheckCircle2, 
+import Script from "next/script";
+import {
+  ChevronLeft, ShieldCheck, Lock, CreditCard, CheckCircle2,
   Truck, Sparkles, MapPin, Phone, Mail, User, ArrowRight, Loader2,
   Package, ShoppingBag
 } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useSession } from "next-auth/react";
 import { AuthModal } from "@/components/auth/AuthModal";
+import { reportBackendReachable, reportBackendUnreachable } from "@/lib/backendStatus";
+
+const BACKEND_BASE = "http://localhost:8000/api/v1";
+
+/** Wraps fetch to report backend connectivity — a thrown network error means the backend
+ * is unreachable, distinct from a normal HTTP error response (which still reaches the server). */
+async function backendFetch(url: string, options: RequestInit) {
+  try {
+    const res = await fetch(url, options);
+    reportBackendReachable();
+    return res;
+  } catch (err) {
+    reportBackendUnreachable();
+    throw err;
+  }
+}
 
 interface OrderItem {
   id: number;
@@ -57,6 +74,9 @@ export default function CheckoutPage() {
   const [cardCvc, setCardCvc] = useState("•••");
   const [cardHolder, setCardHolder] = useState("ALEXANDRA VANCE");
 
+  // Razorpay simulation fallback (used when no live Razorpay credentials are configured)
+  const [simPayment, setSimPayment] = useState<{ txnId: string; orderId: string } | null>(null);
+
   // Cart items
   const [items, setItems] = useState<OrderItem[]>([]);
   
@@ -74,6 +94,83 @@ export default function CheckoutPage() {
   const tax = subtotal * 0.08;
   const total = subtotal + shippingCost + tax;
 
+  const completeOrder = (orderId: string) => {
+    setIsProcessing(false);
+    setSimPayment(null);
+    setOrderNumber(orderId.split('-')[0].toUpperCase()); // Short mock order ID
+    setOrderComplete(true);
+
+    // Clear cart
+    localStorage.removeItem("vastrax_cart");
+    setItems([]);
+  };
+
+  const openRazorpayCheckout = (token: string, orderId: string, initiateData: any) => {
+    const rzp = new (window as any).Razorpay({
+      key: initiateData.razorpay_key_id,
+      amount: initiateData.amount,
+      currency: initiateData.currency,
+      order_id: initiateData.razorpay_order_id,
+      name: "VASTRAX",
+      description: `Order ${orderId}`,
+      prefill: { name: `${firstName} ${lastName}`, email, contact: phone },
+      theme: { color: "#E07A3F" },
+      handler: async (response: any) => {
+        try {
+          const verifyRes = await backendFetch(`${BACKEND_BASE}/payments/verify`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            body: JSON.stringify({
+              txn_id: initiateData.txn_id,
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature,
+            }),
+          });
+          const verifyData = await verifyRes.json();
+          if (!verifyRes.ok) throw new Error(verifyData.detail || "Payment verification failed");
+          completeOrder(orderId);
+        } catch (err) {
+          console.error(err);
+          setIsProcessing(false);
+          alert("Payment succeeded but verification failed. Please contact support with your order reference.");
+        }
+      },
+      modal: {
+        ondismiss: () => setIsProcessing(false),
+      },
+    });
+    rzp.open();
+  };
+
+  const handleSimulateChoice = async (success: boolean) => {
+    if (!simPayment) return;
+    const token = (session as any)?.accessToken;
+    setIsProcessing(true);
+
+    try {
+      const res = await backendFetch(`${BACKEND_BASE}/payments/simulate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ txn_id: simPayment.txnId, success }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Payment simulation failed");
+
+      if (success) {
+        completeOrder(simPayment.orderId);
+      } else {
+        setIsProcessing(false);
+        setSimPayment(null);
+        alert("Payment was not completed. Your order has been cancelled and stock restored.");
+      }
+    } catch (err) {
+      console.error(err);
+      setIsProcessing(false);
+      alert("Failed to process simulated payment.");
+    }
+  };
+
   const handlePlaceOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsProcessing(true);
@@ -83,17 +180,15 @@ export default function CheckoutPage() {
       if (!token) throw new Error("No access token");
 
       // 1. Create Address
-      const addressRes = await fetch("http://localhost:8000/api/v1/users/me/addresses", {
+      const addressRes = await backendFetch(`${BACKEND_BASE}/users/me/addresses`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
-          title: "Home",
-          address_line1: address,
-          address_line2: apartment,
+          label: "Home",
+          address_line1: apartment ? `${address}, ${apartment}` : address,
           city: city,
           state: "State", // mock state
-          postal_code: postalCode,
-          country: country,
+          pincode: postalCode,
           is_default: true
         })
       });
@@ -101,7 +196,7 @@ export default function CheckoutPage() {
       if (!addressRes.ok) throw new Error(addressData.detail || "Failed to create address");
 
       // 2. Create Order
-      const orderRes = await fetch("http://localhost:8000/api/v1/orders", {
+      const orderRes = await backendFetch(`${BACKEND_BASE}/orders`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
@@ -116,19 +211,38 @@ export default function CheckoutPage() {
           }))
         })
       });
-      
+
       const orderData = await orderRes.json();
       if (!orderRes.ok) throw new Error(orderData.detail || "Failed to place order");
 
-      // Success
-      setIsProcessing(false);
-      setOrderNumber(orderData.id.split('-')[0].toUpperCase()); // Short mock order ID
-      setOrderComplete(true);
-      
-      // Clear cart
-      localStorage.removeItem("vastrax_cart");
-      setItems([]);
-      
+      // Cash on Delivery is confirmed server-side immediately — no payment gateway involved.
+      if (paymentMethod === "cod") {
+        completeOrder(orderData.id);
+        return;
+      }
+
+      // 3. Initiate payment (card / Apple Pay both go through Razorpay's own checkout modal)
+      const initiateRes = await backendFetch(`${BACKEND_BASE}/payments/initiate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          order_id: orderData.id,
+          amount: total,
+          payment_method: paymentMethod.toUpperCase(),
+        })
+      });
+      const initiateData = await initiateRes.json();
+      if (!initiateRes.ok) throw new Error(initiateData.detail || "Failed to initiate payment");
+
+      if (initiateData.mode === "razorpay") {
+        setIsProcessing(false);
+        openRazorpayCheckout(token, orderData.id, initiateData);
+      } else {
+        // No live Razorpay credentials configured — fall back to an in-page simulated gateway.
+        setIsProcessing(false);
+        setSimPayment({ txnId: initiateData.txn_id, orderId: orderData.id });
+      }
+
     } catch (err) {
       console.error(err);
       setIsProcessing(false);
@@ -170,7 +284,8 @@ export default function CheckoutPage() {
 
   return (
     <div className="min-h-screen bg-background text-foreground font-sans flex flex-col transition-colors duration-300 pb-16">
-      
+      <Script src="https://checkout.razorpay.com/v1/checkout.js" strategy="lazyOnload" />
+
       {/* Top Luxury Bar */}
       <header className="h-20 border-b border-border/80 bg-surface/80 backdrop-blur-md sticky top-0 z-40 px-6 md:px-12 flex items-center justify-between">
         <Link 
@@ -243,6 +358,47 @@ export default function CheckoutPage() {
               >
                 View in Admin Orders
               </Link>
+            </div>
+          </div>
+        ) : simPayment ? (
+          /* Simulated Payment Gateway (no live Razorpay credentials configured) */
+          <div className="max-w-md mx-auto my-12 bg-surface border border-border rounded-3xl p-8 text-center space-y-6 shadow-2xl animate-in zoom-in-95 duration-500">
+            <div className="w-16 h-16 rounded-full bg-accent/10 border border-accent/30 text-accent flex items-center justify-center mx-auto">
+              <CreditCard className="w-8 h-8" />
+            </div>
+
+            <div className="space-y-2">
+              <span className="text-xs font-bold uppercase tracking-widest text-accent">Simulated Payment Gateway</span>
+              <h1 className="text-2xl font-extrabold tracking-tight">Complete Test Payment</h1>
+              <p className="text-sm text-muted-foreground">
+                Razorpay live credentials aren't configured yet. Simulate the outcome of this ${total.toFixed(2)} charge below.
+              </p>
+            </div>
+
+            <div className="bg-background rounded-2xl p-4 border border-border text-left">
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-muted-foreground">Transaction ID</span>
+                <span className="font-mono font-bold text-accent">{simPayment.txnId}</span>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-3">
+              <button
+                type="button"
+                disabled={isProcessing}
+                onClick={() => handleSimulateChoice(true)}
+                className="w-full py-3 bg-accent hover:bg-accent/90 text-white rounded-full font-bold text-xs uppercase tracking-widest transition-all disabled:opacity-75"
+              >
+                {isProcessing ? "Processing..." : "Pay Successfully"}
+              </button>
+              <button
+                type="button"
+                disabled={isProcessing}
+                onClick={() => handleSimulateChoice(false)}
+                className="w-full py-3 bg-background border border-border hover:bg-surface-hover text-foreground rounded-full font-semibold text-xs uppercase tracking-widest transition-colors disabled:opacity-75"
+              >
+                Cancel Payment
+              </button>
             </div>
           </div>
         ) : (

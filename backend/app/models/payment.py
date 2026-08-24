@@ -20,7 +20,9 @@ class Payment(Base):
     amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     method: Mapped[str] = mapped_column(String(50), nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
-    phonepe_txn_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    razorpay_order_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    razorpay_payment_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    razorpay_signature: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now)
 

@@ -1,9 +1,6 @@
 import requests
 import uuid
 import sys
-import json
-import base64
-import hashlib
 
 BASE_URL = "http://127.0.0.1:8088/api/v1"
 
@@ -81,8 +78,8 @@ def test_api():
     
     product_id = products[0]["id"]
     size = products[0]["variants"][0]["size"]
-    variant_id = products[0]["variants"][0]["sku"]
-    unit_price = products[0]["price_selling"]
+    variant_id = products[0]["variants"][0]["id"]
+    unit_price = float(products[0]["price_selling"])
     print(f"✅ Products fetched. Using product '{product_id}', size '{size}' for test order.")
     
     # ── 5. Place Order ──
@@ -96,7 +93,7 @@ def test_api():
         "pincode": "600001",
         "is_default": True
     }
-    r = requests.post(f"{BASE_URL}/customers/me/addresses", json=address_payload, headers=headers)
+    r = requests.post(f"{BASE_URL}/users/me/addresses", json=address_payload, headers=headers)
     if r.status_code != 201:
         print(f"❌ Failed to add address: {r.status_code} - {r.text}")
         sys.exit(1)
@@ -142,39 +139,13 @@ def test_api():
     txn_id = payment_data["txn_id"]
     print(f"✅ Payment initiated. Transaction ID: {txn_id}, Mode: {payment_data['mode']}")
     
-    # ── 7. Verify Webhook (Simulated Callback) ──
-    print("\n[7] Simulating PhonePe webhook callback...")
-    response_payload = {
-        "success": True,
-        "code": "PAYMENT_SUCCESS",
-        "message": "Payment completed successfully",
-        "data": {
-            "merchantId": "MERCHANT_ID_MOCK",
-            "merchantTransactionId": txn_id,
-            "transactionId": f"MOCK-PROVIDER-{txn_id}",
-            "amount": int(unit_price * 100),
-            "state": "COMPLETED",
-            "responseCode": "SUCCESS"
-        }
-    }
-    
-    response_json = json.dumps(response_payload)
-    response_b64 = base64.b64encode(response_json.encode()).decode()
-    webhook_body = {
-        "response": response_b64
-    }
-    
-    # Verification headers. In mock mode, checksum validation is bypassed.
-    webhook_headers = {
-        "X-VERIFY": "MOCK-X-VERIFY-HEADER",
-        "Content-Type": "application/json"
-    }
-    
-    r = requests.post(f"{BASE_URL}/payments/webhook", json=webhook_body, headers=webhook_headers)
+    # ── 7. Simulate Payment Success (mock mode, no real Razorpay keys) ──
+    print("\n[7] Simulating Razorpay payment success...")
+    r = requests.post(f"{BASE_URL}/payments/simulate", json={"txn_id": txn_id, "success": True}, headers=headers)
     if r.status_code != 200:
-        print(f"❌ Webhook simulation failed: {r.status_code} - {r.text}")
+        print(f"❌ Payment simulation failed: {r.status_code} - {r.text}")
         sys.exit(1)
-    print("✅ Webhook simulation processed successfully.")
+    print("✅ Payment simulation processed successfully.")
     
     # ── 8. Check Payment Status ──
     print("\n[8] Checking payment status...")

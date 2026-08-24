@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.db.database import get_db
 from app.middleware.auth import get_current_user, require_admin
 from app.models.user import User
-from app.schemas.payments import PaymentCreate, RefundIn
+from app.schemas.payments import PaymentCreate, PaymentVerify, RefundIn, SimulatePaymentIn
 from app.services.payment_service import PaymentService
 
 router = APIRouter(prefix="/payments", tags=["payments"])
@@ -19,10 +19,28 @@ def initiate_payment(
     return PaymentService(db).initiate_payment(body, current_user)
 
 
+@router.post("/verify")
+def verify_payment(
+    body: PaymentVerify,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return PaymentService(db).verify_payment(body, current_user)
+
+
+@router.post("/simulate")
+def simulate_payment(
+    body: SimulatePaymentIn,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return PaymentService(db).simulate_payment(body.txn_id, current_user, body.success)
+
+
 @router.post("/webhook")
-async def phonepe_webhook(request: Request, db: Session = Depends(get_db)):
+async def razorpay_webhook(request: Request, db: Session = Depends(get_db)):
     raw_body = await request.body()
-    return PaymentService(db).handle_webhook(raw_body, request.headers.get("X-VERIFY"))
+    return PaymentService(db).handle_webhook(raw_body, request.headers.get("X-Razorpay-Signature"))
 
 
 @router.get("/status/{txn_id}")

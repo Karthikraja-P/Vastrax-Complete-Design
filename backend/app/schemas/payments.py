@@ -16,6 +16,18 @@ class RefundIn(BaseModel):
     amount: Decimal
 
 
+class PaymentVerify(BaseModel):
+    txn_id: str
+    razorpay_order_id: str
+    razorpay_payment_id: str
+    razorpay_signature: str
+
+
+class SimulatePaymentIn(BaseModel):
+    txn_id: str
+    success: bool = True
+
+
 class PaymentResponse(BaseModel):
     id: str
     order_id: str
@@ -23,7 +35,8 @@ class PaymentResponse(BaseModel):
     amount: Decimal
     method: str
     status: str
-    phonepe_txn_id: str | None
+    razorpay_order_id: str | None
+    razorpay_payment_id: str | None
     created_at: datetime
     updated_at: datetime
 

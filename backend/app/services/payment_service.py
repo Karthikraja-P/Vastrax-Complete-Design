@@ -1,8 +1,7 @@
-import base64
 import hashlib
+import hmac
 import json
 import uuid
-from datetime import datetime, timezone
 from decimal import Decimal
 
 import requests
@@ -15,22 +14,22 @@ from app.models.order import Order
 from app.models.payment import Payment
 from app.models.product_variant import ProductVariant
 from app.models.user import User
-from app.schemas.payments import PaymentCreate, PaymentResponse
+from app.schemas.payments import PaymentCreate, PaymentResponse, PaymentVerify
 
 logger = get_logger(__name__)
+
+RAZORPAY_API_BASE = "https://api.razorpay.com/v1"
 
 
 def _is_mock_mode() -> bool:
     return (
-        settings.phonepe_merchant_id == "MERCHANT_ID_MOCK"
-        or settings.phonepe_salt_key == "SALT_KEY_MOCK"
+        settings.razorpay_key_id == "rzp_test_MOCK"
+        or settings.razorpay_key_secret == "MOCK_SECRET"
     )
 
 
-def _calculate_checksum(payload_b64: str, api_endpoint: str) -> str:
-    string_to_hash = payload_b64 + api_endpoint + settings.phonepe_salt_key
-    sha256_hash = hashlib.sha256(string_to_hash.encode()).hexdigest()
-    return f"{sha256_hash}###{settings.phonepe_salt_index}"
+def _razorpay_auth() -> tuple[str, str]:
+    return (settings.razorpay_key_id, settings.razorpay_key_secret)
 
 
 class PaymentService:
@@ -43,6 +42,8 @@ class PaymentService:
             raise NotFoundError("Order not found")
         if order.user_id != user.id:
             raise ForbiddenError("Access denied")
+        if abs(Decimal(payload.amount) - Decimal(order.total_amount)) > Decimal("0.01"):
+            raise BadRequestError("Payment amount does not match order total")
 
         txn_id = f"TXN-VX-{uuid.uuid4().hex[:12].upper()}"
         payment = Payment(
@@ -57,115 +58,143 @@ class PaymentService:
         self.db.commit()
 
         if _is_mock_mode():
-            sim_url = (
-                f"{settings.frontend_url}/checkout/payment-simulation"
-                f"?txn_id={txn_id}&amount={payload.amount}&order_id={payload.order_id}"
-            )
             return {
                 "status": "success",
-                "redirect_url": sim_url,
-                "txn_id": txn_id,
                 "mode": "simulation",
+                "txn_id": txn_id,
+                "amount": int(payload.amount * 100),
+                "currency": "INR",
             }
 
-        return self._call_phonepe(txn_id, payload.order_id, float(payload.amount), payload.payment_method, user)
+        return self._call_razorpay(payment, payload.amount)
 
-    def _call_phonepe(
-        self, txn_id: str, order_id: str, amount: float, payment_method: str, user: User
-    ) -> dict:
-        phonepe_url = (
-            "https://api.phonepe.com/apis/hermes/pg/v1/pay"
-            if settings.phonepe_env == "PRODUCTION"
-            else "https://api-preprod.phonepe.com/apis/pg-sandbox/pg/v1/pay"
-        )
-        payload = {
-            "merchantId": settings.phonepe_merchant_id,
-            "merchantTransactionId": txn_id,
-            "merchantUserId": user.id,
-            "amount": int(amount * 100),
-            "redirectUrl": f"{settings.frontend_url}/checkout/success?txn_id={txn_id}",
-            "redirectMode": "REDIRECT",
-            "callbackUrl": f"{settings.frontend_url}/api/v1/payments/webhook",
-            "mobileNumber": (user.phone_number or "").replace(" ", "").replace("+91", "")[-10:],
-            "paymentInstrument": {"type": "PAY_PAGE"},
-        }
-        payload_b64 = base64.b64encode(json.dumps(payload).encode()).decode()
-        checksum = _calculate_checksum(payload_b64, "/pg/v1/pay")
+    def _call_razorpay(self, payment: Payment, amount: Decimal) -> dict:
+        amount_paise = int(amount * 100)
         try:
             resp = requests.post(
-                phonepe_url,
-                json={"request": payload_b64},
-                headers={"Content-Type": "application/json", "X-VERIFY": checksum},
+                f"{RAZORPAY_API_BASE}/orders",
+                json={"amount": amount_paise, "currency": "INR", "receipt": payment.id},
+                auth=_razorpay_auth(),
                 timeout=10,
             )
             resp_data = resp.json()
-            if resp.status_code == 200 and resp_data.get("success"):
-                redirect_url = resp_data["data"]["instrumentResponse"]["redirectInfo"]["url"]
-                return {"status": "success", "redirect_url": redirect_url, "txn_id": txn_id, "mode": "production"}
-            raise BadRequestError(resp_data.get("message", "PhonePe initiation failed"))
-        except (BadRequestError, ForbiddenError):
+            if resp.status_code in (200, 201) and resp_data.get("id"):
+                payment.razorpay_order_id = resp_data["id"]
+                self.db.commit()
+                return {
+                    "status": "success",
+                    "mode": "razorpay",
+                    "txn_id": payment.id,
+                    "razorpay_order_id": resp_data["id"],
+                    "razorpay_key_id": settings.razorpay_key_id,
+                    "amount": resp_data.get("amount", amount_paise),
+                    "currency": resp_data.get("currency", "INR"),
+                }
+            raise BadRequestError(resp_data.get("error", {}).get("description", "Razorpay order creation failed"))
+        except BadRequestError:
             raise
         except Exception as exc:
-            logger.warning("PhonePe call failed, falling back to simulation: %s", exc)
-            sim_url = (
-                f"{settings.frontend_url}/checkout/payment-simulation"
-                f"?txn_id={txn_id}&amount={amount}&order_id={order_id}"
-            )
+            logger.warning("Razorpay order creation failed, falling back to simulation: %s", exc)
             return {
                 "status": "success",
-                "redirect_url": sim_url,
-                "txn_id": txn_id,
                 "mode": "simulation",
-                "warning": f"Real PhonePe call failed ({exc}), fell back to simulation",
+                "txn_id": payment.id,
+                "amount": amount_paise,
+                "currency": "INR",
+                "warning": f"Real Razorpay call failed ({exc}), fell back to simulation",
             }
 
-    def handle_webhook(self, raw_body: bytes, x_verify: str | None) -> dict:
-        if not x_verify:
-            raise BadRequestError("Missing X-VERIFY header")
+    def verify_payment(self, payload: PaymentVerify, user: User) -> dict:
+        payment = self.db.query(Payment).filter(Payment.id == payload.txn_id).first()
+        if not payment:
+            raise NotFoundError("Transaction not found")
+        if payment.user_id != user.id:
+            raise ForbiddenError("Access denied")
 
+        expected = hmac.new(
+            settings.razorpay_key_secret.encode(),
+            f"{payload.razorpay_order_id}|{payload.razorpay_payment_id}".encode(),
+            hashlib.sha256,
+        ).hexdigest()
+        if not hmac.compare_digest(expected, payload.razorpay_signature):
+            raise ForbiddenError("Signature mismatch")
+
+        payment.razorpay_order_id = payload.razorpay_order_id
+        payment.razorpay_payment_id = payload.razorpay_payment_id
+        payment.razorpay_signature = payload.razorpay_signature
+        self._mark_payment_success(payment)
+        return {"status": "ok", "txn_id": payment.id}
+
+    def simulate_payment(self, txn_id: str, user: User, success: bool) -> dict:
         if not _is_mock_mode():
-            calculated = hashlib.sha256(raw_body + settings.phonepe_salt_key.encode()).hexdigest()
-            expected = f"{calculated}###{settings.phonepe_salt_index}"
-            if x_verify != expected:
-                raise ForbiddenError("Signature mismatch")
-
-        body_json = json.loads(raw_body.decode())
-        resp_b64 = body_json.get("response")
-        if not resp_b64:
-            raise BadRequestError("Missing response field")
-
-        decoded = json.loads(base64.b64decode(resp_b64).decode())
-        code = decoded.get("code")
-        success = decoded.get("success", False)
-        data = decoded.get("data", {})
-        txn_id = data.get("merchantTransactionId")
-        if not txn_id:
-            raise BadRequestError("Missing transaction ID in response data")
+            raise ForbiddenError("Simulation is only available when Razorpay is unconfigured")
 
         payment = self.db.query(Payment).filter(Payment.id == txn_id).first()
         if not payment:
             raise NotFoundError("Transaction not found")
+        if payment.user_id != user.id:
+            raise ForbiddenError("Access denied")
 
-        if success and code == "PAYMENT_SUCCESS":
-            payment.status = "success"
-            order = self.db.query(Order).filter(Order.id == payment.order_id).first()
-            if order:
-                order.status = "confirmed"
-                order.payment_status = "paid"
-
-                try:
-                    from app.services.order_service import _book_shiprocket
-                    _book_shiprocket(order, order.user, order.address)
-                except Exception as exc:
-                    logger.error("Failed to book shipment on payment webhook: %s", exc)
-
-            self.db.commit()
-            logger.info("Payment success: %s for order: %s", txn_id, payment.order_id)
+        if success:
+            self._mark_payment_success(payment)
         else:
-            payment.status = "failed"
-            self._restore_stock_and_cancel_order(payment.order_id)
+            self._mark_payment_failed(payment)
+        return {"status": "ok", "txn_id": payment.id}
+
+    def _mark_payment_success(self, payment: Payment) -> None:
+        if payment.status == "success":
             self.db.commit()
-            logger.warning("Payment failed: %s for order: %s", txn_id, payment.order_id)
+            return
+
+        payment.status = "success"
+        order = self.db.query(Order).filter(Order.id == payment.order_id).first()
+        if order:
+            order.status = "confirmed"
+            order.payment_status = "paid"
+
+            try:
+                from app.services.order_service import _book_shiprocket
+                _book_shiprocket(order, order.user, order.address)
+            except Exception as exc:
+                logger.error("Failed to book shipment on payment success: %s", exc)
+
+        self.db.commit()
+        logger.info("Payment success: %s for order: %s", payment.id, payment.order_id)
+
+    def _mark_payment_failed(self, payment: Payment) -> None:
+        if payment.status in ("success", "failed"):
+            self.db.commit()
+            return
+
+        payment.status = "failed"
+        self._restore_stock_and_cancel_order(payment.order_id)
+        self.db.commit()
+        logger.warning("Payment failed: %s for order: %s", payment.id, payment.order_id)
+
+    def handle_webhook(self, raw_body: bytes, signature: str | None) -> dict:
+        if not signature:
+            raise BadRequestError("Missing X-Razorpay-Signature header")
+
+        expected = hmac.new(settings.razorpay_webhook_secret.encode(), raw_body, hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(expected, signature):
+            raise ForbiddenError("Signature mismatch")
+
+        body = json.loads(raw_body.decode())
+        event = body.get("event")
+        entity = body.get("payload", {}).get("payment", {}).get("entity", {})
+        razorpay_order_id = entity.get("order_id")
+        if not razorpay_order_id:
+            raise BadRequestError("Missing order_id in webhook payload")
+
+        payment = self.db.query(Payment).filter(Payment.razorpay_order_id == razorpay_order_id).first()
+        if not payment:
+            raise NotFoundError("Transaction not found")
+
+        if event == "payment.captured":
+            payment.razorpay_payment_id = entity.get("id") or payment.razorpay_payment_id
+            self._mark_payment_success(payment)
+        elif event == "payment.failed":
+            self._mark_payment_failed(payment)
 
         return {"status": "ok"}
 
@@ -201,7 +230,7 @@ class PaymentService:
         if not payment:
             raise NotFoundError("Transaction not found")
 
-        if _is_mock_mode():
+        if _is_mock_mode() or not payment.razorpay_payment_id:
             payment.status = "refunded"
             order = self.db.query(Order).filter(Order.id == payment.order_id).first()
             if order:
@@ -209,55 +238,37 @@ class PaymentService:
             self.db.commit()
             return {"status": "refunded", "txn_id": txn_id}
 
-        return self._call_phonepe_refund(txn_id, float(amount), payment.order_id)
+        return self._call_razorpay_refund(payment, float(amount))
 
-    def _call_phonepe_refund(self, txn_id: str, amount: float, order_id: str) -> dict:
-        phonepe_url = (
-            "https://api.phonepe.com/apis/hermes/pg/v1/refund"
-            if settings.phonepe_env == "PRODUCTION"
-            else "https://api-preprod.phonepe.com/apis/pg-sandbox/pg/v1/refund"
-        )
-        refund_txn_id = f"REFUND-{uuid.uuid4().hex[:12].upper()}"
-        payload = {
-            "merchantId": settings.phonepe_merchant_id,
-            "merchantTransactionId": refund_txn_id,
-            "originalTransactionId": txn_id,
-            "amount": int(amount * 100),
-            "callbackUrl": f"{settings.frontend_url}/api/v1/payments/webhook",
-        }
-        payload_b64 = base64.b64encode(json.dumps(payload).encode()).decode()
-        checksum = _calculate_checksum(payload_b64, "/pg/v1/refund")
+    def _call_razorpay_refund(self, payment: Payment, amount: float) -> dict:
+        amount_paise = int(amount * 100)
         try:
             resp = requests.post(
-                phonepe_url,
-                json={"request": payload_b64},
-                headers={"Content-Type": "application/json", "X-VERIFY": checksum},
+                f"{RAZORPAY_API_BASE}/payments/{payment.razorpay_payment_id}/refund",
+                json={"amount": amount_paise},
+                auth=_razorpay_auth(),
                 timeout=10,
             )
             resp_data = resp.json()
-            if resp.status_code == 200 and resp_data.get("success"):
-                payment = self.db.query(Payment).filter(Payment.id == txn_id).first()
-                if payment:
-                    payment.status = "refunded"
-                order = self.db.query(Order).filter(Order.id == order_id).first()
+            if resp.status_code in (200, 201) and resp_data.get("id"):
+                payment.status = "refunded"
+                order = self.db.query(Order).filter(Order.id == payment.order_id).first()
                 if order:
                     order.payment_status = "refunded"
                 self.db.commit()
-                return {"status": "refunded", "txn_id": txn_id, "refund_txn_id": refund_txn_id}
-            raise BadRequestError(resp_data.get("message", "PhonePe refund call rejected"))
+                return {"status": "refunded", "txn_id": payment.id, "refund_id": resp_data["id"]}
+            raise BadRequestError(resp_data.get("error", {}).get("description", "Razorpay refund rejected"))
         except (BadRequestError,):
             raise
         except Exception as exc:
-            logger.warning("PhonePe refund failed, applying local refund: %s", exc)
-            payment = self.db.query(Payment).filter(Payment.id == txn_id).first()
-            if payment:
-                payment.status = "refunded"
-            order = self.db.query(Order).filter(Order.id == order_id).first()
+            logger.warning("Razorpay refund failed, applying local refund: %s", exc)
+            payment.status = "refunded"
+            order = self.db.query(Order).filter(Order.id == payment.order_id).first()
             if order:
                 order.payment_status = "refunded"
             self.db.commit()
             return {
                 "status": "refunded",
-                "txn_id": txn_id,
-                "warning": f"Real PhonePe refund failed ({exc})",
+                "txn_id": payment.id,
+                "warning": f"Real Razorpay refund failed ({exc})",
             }
