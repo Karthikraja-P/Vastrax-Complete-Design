@@ -4,6 +4,8 @@
  * Without mock data or hardcoded credentials.
  */
 
+import { reportBackendReachable, reportBackendUnreachable } from "./backendStatus";
+
 const CANDIDATE_API_BASES = [
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:8090/api/v1",
 ].filter(Boolean) as string[];
@@ -26,13 +28,14 @@ export async function fetchApi<T>(endpoint: string, options: RequestInit = {}): 
   const primaryBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8090/api/v1";
   const basesToTry = Array.from(new Set([primaryBase, ...CANDIDATE_API_BASES]));
   let lastError: any = null;
+  let gotResponse = false; // true once any attempt reaches the server, regardless of status code
 
   for (const base of basesToTry) {
     try {
       const cleanBase = base.replace(/\/+$/, "");
       const cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
-      const url = cleanBase.endsWith("/api/v1") 
-        ? `${cleanBase}${cleanEndpoint}` 
+      const url = cleanBase.endsWith("/api/v1")
+        ? `${cleanBase}${cleanEndpoint}`
         : `${cleanBase}/api/v1${cleanEndpoint}`;
 
       const res = await fetch(url, {
@@ -40,6 +43,8 @@ export async function fetchApi<T>(endpoint: string, options: RequestInit = {}): 
         ...options,
         headers,
       });
+      gotResponse = true;
+      reportBackendReachable();
 
       if (res.ok) {
         const text = await res.text();
@@ -69,6 +74,12 @@ export async function fetchApi<T>(endpoint: string, options: RequestInit = {}): 
     } catch (err: any) {
       lastError = err;
     }
+  }
+
+  if (!gotResponse) {
+    // Every attempt failed before reaching the server at all — the backend is unreachable,
+    // not just returning an error. BackendStatusProvider takes over rendering for this case.
+    reportBackendUnreachable();
   }
 
   // Suppress uncaught throws for GET and DELETE requests to prevent Next.js error modal overlays
@@ -254,11 +265,15 @@ export const tryonApi = {
     };
   },
 
-  async submitDirect(personFile: File, garmentPath: string, garmentType?: string): Promise<TryonResult> {
+  async submitDirect(personFile: File, garmentPath: string, garmentType?: string, productId?: string | number): Promise<TryonResult> {
     const formData = new FormData();
     formData.append("person_image", personFile);
     formData.append("garment_path", garmentPath);
     if (garmentType) formData.append("garment_type", garmentType);
+    if (productId != null) formData.append("product_id", String(productId));
+
+    const token = typeof window !== "undefined" ? localStorage.getItem("vastrax_token") : null;
+    const authHeaders: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
 
     const endpoints = [
       "http://localhost:8090/api/v1/tryon/",
@@ -270,12 +285,16 @@ export const tryonApi = {
     ];
 
     let lastError: any = null;
+    let gotResponse = false;
     for (const url of endpoints) {
       try {
         const res = await fetch(url, {
           method: "POST",
+          headers: authHeaders,
           body: formData,
         });
+        gotResponse = true;
+        reportBackendReachable();
 
         if (res.ok) {
           const data = await res.json();
@@ -298,14 +317,19 @@ export const tryonApi = {
       }
     }
 
+    if (!gotResponse) reportBackendUnreachable();
     throw lastError || new Error("Neural GPU inference failed to connect.");
   },
 
-  async submitCombo(personFile: File, topPath: string, bottomPath: string): Promise<TryonResult> {
+  async submitCombo(personFile: File, topPath: string, bottomPath: string, productId?: string | number): Promise<TryonResult> {
     const formData = new FormData();
     formData.append("person_image", personFile);
     formData.append("top_path", topPath);
     formData.append("bottom_path", bottomPath);
+    if (productId != null) formData.append("product_id", String(productId));
+
+    const token = typeof window !== "undefined" ? localStorage.getItem("vastrax_token") : null;
+    const authHeaders: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
 
     const endpoints = [
       "http://localhost:8090/api/v1/try-on/combo",
@@ -316,12 +340,16 @@ export const tryonApi = {
     ];
 
     let lastError: any = null;
+    let gotResponse = false;
     for (const url of endpoints) {
       try {
         const res = await fetch(url, {
           method: "POST",
+          headers: authHeaders,
           body: formData,
         });
+        gotResponse = true;
+        reportBackendReachable();
 
         if (res.ok) {
           const data = await res.json();
@@ -344,6 +372,7 @@ export const tryonApi = {
       }
     }
 
+    if (!gotResponse) reportBackendUnreachable();
     throw lastError || new Error("Neural GPU combo inference failed to connect.");
   },
 };
@@ -386,6 +415,17 @@ export const analyticsApi = {
       return await fetchApi<any>("/analytics/regional-sales");
     } catch {
       return { regions: [] };
+    }
+  },
+
+  async getUsage() {
+    try {
+      return await fetchApi<any>("/analytics/usage");
+    } catch {
+      return {
+        tryon: { total_sessions: 0, completed: 0, failed: 0, processing: 0, unique_users: 0 },
+        ai_assistant: { total_messages: 0, total_sessions: 0, unique_signed_in_users: 0 },
+      };
     }
   },
 };

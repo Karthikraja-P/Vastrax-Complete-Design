@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Mail, Lock, Eye, EyeOff, CheckSquare, Square, CheckCircle2 } from "lucide-react";
 import { signIn } from "next-auth/react";
+import { reportBackendReachable, reportBackendUnreachable } from "@/lib/backendStatus";
 
 export function AuthModal({ isOpen, onClose, initialMode = "signin", onSuccess }: { isOpen: boolean; onClose: () => void; initialMode?: "signin" | "signup"; onSuccess?: (name: string) => void }) {
   const [isSignUp, setIsSignUp] = useState(false);
@@ -82,6 +83,7 @@ export function AuthModal({ isOpen, onClose, initialMode = "signin", onSuccess }
         };
 
         let regSuccess = false;
+        let regGotResponse = false;
         let lastErrorMsg = "Failed to create account. Please check your details.";
 
         for (const base of authBaseUrls) {
@@ -91,6 +93,8 @@ export function AuthModal({ isOpen, onClose, initialMode = "signin", onSuccess }
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify(regPayload)
             });
+            regGotResponse = true;
+            reportBackendReachable();
 
             const data = await res.json().catch(() => ({}));
             if (res.ok && data.access_token) {
@@ -113,6 +117,8 @@ export function AuthModal({ isOpen, onClose, initialMode = "signin", onSuccess }
           } catch {}
         }
 
+        if (!regGotResponse) reportBackendUnreachable();
+
         if (!regSuccess) {
           setIsLoading(false);
           alert(lastErrorMsg);
@@ -131,6 +137,7 @@ export function AuthModal({ isOpen, onClose, initialMode = "signin", onSuccess }
 
       // Real User Sign In
       let loginSuccess = false;
+      let loginGotResponse = false;
       let lastLoginError = "Invalid email or password";
       let loggedUser: any = null;
 
@@ -141,6 +148,8 @@ export function AuthModal({ isOpen, onClose, initialMode = "signin", onSuccess }
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ email: cleanEmail, password })
           });
+          loginGotResponse = true;
+          reportBackendReachable();
 
           const data = await res.json().catch(() => ({}));
           if (res.ok && data.access_token) {
@@ -163,6 +172,8 @@ export function AuthModal({ isOpen, onClose, initialMode = "signin", onSuccess }
           }
         } catch {}
       }
+
+      if (!loginGotResponse) reportBackendUnreachable();
 
       if (!loginSuccess) {
         setIsLoading(false);

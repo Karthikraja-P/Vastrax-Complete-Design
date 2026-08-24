@@ -9,6 +9,7 @@ import Link from "next/link";
 import { CartDrawer } from "@/components/layout/CartDrawer";
 import { StylistDrawer } from "@/components/stylist/StylistDrawer";
 import { productsApi, categoriesApi } from "@/lib/api";
+import { reportBackendReachable, reportBackendUnreachable } from "@/lib/backendStatus";
 
 // --- Mock Data ---
 
@@ -135,12 +136,15 @@ export default function CollectionsPage() {
           const res = await fetch("http://localhost:8000/api/v1/users/me/wishlist", {
             headers: { Authorization: `Bearer ${(session as any).accessToken}` }
           });
+          reportBackendReachable();
           if (res.ok) {
             const data = await res.json();
             setFavorites(data.map((item: any) => item.product_id));
             return;
           }
-        } catch (err) {}
+        } catch (err) {
+          reportBackendUnreachable();
+        }
       }
       
       // Fallback to local storage if guest or fetch failed
@@ -170,7 +174,9 @@ export default function CollectionsPage() {
           method: "POST",
           headers: { Authorization: `Bearer ${(session as any).accessToken}` }
         });
+        reportBackendReachable();
       } catch (err) {
+        reportBackendUnreachable();
         console.error("Failed to toggle wishlist", err);
       }
     } else {

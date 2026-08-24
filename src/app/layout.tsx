@@ -3,6 +3,7 @@ import { Outfit } from "next/font/google";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { Providers } from "@/components/Providers";
+import { BackendStatusProvider } from "@/components/BackendStatusProvider";
 import "./globals.css";
 
 const outfit = Outfit({
@@ -25,7 +26,9 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col bg-background text-foreground font-sans transition-colors duration-300">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
           <Providers>
-            <MainLayout>{children}</MainLayout>
+            <BackendStatusProvider>
+              <MainLayout>{children}</MainLayout>
+            </BackendStatusProvider>
           </Providers>
         </ThemeProvider>
       </body>
