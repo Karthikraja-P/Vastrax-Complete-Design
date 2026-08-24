@@ -1,29 +1,24 @@
 # VastraX — Application End-to-End Test Scripts
 
-This document details step-by-step procedures to test the full frontend UI, backend APIs, and AWS integrations of the VastraX platform.
+This document details step-by-step procedures to test the full frontend UI, backend APIs, and third-party integrations of the VastraX platform. It reflects the app as actually implemented — there are no dedicated `/login`, `/register`, or `/admin/*` pages; authentication is a modal (`AuthModal`) triggered from the header or a checkout gate, and the admin console lives at the root routes (`/`, `/orders`, `/products`, `/users`, etc.), not under an `/admin` prefix.
 
 ---
 
-## 1. Authentication & Session Loop Test
-**Objective:** Verify register, login, logout, and the automatic JWT refresh token loops.
+## 1. Authentication Test
+**Objective:** Verify sign-up, sign-in, and session persistence.
 
 1. **User Registration:**
-   - Open browser to `http://localhost:3000/register`.
-   - Fill in details: `Full Name`, `Email` (e.g. `testuser@vastrax.com`), `Phone`, and `Password`.
-   - Click **Create Account**.
-   - **Verification:** User should be redirected to the Home page and logged in. Inspect browser localStorage `vx_token` and `vx_refresh_token` to confirm they exist.
+   - Open `http://localhost:3000/storefront/home`, click **Sign In** in the header (or trigger it via **Checkout** while signed out) to open the `AuthModal`.
+   - Switch to **Create one**, fill in First/Last Name, Mobile Number, and Password, agree to Terms, and submit.
+   - **Verification:** Modal closes, header reflects the signed-in state. `localStorage["vastrax_token"]` holds a JWT, and the NextAuth session cookie is set (the same token is available client-side as `session.accessToken`).
 
 2. **User Login:**
-   - Logout from header.
-   - Go to `http://localhost:3000/login`.
-   - Enter credentials and sign in.
-   - **Verification:** Login succeeds; user details restore from real API.
+   - Sign out from the header, reopen `AuthModal`, sign in with the same credentials.
+   - **Verification:** Sign-in succeeds and the session restores from the real API (`POST /api/v1/auth/login`).
 
-3. **Access Token Refresh (Automatic):**
-   - Open DevTools Console.
-   - In application LocalStorage, edit the `vx_token` value slightly (corrupting it) but leave `vx_refresh_token` valid.
-   - Perform any authenticated action (e.g., go to Profile Page or toggle a wishlist item).
-   - **Verification:** The frontend API interceptor detects the expired/invalid access token, calls `/api/v1/auth/refresh` behind the scenes, stores the new tokens, and completes your original request transparently without prompting for login.
+3. **Invalid credentials / unreachable backend:**
+   - Attempt sign-in with a wrong password — **Verification:** an inline alert shows the backend's actual error message (`Invalid email or password`), not a generic failure.
+   - Stop the backend and reload any page — **Verification:** the app shows the global "Connection Lost" fallback screen (`ServerDownScreen`) instead of any page rendering with empty/mock data, and recovers automatically once the backend is back (or via its **Retry Now** button).
 
 ---
 
@@ -31,12 +26,11 @@ This document details step-by-step procedures to test the full frontend UI, back
 **Objective:** Verify garment inventory management and S3 pre-signed upload URLs.
 
 1. **Admin Login:**
-   - Go to `http://localhost:3000/admin/login` or click Admin Console at footer.
-   - Login with `owner@vastrax.com` / `password123`.
-   - **Verification:** Redirects to the Admin Dashboard.
+   - Sign in via `AuthModal` with `owner@vastrax.com` / `password123` (or your seeded admin account).
+   - Go to `http://localhost:3000/` — **Verification:** the Admin Dashboard renders.
 
 2. **Add New Garment with Presigned Upload:**
-   - Navigate to **Garments** (Inventory) → Click **Add Garment**.
+   - Navigate to **Products** → **Add Product** (`/products/create`).
    - Trigger the S3 pre-signed URL upload endpoint via a simulated `POST` call or by saving:
      - Endpoint: `POST /api/v1/products/{product_id}/images`
      - Payload: `{ "filename": "new_garment.jpg", "content_type": "image/jpeg" }`
@@ -53,104 +47,94 @@ This document details step-by-step procedures to test the full frontend UI, back
 
 ---
 
-## 3. Order Placement & PhonePe Payment Test
-**Objective:** Verify order checkout, PhonePe payment initiation, simulation loop, webhook signature verification, and stock updates.
+## 3. Order Placement & Razorpay Payment Test
+**Objective:** Verify order checkout, Razorpay order creation, the Checkout.js modal / simulation fallback, signature verification, and stock updates.
 
 1. **Browse and Add to Cart:**
-   - Go to the store frontend home/collections.
-   - Select a garment (e.g. "Aditi Floral A-Line Frock" size `S`). Note the stock count before order.
-   - Add to Cart and click **Checkout**.
+   - Go to the storefront home/collections page.
+   - Select a garment, note the stock count before ordering, add to cart, and click **Checkout**.
 
-2. **Initiate Simulated Payment:**
-   - Choose shipping address, select **Online UPI/Card** payment, and click **Place Order**.
+2. **Initiate Payment:**
+   - Choose shipping address, select **Card** or **Apple Pay**, and click **Place Order**.
    - The app initiates payment via `POST /api/v1/payments/initiate`.
-   - **Verification:** Since real credentials are not loaded, the app redirects to the **Simulation Payment Gateway** page at `http://localhost:3000/checkout/payment-simulation?txn_id=TXN-VX-...&amount=...`.
+   - **Verification:** With real Razorpay credentials configured, this opens the Razorpay Checkout.js modal. Without them (the default), the app shows the in-page **Simulated Payment Gateway** card with `txn_id=TXN-VX-...`.
 
-3. **Success Scenario (Webhook Verification):**
-   - Click **Pay Successfully** on the simulation page.
-   - This triggers the simulated callback to `POST /api/v1/payments/webhook`.
-   - **Verification:** The backend verifies signature index (if configured), processes payment, sets transaction state to `success`, marks the order `confirmed` (payment_status: `paid`).
-   - The user is redirected to the checkout success page showing order receipt details.
-   - Verify product variant stock decreased by the ordered quantity.
+3. **Success Scenario (Signature Verification):**
+   - With real credentials: complete payment in the Razorpay modal — the `handler` callback POSTs the returned `razorpay_order_id`/`razorpay_payment_id`/`razorpay_signature` to `POST /api/v1/payments/verify`, which recomputes and checks the HMAC before accepting.
+   - In simulation mode: click **Pay Successfully** on the Simulated Payment card, which POSTs to `POST /api/v1/payments/simulate` (only accepted when the backend has no live Razorpay credentials configured — rejected otherwise).
+   - **Verification:** payment status flips to `success`, order `status` becomes `confirmed` / `payment_status` becomes `paid`, and a Shiprocket shipment is booked. The checkout page shows the order confirmation screen. Verify product variant stock decreased by the ordered quantity.
 
 4. **Failure Scenario (Cancellation & Stock Restoration):**
-   - Add another item, proceed to checkout, and go to the simulation page.
-   - Click **Fail Payment / Cancel**.
-   - Webhook callback is processed.
-   - **Verification:** Backend marks transaction `failed`, sets order status to `cancelled`, and automatically restores the inventory stock levels for the selected variant.
+   - Add another item, proceed to checkout.
+   - Dismiss the Razorpay modal, or click **Cancel Payment** on the Simulated Payment card.
+   - **Verification:** Backend marks transaction `failed`, sets order status to `cancelled`, and restores the inventory stock levels for the selected variant.
+   - `POST /api/v1/payments/webhook` (verified against `X-Razorpay-Signature`, never skipped) is the durable server-to-server fallback for both outcomes, independent of whether the browser stays open.
+
+5. **COD path:**
+   - Repeat with **Cash / POS** selected — **Verification:** no payment gateway is invoked; the order is created `confirmed`/`pending` immediately and the confirmation screen shows right away.
 
 ---
 
 ## 4. Virtual Try-On (FASHN AI) Test
-**Objective:** Verify user portrait uploads, inference pipeline, status tracking, and history logging.
+**Objective:** Verify garment try-on from a product page.
 
-1. **Submit Try-On Job:**
-   - Go to any product details page and click the **Virtual Try-On** floating banner or button.
-   - Upload a portrait photo (e.g., standard front-facing model picture).
-   - Click **Generate Try-On**.
-   - **Verification:** Triggers `POST /api/v1/tryon/start`, uploads photo, generates unique session ID, and kicks off inference.
+1. **Submit Try-On:**
+   - Go to a product detail page and open its Virtual Try-On page (`/storefront/product/{id}/tryon`).
+   - Upload a portrait photo, optionally pick a top to pair (for bottoms), and start the try-on.
+   - **Verification:** the page calls `POST /api/v1/try-on` (or `/try-on/combo` for a top+bottom pairing) with the photo and garment reference — this now requires the caller to be signed in (401 if not). The response is synchronous; the composited result renders directly, no polling involved.
 
-2. **Status Polling:**
-   - The frontend polls status via `GET /api/v1/tryon/status/{job_id}`.
-   - **Verification:** Poller receives `processing` state, followed by `done` when inference completes. The final output is rendered on the screen with a slider comparing "Before" (your portrait) and "After" (the garment fit).
-
-3. **Inference History:**
-   - Go to **Account** → **Try-On History**.
-   - **Verification:** Previous try-on sessions are fetched from `vastrax_tryon_sessions` and listed in chronological order.
+2. **Usage is recorded:**
+   - As an admin, check `GET /api/v1/analytics/usage` (or the Users page's per-user stat card) — **Verification:** `tryon.total_sessions` incremented, and the signed-in user's card shows an updated try-on count, whether the attempt succeeded or failed.
 
 ---
 
-## 5. Customer Profile, Address CRUD & Wishlist Test
-**Objective:** Verify customer profile adjustments, address book entries, and wishlist toggling.
+## 5. Customer Account Test
+**Objective:** Verify the account portal's order history, wishlist, and profile tabs.
 
-1. **Profile Details Modification:**
-   - Go to **Account** → **Profile Settings** (`http://localhost:3000/profile`).
-   - Change the `Full Name` and `Phone Number`. Click **Save Changes**.
-   - **Verification:** Refresh the page to confirm changes remain. Query `vastrax_users` DB to verify updates persisted.
-
-2. **Address Book CRUD Operations:**
-   - Go to **Account** → **Addresses** (`http://localhost:3000/addresses`).
-   - **Create:** Click **Add New Address**, fill form (Label: `Office`, Line 1: `IT Park`, City: `Chennai`, Pincode: `600113`, Default: `False`), and save.
-   - **Read:** Confirm the new address shows in the address card grid.
-   - **Update:** Click **Edit** on the address card, change Pincode to `600114`, and save. Confirm display updates.
-   - **Delete:** Click **Delete** on the address card. Confirm card is removed.
-
-3. **Wishlist Syncing:**
-   - Browse the catalog. Hover over a product and click the **Heart Icon** (wishlist toggle).
-   - Go to **Account** → **Wishlist** (`http://localhost:3000/wishlist`).
-   - **Verification:** The wishlisted garment appears in the list. Click the Heart Icon again to remove it and verify it disappears.
+1. Go to `/storefront/account` while signed in.
+2. **Orders tab:** confirms past orders and their status appear.
+3. **Favorites tab:** confirms wishlisted items (toggled via the heart icon on collections/product pages) appear; toggling syncs to `POST /api/v1/users/me/wishlist/{product_id}` when signed in, or to `localStorage["vastrax_favorites"]` as a guest.
+4. **Profile tab:** update name/phone and confirm it persists after a refresh.
 
 ---
 
 ## 6. Admin Management & Operations Test
-**Objective:** Verify administrative control panels, order processing, and transaction ledger.
+**Objective:** Verify administrative control panels, order processing, and the payments ledger.
 
 1. **Orders Dashboard & Status Lifecycle:**
-   - Log in as admin and go to **Orders** (`http://localhost:3000/admin/orders`).
-   - Select a `confirmed` order.
-   - Click **Mark as Packed** (Transitions to `packed`).
-   - Click **Mark as Shipped** (Transitions to `shipped`).
-   - Click **Mark as Delivered** (Transitions to `delivered`).
-   - **Verification:** Check client account page to confirm order status reflects status changes in real-time.
+   - Log in as admin, go to **Orders** (`/orders`).
+   - Select a `confirmed` order and progress it through **Packed** → **Shipped** → **Delivered**.
+   - **Verification:** the customer's account page reflects the status change.
 
 2. **Inventory Stock Adjustments:**
-   - Go to **Garments** → Click **Edit** on any item.
-   - Modify the stock levels for variant sizes (e.g. change size `M` stock from `12` to `15`). Save changes.
-   - **Verification:** Verify new stock levels reflect when customer selects the product sizes.
+   - Go to **Products** → **Edit** on any item, modify a variant's stock, save.
+   - **Verification:** the new stock level reflects on the storefront product page.
 
 3. **Payment Ledger & Administrative Refund:**
-   - Go to **Payments** (`http://localhost:3000/admin/payments`).
-   - **Verification:** The transaction ledger displays transaction entries with Reference IDs, order numbers, customer names, methods, and transaction status (`Success` / `COD Pending`).
-   - Select a transaction and click **Initiate Refund**.
-   - **Verification:** Payment status displays as `Refunded` on the ledger, and the linked order payment status changes to `refunded`.
+   - `GET /api/v1/payments/admin` (admin-only) returns the full transaction ledger.
+   - `POST /api/v1/payments/admin/refund` with `{ "txn_id": "...", "amount": ... }` — **Verification:** payment status becomes `refunded`, and the linked order's `payment_status` becomes `refunded`. There is currently no dedicated admin UI page for this — it's API-only.
+
+4. **Per-user usage stat card:**
+   - Go to **Users** (`/users`), open **View Profile** on any customer.
+   - **Verification:** the slideover shows **Try-Ons** and **AI Chats** counts sourced from `tryon_sessions`/`chat_messages`, scoped correctly to that user (a different user shows different counts, never leaking another customer's activity).
 
 ---
 
 ## 7. Vastra AI Style Advisor Chat Test
 **Objective:** Verify conversational AI response generation.
 
-1. **Style Advisory Chatbot Interaction:**
-   - Click the **Vastra AI Advisor** widget or floating icon on the page.
-   - Enter a query: `"Recommend a top to pair with beige pants."`
-   - **Verification:** Chat service responds with custom styling guidance based on catalog products.
+1. Open the **Vastra AI Advisor** drawer (storefront) or the dedicated `/ai-assistant` page (admin).
+2. Enter a query, e.g. `"Recommend a top to pair with beige pants."`
+3. **Verification:** `POST /api/v1/chat` responds with styling guidance grounded in real catalog products; both the user's and the assistant's messages are persisted to `chat_messages` (visible via the usage counters above).
 
+---
+
+## 8. Security Regression Checks
+**Objective:** Confirm the auth/authorization fixes hold. Run without any `Authorization` header unless noted.
+
+1. `GET /api/v1/users/me` with no token → **401**, not a silently-authenticated admin session.
+2. A signed-in **non-admin** customer calling any `/admin/*`-suffixed route (e.g. `GET /api/v1/users/admin/admins`, `GET /api/v1/payments/admin`) → **403**.
+3. `POST /api/v1/auth/forgot-password` → response never includes the reset token (delivered by email only).
+4. `POST /api/v1/try-on` / `/try-on/combo` with no token → **401**; a `garment_path` containing `../` or an absolute filesystem path is rejected, not read.
+5. `POST /api/v1/payments/webhook` with a forged `X-Razorpay-Signature` → **403**, in every configuration (no mock-mode bypass).
+6. `POST /api/v1/shipping/cancel` / `/pickup` / `/label` / `/return` with no token → **401**; with a token but no ownership of the order → **403**/**404**.
