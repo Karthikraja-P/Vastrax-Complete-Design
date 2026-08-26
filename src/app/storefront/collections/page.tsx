@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Search, Heart, Star, ShoppingBag, Menu, User, ChevronRight, SlidersHorizontal } from "lucide-react";
+import { Search, Heart, Star, ShoppingBag, Menu, User, ChevronRight, SlidersHorizontal, Box } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { AuthModal } from "@/components/auth/AuthModal";
 import { useSession, signOut } from "next-auth/react";
 import Link from "next/link";
 import { CartDrawer } from "@/components/layout/CartDrawer";
 import { StylistDrawer } from "@/components/stylist/StylistDrawer";
+import { Product3DModal } from "@/components/3d/Product3DModal";
 import { productsApi, categoriesApi } from "@/lib/api";
 import { reportBackendReachable, reportBackendUnreachable } from "@/lib/backendStatus";
 
@@ -55,6 +56,7 @@ export default function CollectionsPage() {
   
   const [favorites, setFavorites] = useState<number[]>([]);
   const [selectedProductForSize, setSelectedProductForSize] = useState<any | null>(null);
+  const [selected3DProduct, setSelected3DProduct] = useState<any | null>(null);
 
   const { data: session } = useSession();
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -99,7 +101,7 @@ export default function CollectionsPage() {
             else img = fallbackImg;
           }
 
-          return {
+            return {
             id: p.id,
             name: p.name || p.title,
             price: Number(p.price || p.price_selling || 0),
@@ -108,7 +110,8 @@ export default function CollectionsPage() {
             image: img,
             isNew: p.isNew || p.is_featured,
             categoryId: p.categoryId || p.category_id,
-            categoryName: p.category?.name || p.category || "Apparel"
+            categoryName: p.category?.name || p.category || "Apparel",
+            model3dUrl: p.model3dUrl || (/frock|dress|gown/i.test(p.name || "") ? "/models/3d/garment3_multiview.glb" : /pant|trouser/i.test(p.name || "") ? "/models/3d/garment_photo_textured.glb" : "/models/3d/garment2_textured.glb")
           };
         });
         setProducts(mapped);
@@ -569,12 +572,21 @@ export default function CollectionsPage() {
                     <div key={product.id} className="bg-surface dark:bg-[#1c1c1c] rounded-3xl p-5 group relative border border-border/50 dark:border-white/5 hover:border-border dark:border-white/10 transition-colors flex flex-col h-[340px]">
                       {/* Top icons */}
                       <div className="flex items-start justify-between z-10 relative mb-4 shrink-0">
-                        <button 
-                          onClick={(e) => toggleFavorite(product, e)}
-                          className="w-8 h-8 rounded-full bg-background dark:bg-[#2a2a2a] flex items-center justify-center text-muted-foreground hover:text-[#e07a3f] transition-colors"
-                        >
-                          <Heart className={`w-4 h-4 ${favorites.includes(product.id) ? 'fill-[#e07a3f] text-[#e07a3f]' : ''}`} />
-                        </button>
+                        <div className="flex items-center gap-1.5">
+                          <button 
+                            onClick={(e) => toggleFavorite(product, e)}
+                            className="w-8 h-8 rounded-full bg-background dark:bg-[#2a2a2a] flex items-center justify-center text-muted-foreground hover:text-[#e07a3f] transition-colors"
+                          >
+                            <Heart className={`w-4 h-4 ${favorites.includes(product.id) ? 'fill-[#e07a3f] text-[#e07a3f]' : ''}`} />
+                          </button>
+                          <button 
+                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); setSelected3DProduct(product); }}
+                            title="Interactive 3D Preview"
+                            className="w-8 h-8 rounded-full bg-background dark:bg-[#2a2a2a] flex items-center justify-center text-muted-foreground hover:text-[#38bdf8] transition-colors shadow-sm cursor-pointer group/3d"
+                          >
+                            <Box className="w-4 h-4 text-[#38bdf8] group-hover/3d:scale-110 transition-transform" />
+                          </button>
+                        </div>
                         <div className="bg-background dark:bg-[#2a2a2a] px-2.5 py-1 rounded-full flex items-center gap-1.5">
                           <Star className="w-3 h-3 fill-[#e07a3f] text-[#e07a3f]" />
                           <span className="text-[10px] font-bold text-foreground dark:text-white">{product.rating}</span>
@@ -638,6 +650,15 @@ export default function CollectionsPage() {
       <AuthModal isOpen={isAuthOpen} onClose={() => setIsAuthOpen(false)} />
       <CartDrawer isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} />
       <StylistDrawer isOpen={isStylistOpen} onClose={() => setIsStylistOpen(false)} />
+      <Product3DModal 
+        isOpen={!!selected3DProduct} 
+        onClose={() => setSelected3DProduct(null)} 
+        product={selected3DProduct}
+        onAddToBag={(prod) => {
+          toggleBag(prod.id);
+          setSelected3DProduct(null);
+        }}
+      />
 
       {/* Size Selection Modal */}
       {selectedProductForSize && (

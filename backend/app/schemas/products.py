@@ -43,6 +43,7 @@ class ProductCreate(BaseModel):
     description: Optional[str] = None
     is_featured: bool = False
     is_published: bool = True
+    model_path: Optional[str] = None  # URL or S3 key for 3D model
     images: list[ProductImageCreate] = []
     variants: list[ProductVariantCreate] = []
 
@@ -88,3 +89,7 @@ class StockUpdateIn(BaseModel):
 class ImageUploadIn(BaseModel):
     filename: str
     content_type: str
+class ModelUploadIn(BaseModel):
+    filename: str
+    content_type: str
+

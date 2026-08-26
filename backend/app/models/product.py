@@ -28,6 +28,7 @@ class Product(Base):
     colour: Mapped[str | None] = mapped_column(String(100), nullable=True)
     price_mrp: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     price_selling: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+    model_path: Mapped[str | None] = mapped_column(String(255), nullable=True)  # relative URL e.g., /models/3d/{product_id}.glb
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_featured: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_published: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)

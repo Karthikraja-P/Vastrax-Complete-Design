@@ -10,6 +10,7 @@ This is a complete Next.js 16 + FastAPI PostgreSQL project integrating a modern,
 - `/src/app/products/` - Admin Products Management.
   - `page.tsx` - All products table with filters, search, thumbnails, delete modal, and pagination.
   - `create/page.tsx` - Create product form with category linkage and variant generation.
+  - `add/page.tsx` - Enhanced Add Product wizard with tabbed layout: Basic Info, Pricing & Inventory, Product Images (drag-drop 2D upload with previews/reorder/remove), Virtual Try-On, AI Video, and **3D Product** (front/side/back photo upload → Hunyuan 3D reconstruction → GLB preview).
   - `edit/page.tsx` - Edit product form with preloaded garment parameters and category assignment.
 - `/src/app/categories/` - Product Categories Management (active catalog & deleted trash bin).
 - `/src/app/orders/page.tsx` - Orders Management & Live Fulfillment Tracking.
@@ -30,6 +31,9 @@ This is a complete Next.js 16 + FastAPI PostgreSQL project integrating a modern,
   - `CartDrawer.tsx` - Glassmorphic slide-over shopping bag drawer with promo validation and live checkout link.
 - `/src/components/stylist/` - AI Haute Couture Stylist.
   - `StylistDrawer.tsx` - Conversational concierge powered by OpenAI GPT-4o mini with persistent database chat history, interactive chips, active promotions, and instant virtual try-on routing.
+- `/src/components/3d/` - Interactive 3D Garment Visualization.
+  - `GarmentViewer3D.tsx` - PBR WebGL 3D model viewer with 360° rotation, zoom, lighting presets, and theme controls.
+  - `Product3DModal.tsx` - Quick-preview 3D modal integrated across catalog cards and product pages.
 - `/src/components/products/` - Product management and interactive modules.
   - `ProductTable.tsx` - Products listing wired to `productsApi`.
 - `/src/components/admin/` - Admin specific components (`NotchedCard.tsx` with interactive `<Bell />` threshold alerts and `<Sparkles />` AI insights popovers).
@@ -47,6 +51,12 @@ This is a complete Next.js 16 + FastAPI PostgreSQL project integrating a modern,
   - `backend/` - Dedicated VTON FastAPI service with GPU inference execution.
   - `frontend/` - Standalone luxury boutique UI and modal fitting room.
   - `docker-compose.yml` - Container orchestration for standalone try-on.
+- `/3d-model/Hunyuan3D-2.1/` - 3D Garment Generation & Interactive 3D Product Display Pipeline.
+  - `hy3dshape/` - 3D Shape reconstruction, remeshing, decimation, and base meshes.
+  - `hy3dshape/web_test/` - Interactive boutique 3D web viewer with `.glb` assets (`garment_perfect.glb`, `textured_garment.glb`, etc.).
+  - `hy3dpaint/` - AI texture painting pipeline, custom rasterizer, and UV mappers.
+  - `api_server.py` - FastAPI 3D generation & texture synthesis server.
+  - `.venv/` - PyTorch + CUDA environment for 3D model inference.
 
 ## Production Ready Status
 - [x] Next.js 16 (Turbopack) production build passing with 0 errors across all 18 routes.

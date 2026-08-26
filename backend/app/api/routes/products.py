@@ -1,12 +1,12 @@
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, File, Form, UploadFile, Query, status
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db
 from app.middleware.auth import require_admin
 from app.models.user import User
-from app.schemas.products import ImageUploadIn, ProductCreate, ProductUpdate, StockUpdateIn
+from app.schemas.products import ImageUploadIn, ModelUploadIn, ProductCreate, ProductUpdate, StockUpdateIn
 from app.services.product_service import ProductService
 
 router = APIRouter(prefix="/products", tags=["products"])
@@ -92,3 +92,25 @@ def generate_image_upload_url(
     db: Session = Depends(get_db),
 ):
     return ProductService(db).generate_image_upload_url(product_id, body.filename, body.content_type)
+
+
+@router.post("/{product_id}/model")
+def generate_model_upload_url(
+    product_id: str,
+    body: ModelUploadIn,
+    _: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    return ProductService(db).generate_model_upload_url(product_id, body.filename, body.content_type)
+
+
+@router.post("/{product_id}/reconstruct")
+def reconstruct_model(
+    product_id: str,
+    front: UploadFile = File(...),
+    side: UploadFile = File(...),
+    back: UploadFile = File(...),
+    _: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    return ProductService(db).reconstruct_model(product_id, front, side, back)

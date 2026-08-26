@@ -8,6 +8,8 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.exceptions import InternalError, NotFoundError
+from fastapi import UploadFile
+import requests
 from app.core.logging import get_logger
 from app.models.category import Category
 from app.models.product import Product
@@ -218,7 +220,43 @@ class ProductService:
         self.db.commit()
         return {"product_id": product_id, "variant_id": variant_id, "stock_qty": stock_qty}
 
-    def generate_image_upload_url(self, product_id: str, filename: str, content_type: str) -> dict:
+    def reconstruct_model(self, product_id: str, front: UploadFile, side: UploadFile, back: UploadFile) -> dict:
+        """Send three 2D images to Hunyuan 3D service, get GLB, upload to S3, and store path.
+        Returns same dict as generate_model_upload_url (upload_url, s3_url, key)."""
+        # Verify product exists
+        if not self.db.query(Product).filter(Product.id == product_id).first():
+            raise NotFoundError("Product not found")
+        # Read files
+        front_bytes = front.file.read()
+        side_bytes = side.file.read()
+        back_bytes = back.file.read()
+        # Call external Hunyuan API (placeholder URL & auth)
+        import requests
+        hunyuan_url = "https://api.hunyuan.com/v1/garment/reconstruct"
+        files = {
+            "front": (front.filename, front_bytes, front.content_type),
+            "side": (side.filename, side_bytes, side.content_type),
+            "back": (back.filename, back_bytes, back.content_type),
+        }
+        # Assume API token in env
+        headers = {"Authorization": f"Bearer {settings.hunyuan_api_key}"}
+        resp = requests.post(hunyuan_url, files=files, headers=headers)
+        if resp.status_code != 200:
+            raise InternalError(f"Hunyuan reconstruction failed: {resp.text}")
+        glb_bytes = resp.content
+        # Generate S3 presigned URL for temporary upload
+        filename = f"{product_id}_reconstructed.glb"
+        presigned = self.generate_model_upload_url(product_id, filename, "model/gltf-binary")
+        # Upload GLB to S3 using the presigned URL
+        upload_resp = requests.put(presigned["upload_url"], data=glb_bytes, headers={"Content-Type": "model/gltf-binary"})
+        if upload_resp.status_code not in (200, 201):
+            raise InternalError(f"Failed to upload GLB to S3: {upload_resp.text}")
+        # Update product model_path
+        product = self.db.query(Product).filter(Product.id == product_id).first()
+        product.model_path = presigned["s3_url"]
+        self.db.commit()
+        return presigned
+
         if not self.db.query(Product).filter(Product.id == product_id).first():
             raise NotFoundError("Product not found")
         s3 = boto3.client("s3", region_name=settings.aws_default_region)

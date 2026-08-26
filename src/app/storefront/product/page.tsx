@@ -5,7 +5,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { 
   ChevronRight, Heart, Star, Share2, Ruler, Truck, ShieldCheck, 
   Minus, Plus, ChevronLeft, ArrowRight, Menu, Search, User, ShoppingBag,
-  Phone, Link as LinkIcon, RefreshCw, Check, Sparkles, Shirt
+  Phone, Link as LinkIcon, RefreshCw, Check, Sparkles, Shirt, Box
 } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { AuthModal } from "@/components/auth/AuthModal";
@@ -13,6 +13,8 @@ import { useSession, signOut } from "next-auth/react";
 import Link from "next/link";
 import { CartDrawer } from "@/components/layout/CartDrawer";
 import { StylistDrawer } from "@/components/stylist/StylistDrawer";
+import { GarmentViewer3D } from "@/components/3d/GarmentViewer3D";
+import { Product3DModal } from "@/components/3d/Product3DModal";
 
 import { productsApi } from "@/lib/api";
 
@@ -44,6 +46,9 @@ function ProductContent() {
   const [userName, setUserName] = useState("");
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
 
+  const [is3DMode, setIs3DMode] = useState(false);
+  const [is3DModalOpen, setIs3DModalOpen] = useState(false);
+
   // Dynamic Product State
   const [product, setProduct] = useState<{
     id: string;
@@ -58,6 +63,7 @@ function ProductContent() {
     images: string[];
     rating: number;
     reviewsCount: number;
+    model3dUrl?: string;
   }>({
     id: "vtx-default",
     name: "Cyber Silk Trench Coat",
@@ -70,7 +76,8 @@ function ProductContent() {
     image: "https://images.unsplash.com/photo-1551028719-00167b16eac5?q=80&w=800&auto=format&fit=crop",
     images: ["https://images.unsplash.com/photo-1551028719-00167b16eac5?q=80&w=800&auto=format&fit=crop"],
     rating: 4.9,
-    reviewsCount: 12
+    reviewsCount: 12,
+    model3dUrl: "/models/3d/garment2_textured.glb"
   });
 
   const getFallbackImage = (name: string, catName: string) => {
@@ -81,8 +88,15 @@ function ProductContent() {
     if (/pant|trouser|cargo|denim|jean/i.test(p)) return "https://images.unsplash.com/photo-1542272604-787c3835535d?q=80&w=800&auto=format&fit=crop";
     if (/shirt/i.test(p)) return "https://images.unsplash.com/photo-1596755094514-f87e34085b2c?q=80&w=800&auto=format&fit=crop";
     if (/shoe|sneaker|loafer/i.test(p)) return "https://images.unsplash.com/photo-1549298916-b41d501d3772?q=80&w=800&auto=format&fit=crop";
-    if (/hat|cap|bucket/i.test(p)) return "https://images.unsplash.com/photo-1588850561407-ed78c282e89b?q=80&w=800&auto=format&fit=crop";
     return "https://images.unsplash.com/photo-1551028719-00167b16eac5?q=80&w=800&auto=format&fit=crop";
+  };
+
+  const get3DModelForProduct = (name: string, catName: string) => {
+    const p = (name + " " + catName).toLowerCase();
+    if (/frock|dress/i.test(p)) return "/models/3d/garment3_multiview.glb";
+    if (/limitless|graphic|white/i.test(p)) return "/models/3d/garment2_textured.glb";
+    if (/pant|trouser/i.test(p)) return "/models/3d/garment_photo_textured.glb";
+    return "/models/3d/garment2_textured.glb";
   };
 
   useEffect(() => {
@@ -96,6 +110,7 @@ function ProductContent() {
             const allImgs = item.images?.length 
               ? item.images.map((i: any) => typeof i === 'string' ? i : i.s3_url || img) 
               : [img];
+            const modelUrl = item.model3dUrl || get3DModelForProduct(item.name || item.title || "", catName);
 
             setProduct({
               id: String(item.id),
@@ -109,9 +124,13 @@ function ProductContent() {
               image: img,
               images: allImgs,
               rating: item.rating || 4.8,
-              reviewsCount: item.reviewsCount || 9
+              reviewsCount: item.reviewsCount || 9,
+              model3dUrl: modelUrl
             });
             if (item.colour) setActiveColor(item.colour);
+            if (item.name?.toLowerCase().includes("3d") || item.name?.toLowerCase().includes("limitless")) {
+              setIs3DMode(true);
+            }
             return;
           }
         }
@@ -124,6 +143,7 @@ function ProductContent() {
           const allImgs = item.images?.length 
             ? item.images.map((i: any) => typeof i === 'string' ? i : i.s3_url || img) 
             : [img];
+          const modelUrl = item.model3dUrl || get3DModelForProduct(item.name || item.title || "", catName);
 
           setProduct({
             id: String(item.id),
@@ -137,7 +157,8 @@ function ProductContent() {
             image: img,
             images: allImgs,
             rating: item.rating || 4.9,
-            reviewsCount: item.reviewsCount || 14
+            reviewsCount: item.reviewsCount || 14,
+            model3dUrl: modelUrl
           });
           if (item.colour) setActiveColor(item.colour);
         }
@@ -286,27 +307,73 @@ function ProductContent() {
           <main className="bg-surface rounded-[2rem] md:rounded-[2.5rem] shadow-sm border border-border/50 p-6 md:p-10 mb-12 transition-colors duration-300">
             <div className="flex flex-col lg:flex-row gap-10 xl:gap-16">
               
-              {/* Left: Image Gallery */}
+              {/* Left: Image Gallery & 3D Interactive Viewer */}
               <div className="w-full lg:w-[55%]">
-                <div className="bg-[#f5f5f5] dark:bg-[#1a1a1a] rounded-[2.5rem] aspect-square relative flex items-center justify-center p-8 transition-colors duration-300 overflow-hidden">
+                <div className="bg-[#f5f5f5] dark:bg-[#1a1a1a] rounded-[2.5rem] aspect-square relative flex items-center justify-center p-4 sm:p-8 transition-colors duration-300 overflow-hidden">
+                  {/* Top Left: Wishlist */}
                   <button 
                     onClick={(e) => toggleFavorite(product, e)}
-                    className="absolute top-6 left-6 w-12 h-12 rounded-full bg-white dark:bg-[#2a2a2a] flex items-center justify-center text-black/60 dark:text-white hover:text-[#e07a3f] transition-colors z-10 shadow-md border border-black/5 dark:border-white/10"
+                    className="absolute top-6 left-6 w-12 h-12 rounded-full bg-white dark:bg-[#2a2a2a] flex items-center justify-center text-black/60 dark:text-white hover:text-[#e07a3f] transition-colors z-30 shadow-md border border-black/5 dark:border-white/10"
                   >
                     <Heart className={`w-5 h-5 ${favorites.includes(product.id) ? 'fill-[#e07a3f] text-[#e07a3f]' : ''}`} />
                   </button>
-                  <button 
-                    onClick={handleOpenTryOn}
-                    className="absolute bottom-6 right-6 px-4 py-2.5 rounded-full bg-[#0A192F]/90 hover:bg-[#0A192F] text-white text-xs font-semibold backdrop-blur-md border border-white/10 flex items-center gap-2 shadow-xl hover:scale-105 transition-all z-10 cursor-pointer"
-                  >
-                    <Sparkles className="w-3.5 h-3.5 text-[#e07a3f]" />
-                    <span>Virtual Try-On</span>
-                  </button>
-                  <img 
-                    src={product.image} 
-                    alt={product.name} 
-                    className="w-full h-full object-cover rounded-2xl drop-shadow-2xl"
-                  />
+
+                  {/* Top Right: 2D Photo / 3D Interactive Mode Toggle */}
+                  <div className="absolute top-6 right-6 z-30 flex items-center bg-black/60 dark:bg-white/10 backdrop-blur-xl border border-white/10 rounded-full p-1 shadow-lg">
+                    <button
+                      type="button"
+                      onClick={() => setIs3DMode(false)}
+                      className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${!is3DMode ? 'bg-white text-black shadow' : 'text-white/70 hover:text-white'}`}
+                    >
+                      Photo
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIs3DMode(true)}
+                      className={`px-3 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${is3DMode ? 'bg-[#38bdf8] text-black shadow' : 'text-white/70 hover:text-white'}`}
+                    >
+                      <Box className="w-3.5 h-3.5" />
+                      <span>3D Mesh</span>
+                    </button>
+                  </div>
+
+                  {/* Bottom Action Badges */}
+                  <div className="absolute bottom-6 left-6 right-6 z-30 flex items-center justify-between pointer-events-none">
+                    <button 
+                      onClick={() => setIs3DModalOpen(true)}
+                      className="pointer-events-auto px-4 py-2.5 rounded-full bg-black/70 hover:bg-black text-white text-xs font-semibold backdrop-blur-md border border-white/10 flex items-center gap-2 shadow-xl hover:scale-105 transition-all cursor-pointer"
+                    >
+                      <Box className="w-3.5 h-3.5 text-[#38bdf8]" />
+                      <span>Expand 3D</span>
+                    </button>
+
+                    <button 
+                      onClick={handleOpenTryOn}
+                      className="pointer-events-auto px-4 py-2.5 rounded-full bg-[#0A192F]/90 hover:bg-[#0A192F] text-white text-xs font-semibold backdrop-blur-md border border-white/10 flex items-center gap-2 shadow-xl hover:scale-105 transition-all cursor-pointer"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-[#e07a3f]" />
+                      <span>Virtual Try-On</span>
+                    </button>
+                  </div>
+
+                  {/* Main Display: 3D Garment Viewer vs 2D Photo */}
+                  {is3DMode ? (
+                    <div className="w-full h-full">
+                      <GarmentViewer3D
+                        src={product.model3dUrl || "/models/3d/garment2_textured.glb"}
+                        alt={product.name}
+                        poster={product.image}
+                        badgeTitle="Hunyuan3D-2.1 PBR"
+                        className="w-full h-full"
+                      />
+                    </div>
+                  ) : (
+                    <img 
+                      src={product.image} 
+                      alt={product.name} 
+                      className="w-full h-full object-cover rounded-2xl drop-shadow-2xl animate-fade-in"
+                    />
+                  )}
                 </div>
               </div>
 
@@ -491,6 +558,19 @@ function ProductContent() {
       />
       <CartDrawer isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} />
       <StylistDrawer isOpen={isStylistOpen} onClose={() => setIsStylistOpen(false)} />
+      <Product3DModal 
+        isOpen={is3DModalOpen} 
+        onClose={() => setIs3DModalOpen(false)} 
+        product={{
+          id: product.id,
+          name: product.name,
+          category: product.categoryName,
+          price: product.price,
+          image: product.image,
+          model3dUrl: product.model3dUrl || "/models/3d/garment2_textured.glb"
+        }}
+        onAddToBag={addToCart}
+      />
     </div>
   );
 }
