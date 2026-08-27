@@ -13,6 +13,8 @@ class ChatRequest(BaseModel):
     profile: dict = {}
     session_id: Optional[str] = None
     user_id: Optional[str] = None
+    context_url: Optional[str] = None
+    cart_items: Optional[list] = None
 
 
 class ChatHistoryItem(BaseModel):

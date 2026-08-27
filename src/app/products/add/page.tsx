@@ -51,6 +51,7 @@ export default function AddProductPage() {
   const [categories, setCategories] = useState<any[]>([]);
   const [fabric, setFabric] = useState("");
   const [colour, setColour] = useState("");
+  const [occasion, setOccasion] = useState("");
 
   // Pricing
   const [priceSelling, setPriceSelling] = useState("");
@@ -184,6 +185,7 @@ export default function AddProductPage() {
         category_id: categoryId || (categories.length > 0 ? String(categories[0].id) : ""),
         fabric: fabric.trim() || undefined,
         colour: colour.trim() || undefined,
+        occasion: occasion || undefined,
         price_selling: parseFloat(priceSelling),
         price_mrp: priceMrp ? parseFloat(priceMrp) : parseFloat(priceSelling),
         is_published: publish,

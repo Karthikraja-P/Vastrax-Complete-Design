@@ -100,6 +100,9 @@ export interface ProductItem {
   title?: string;
   slug?: string;
   description?: string;
+  fabric?: string;
+  colour?: string;
+  occasion?: string;
   price: number;
   price_selling?: number;
   price_mrp?: number;
@@ -494,7 +497,9 @@ export const chatApi = {
     message: string,
     sessionId?: string,
     history: { role: string; content: string }[] = [],
-    profile: Record<string, any> = {}
+    profile: Record<string, any> = {},
+    contextUrl?: string,
+    cartItems?: any[]
   ): Promise<ChatResponse> {
     const messagesPayload = [...history, { role: "user", content: message }];
     return await fetchApi<ChatResponse>("/chat", {
@@ -503,6 +508,8 @@ export const chatApi = {
         messages: messagesPayload,
         session_id: sessionId,
         profile,
+        context_url: contextUrl,
+        cart_items: cartItems
       }),
     });
   },

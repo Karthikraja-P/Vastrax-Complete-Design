@@ -270,6 +270,9 @@ function ProductContent() {
 
         <div className="flex items-center gap-4 md:gap-6">
           <ThemeToggle />
+          <Link href="/storefront/favorites" className="relative text-foreground/70 hover:text-[#e07a3f] transition-colors">
+            <Heart className="w-5 h-5" />
+          </Link>
           <button 
             onClick={() => setIsStylistOpen(true)}
             className="hidden md:flex items-center gap-2 px-4 py-2 rounded-full bg-[#e07a3f]/10 text-[#e07a3f] border border-[#e07a3f]/30 hover:bg-[#e07a3f] hover:text-white transition-all text-xs font-bold uppercase tracking-wider"

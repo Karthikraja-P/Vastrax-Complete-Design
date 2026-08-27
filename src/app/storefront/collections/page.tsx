@@ -53,7 +53,7 @@ const categories = [
 export default function CollectionsPage() {
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
-  
+
   const [favorites, setFavorites] = useState<number[]>([]);
   const [selectedProductForSize, setSelectedProductForSize] = useState<any | null>(null);
   const [selected3DProduct, setSelected3DProduct] = useState<any | null>(null);
@@ -71,7 +71,7 @@ export default function CollectionsPage() {
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
   const [loading, setLoading] = useState(true);
-  
+
   useEffect(() => {
     async function fetchData() {
       setLoading(true);
@@ -101,7 +101,7 @@ export default function CollectionsPage() {
             else img = fallbackImg;
           }
 
-            return {
+          return {
             id: p.id,
             name: p.name || p.title,
             price: Number(p.price || p.price_selling || 0),
@@ -149,14 +149,14 @@ export default function CollectionsPage() {
           reportBackendUnreachable();
         }
       }
-      
+
       // Fallback to local storage if guest or fetch failed
       const saved = localStorage.getItem("vastrax_favorites");
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
           setFavorites(parsed.map((f: any) => f.id));
-        } catch (e) {}
+        } catch (e) { }
       }
     }
     loadWishlist();
@@ -165,7 +165,7 @@ export default function CollectionsPage() {
   const toggleFavorite = async (product: any, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    
+
     // Optimistic UI update
     const isFav = favorites.includes(product.id);
     setFavorites(prev => isFav ? prev.filter(id => id !== product.id) : [...prev, product.id]);
@@ -186,7 +186,7 @@ export default function CollectionsPage() {
       // Guest: Sync with LocalStorage
       const savedStr = localStorage.getItem("vastrax_favorites");
       let currentFavs = savedStr ? JSON.parse(savedStr) : [];
-      
+
       if (isFav) {
         currentFavs = currentFavs.filter((f: any) => f.id !== product.id);
       } else {
@@ -205,7 +205,7 @@ export default function CollectionsPage() {
   const [activeBanner, setActiveBanner] = useState(0);
   const [isMobileFiltersOpen, setIsMobileFiltersOpen] = useState(false);
   const [bagItems, setBagItems] = useState<number[]>([]);
-  
+
   const [isSortOpen, setIsSortOpen] = useState(false);
   const [sortBy, setSortBy] = useState("Recommended");
   const sortOptions = ["Recommended", "Newest Arrivals", "Price: Low to High", "Price: High to Low", "Top Rated"];
@@ -230,12 +230,12 @@ export default function CollectionsPage() {
   const handleAddToBagClick = (product: any, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    
+
     if (bagItems.includes(product.id)) {
       toggleBag(product.id);
       return;
     }
-    
+
     const isOneSize = /cap|hat|beanie/i.test(product.name);
     if (!isOneSize) {
       setSelectedProductForSize(product);
@@ -250,7 +250,7 @@ export default function CollectionsPage() {
       const pCat = (p.categoryName || "").toLowerCase();
       const pName = (p.name || "").toLowerCase();
       const pCatId = (p.categoryId || "").toLowerCase();
-      
+
       if (selectedCategory.includes("Dress") || selectedCategory.includes("Frock")) {
         const isDress = pCat.includes("dress") || pCat.includes("frock") || /dress|frock|gown|skirt/i.test(pName) || pCatId.includes("dress") || pCatId.includes("frock");
         if (!isDress) return false;
@@ -313,7 +313,7 @@ export default function CollectionsPage() {
             <a href="/storefront/collections" className="text-lg font-medium text-[#e07a3f] transition-colors">Collections</a>
           </nav>
         </div>
-        
+
         {/* Center: Logo */}
         <div className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center pointer-events-none">
           <div className="text-3xl md:text-4xl font-bold tracking-[0.25em] uppercase pointer-events-auto">
@@ -324,20 +324,23 @@ export default function CollectionsPage() {
         {/* Right Side: Actions */}
         <div className="flex items-center gap-4 md:gap-6">
           <ThemeToggle />
+          <a href="/storefront/favorites" className="relative text-muted-foreground hover:text-[#e07a3f] transition-colors">
+            <Heart className="w-5 h-5" />
+          </a>
           <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-surface dark:bg-[#222] border border-border dark:border-white/10 rounded-full transition-all text-sm w-48 lg:w-64 focus-within:border-[#e07a3f] focus-within:ring-1 focus-within:ring-[#e07a3f]">
             <Search className="w-4 h-4 text-muted-foreground" />
-            <input 
-              type="text" 
-              placeholder="Search" 
+            <input
+              type="text"
+              placeholder="Search"
               className="flex-1 bg-transparent border-none outline-none text-foreground dark:text-white placeholder:text-muted-foreground"
             />
           </div>
           <button className="md:hidden text-muted-foreground hover:text-[#e07a3f] transition-colors">
             <Search className="w-5 h-5" />
           </button>
-          
+
           <div className="relative">
-            <button 
+            <button
               onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
               className="flex items-center gap-2 text-muted-foreground hover:text-[#e07a3f] transition-colors"
             >
@@ -352,31 +355,31 @@ export default function CollectionsPage() {
                 <User className="w-5 h-5" />
               )}
             </button>
-            
+
             {isUserMenuOpen && (
               <>
-                <div 
-                  className="fixed inset-0 z-40" 
-                  onClick={() => setIsUserMenuOpen(false)} 
+                <div
+                  className="fixed inset-0 z-40"
+                  onClick={() => setIsUserMenuOpen(false)}
                 />
                 <div className="absolute right-0 mt-4 w-48 bg-background border border-border rounded-xl shadow-lg py-2 z-50 overflow-hidden">
                   {isLoggedIn ? (
                     <>
-                      <Link 
+                      <Link
                         href="/storefront/account"
                         className="block w-full text-left px-4 py-3 text-sm font-medium text-foreground hover:bg-surface transition-colors"
                       >
                         My Account
                       </Link>
-                      <button 
-                        onClick={() => { 
+                      <button
+                        onClick={() => {
                           if (session) {
                             signOut();
                           } else {
-                            setIsLoggedIn(false); 
-                            setUserName(""); 
+                            setIsLoggedIn(false);
+                            setUserName("");
                           }
-                          setIsUserMenuOpen(false); 
+                          setIsUserMenuOpen(false);
                         }}
                         className="w-full text-left px-4 py-3 text-sm font-medium text-red-500 hover:bg-surface transition-colors"
                       >
@@ -385,13 +388,13 @@ export default function CollectionsPage() {
                     </>
                   ) : (
                     <>
-                      <button 
+                      <button
                         onClick={() => { setAuthMode("signin"); setIsAuthOpen(true); setIsUserMenuOpen(false); }}
                         className="w-full text-left px-4 py-3 text-sm font-medium text-foreground hover:bg-surface transition-colors"
                       >
                         Sign In
                       </button>
-                      <button 
+                      <button
                         onClick={() => { setAuthMode("signup"); setIsAuthOpen(true); setIsUserMenuOpen(false); }}
                         className="w-full text-left px-4 py-3 text-sm font-medium text-foreground hover:bg-surface transition-colors"
                       >
@@ -404,7 +407,7 @@ export default function CollectionsPage() {
             )}
           </div>
 
-          <button 
+          <button
             onClick={() => setIsCartOpen(true)}
             className="text-muted-foreground hover:text-[#e07a3f] transition-colors relative"
             aria-label="Open Shopping Bag"
@@ -422,13 +425,13 @@ export default function CollectionsPage() {
       {/* Main Content Area */}
       <div className="flex-1 bg-surface dark:bg-[#111111] px-2 md:px-4 pb-2 md:pb-4 pt-4">
         <main className="relative h-full min-h-[calc(100vh-120px)] rounded-[2rem] md:rounded-[2.5rem] overflow-hidden bg-background dark:bg-[#161616] shadow-sm border border-border/50 dark:border-white/5 pb-20">
-          
+
           <div className="max-w-[1400px] mx-auto p-4 md:p-10">
-            
+
             {/* 1. Hero Banner Slider */}
             <div className="relative w-full h-[250px] md:h-[350px] lg:h-[400px] rounded-[2rem] overflow-hidden mb-8 md:mb-12 border border-border dark:border-white/10">
               {banners.map((banner, idx) => (
-                <div 
+                <div
                   key={idx}
                   className={`absolute inset-0 transition-opacity duration-1000 ease-in-out ${idx === activeBanner ? 'opacity-100 z-10' : 'opacity-0 z-0'}`}
                 >
@@ -443,11 +446,11 @@ export default function CollectionsPage() {
                   </div>
                 </div>
               ))}
-              
+
               {/* Banner Indicators */}
               <div className="absolute bottom-6 right-6 md:right-10 flex gap-2 z-20 bg-surface dark:bg-[#111111]/80 backdrop-blur-sm px-3 py-2 rounded-full border border-border dark:border-white/10">
                 {banners.map((_, idx) => (
-                  <button 
+                  <button
                     key={idx}
                     onClick={() => setActiveBanner(idx)}
                     className={`h-1.5 rounded-full transition-all duration-300 ${idx === activeBanner ? 'w-8 bg-[#e07a3f]' : 'w-4 bg-white/30 hover:bg-white/50'}`}
@@ -458,11 +461,11 @@ export default function CollectionsPage() {
 
             {/* Layout Grid: Sidebar + Products */}
             <div className="flex flex-col lg:flex-row gap-8 lg:gap-10">
-              
+
               {/* Mobile Filter Toggle */}
               <div className="lg:hidden flex items-center justify-between">
                 <h1 className="text-2xl font-bold">Best Sellers <span className="text-sm font-normal text-muted-foreground ml-2">{filteredProducts.length} products</span></h1>
-                <button 
+                <button
                   onClick={() => setIsMobileFiltersOpen(!isMobileFiltersOpen)}
                   className="bg-surface dark:bg-[#1a1a1a] border border-border/50 dark:border-white/5 text-sm px-4 py-2 rounded-xl flex items-center gap-2 hover:bg-white/5 transition-colors"
                 >
@@ -475,21 +478,21 @@ export default function CollectionsPage() {
                 <div className="bg-surface dark:bg-[#1a1a1a] rounded-[2rem] p-6 border border-border/50 dark:border-white/5 sticky top-6">
                   <div className="flex items-center justify-between mb-6">
                     <h3 className="font-bold text-lg">Filters</h3>
-                    <button 
+                    <button
                       onClick={() => { setSelectedCategory("All Categories"); setSearchQuery(""); setMinPrice(""); setMaxPrice(""); }}
                       className="text-[#e07a3f] text-xs font-bold tracking-wider uppercase flex items-center gap-1 hover:underline">
                       Reset Filters
                     </button>
                   </div>
-                  
+
                   {/* Search */}
                   <div className="relative mb-8">
                     <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                    <input 
-                      type="text" 
+                    <input
+                      type="text"
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      placeholder="Search products..." 
+                      placeholder="Search products..."
                       className="w-full bg-surface dark:bg-[#111111] border border-border dark:border-white/10 rounded-full py-3 pl-11 pr-4 text-sm text-foreground dark:text-white placeholder:text-muted-foreground focus:outline-none focus:border-[#e07a3f] transition-colors"
                     />
                   </div>
@@ -537,14 +540,14 @@ export default function CollectionsPage() {
                     <h1 className="text-3xl font-bold">{selectedCategory} <span className="text-sm font-normal text-muted-foreground ml-2">{filteredProducts.length} products</span></h1>
                   </div>
                   <div className="relative">
-                    <button 
+                    <button
                       onClick={() => setIsSortOpen(!isSortOpen)}
                       className="bg-surface dark:bg-[#1a1a1a] border border-border/50 dark:border-white/5 text-sm px-4 py-2.5 rounded-xl flex items-center gap-2 hover:bg-white/10 transition-colors min-w-[200px] justify-between"
                     >
                       <span className="text-muted-foreground">Sort by: <span className="text-foreground dark:text-white font-medium">{sortBy}</span></span>
                       <ChevronRight className={`w-4 h-4 text-muted-foreground transition-transform ${isSortOpen ? '-rotate-90' : 'rotate-90'}`} />
                     </button>
-                    
+
                     {isSortOpen && (
                       <>
                         <div className="fixed inset-0 z-10" onClick={() => setIsSortOpen(false)} />
@@ -573,13 +576,13 @@ export default function CollectionsPage() {
                       {/* Top icons */}
                       <div className="flex items-start justify-between z-10 relative mb-4 shrink-0">
                         <div className="flex items-center gap-1.5">
-                          <button 
+                          <button
                             onClick={(e) => toggleFavorite(product, e)}
                             className="w-8 h-8 rounded-full bg-background dark:bg-[#2a2a2a] flex items-center justify-center text-muted-foreground hover:text-[#e07a3f] transition-colors"
                           >
                             <Heart className={`w-4 h-4 ${favorites.includes(product.id) ? 'fill-[#e07a3f] text-[#e07a3f]' : ''}`} />
                           </button>
-                          <button 
+                          <button
                             onClick={(e) => { e.preventDefault(); e.stopPropagation(); setSelected3DProduct(product); }}
                             title="Interactive 3D Preview"
                             className="w-8 h-8 rounded-full bg-background dark:bg-[#2a2a2a] flex items-center justify-center text-muted-foreground hover:text-[#38bdf8] transition-colors shadow-sm cursor-pointer group/3d"
@@ -592,13 +595,13 @@ export default function CollectionsPage() {
                           <span className="text-[10px] font-bold text-foreground dark:text-white">{product.rating}</span>
                         </div>
                       </div>
-                      
+
                       {/* Image */}
                       <a href={`/storefront/product?id=${product.id}`} className="relative w-full flex-1 mb-4 flex items-center justify-center overflow-hidden cursor-pointer rounded-2xl bg-black/5">
-                        <img 
-                          src={product.image} 
-                          alt={product.name} 
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out" 
+                        <img
+                          src={product.image}
+                          alt={product.name}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out"
                         />
                       </a>
 
@@ -615,15 +618,15 @@ export default function CollectionsPage() {
                             {product.isNew && <span className="text-[9px] bg-white/10 text-foreground dark:text-white px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">NEW</span>}
                           </div>
                         </div>
-                        
+
                         {/* Interactive Add to Bag Button */}
-                        <button 
+                        <button
                           onClick={(e) => handleAddToBagClick(product, e)}
                           className="w-11 h-11 rounded-full bg-background dark:bg-[#2a2a2a] flex items-center justify-center text-foreground dark:text-white relative overflow-hidden group/btn shrink-0 shadow-sm"
                         >
                           {/* Semi-circle hover effect */}
                           <div className={`absolute inset-x-0 bottom-0 bg-[#e07a3f] transition-all duration-300 ease-out ${bagItems.includes(product.id) ? 'h-full' : 'h-0 group-hover/btn:h-1/2 rounded-t-full'}`} />
-                          
+
                           {/* Icon */}
                           <ShoppingBag className={`w-4 h-4 relative z-10 transition-transform duration-300 ${bagItems.includes(product.id) ? 'scale-110' : 'group-hover/btn:-translate-y-0.5'}`} />
                         </button>
@@ -631,7 +634,7 @@ export default function CollectionsPage() {
                     </div>
                   ))}
                 </div>
-                
+
                 {/* Pagination */}
                 <div className="flex items-center justify-center gap-2 mt-12">
                   <button className="px-5 py-2.5 rounded-xl bg-surface dark:bg-[#1a1a1a] border border-border/50 dark:border-white/5 text-sm font-medium text-muted-foreground hover:text-foreground dark:text-white hover:bg-white/5 transition-colors">Previous</button>
@@ -650,9 +653,9 @@ export default function CollectionsPage() {
       <AuthModal isOpen={isAuthOpen} onClose={() => setIsAuthOpen(false)} />
       <CartDrawer isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} />
       <StylistDrawer isOpen={isStylistOpen} onClose={() => setIsStylistOpen(false)} />
-      <Product3DModal 
-        isOpen={!!selected3DProduct} 
-        onClose={() => setSelected3DProduct(null)} 
+      <Product3DModal
+        isOpen={!!selected3DProduct}
+        onClose={() => setSelected3DProduct(null)}
         product={selected3DProduct}
         onAddToBag={(prod) => {
           toggleBag(prod.id);

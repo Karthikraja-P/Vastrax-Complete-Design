@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { User, ShoppingBag, Search, Menu, ChevronRight, ChevronLeft, ArrowRight } from "lucide-react";
+import { User, ShoppingBag, Search, Menu, ChevronRight, ChevronLeft, ArrowRight, Heart } from "lucide-react";
 import { AuthModal } from "@/components/auth/AuthModal";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { CartDrawer } from "@/components/layout/CartDrawer";
@@ -9,6 +9,7 @@ import { StylistDrawer } from "@/components/stylist/StylistDrawer";
 import { useSession, signOut } from "next-auth/react";
 import Link from "next/link";
 import { productsApi, categoriesApi } from "@/lib/api";
+import { useFavorites } from "@/hooks/useFavorites";
 
 const defaultCategories = [
   { name: "Dresses", slug: "dresses", image: "https://images.unsplash.com/photo-1572804013309-59a88b7e92f1?q=80&w=600&auto=format&fit=crop" },
@@ -23,11 +24,28 @@ export default function StorefrontHome() {
   const { data: session } = useSession();
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
+  const { favorites } = useFavorites();
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userName, setUserName] = useState("");
   
   const [collections, setCollections] = useState<any[]>([]);
   const [categories, setCategories] = useState(defaultCategories);
+  const [bagItems, setBagItems] = useState<any[]>([]);
+  
+  useEffect(() => {
+    const loadCart = () => {
+      const saved = localStorage.getItem("vastrax_cart");
+      if (saved) {
+        try {
+          setBagItems(JSON.parse(saved));
+        } catch (e) {}
+      }
+    };
+    loadCart();
+
+    window.addEventListener("cart-updated", loadCart);
+    return () => window.removeEventListener("cart-updated", loadCart);
+  }, []);
   
   // Sync NextAuth session with local state for seamless transition
   useEffect(() => {
@@ -146,6 +164,9 @@ export default function StorefrontHome() {
         {/* Right Side: Actions */}
         <div className="flex items-center gap-4 md:gap-6">
           <ThemeToggle />
+          <Link href="/storefront/favorites" className="relative text-muted-foreground hover:text-accent transition-colors">
+            <Heart className="w-5 h-5" />
+          </Link>
           <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-surface border border-border rounded-full transition-all text-sm w-48 lg:w-64 focus-within:border-accent focus-within:ring-1 focus-within:ring-accent">
             <Search className="w-4 h-4 text-muted-foreground" />
             <input 
@@ -230,7 +251,11 @@ export default function StorefrontHome() {
             aria-label="Open Shopping Bag"
           >
             <ShoppingBag className="w-5 h-5" />
-            <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-accent text-accent-foreground text-[10px] font-bold rounded-full flex items-center justify-center">2</span>
+            {bagItems.length > 0 && (
+              <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-accent text-accent-foreground text-[10px] font-bold rounded-full flex items-center justify-center">
+                {bagItems.reduce((acc, item) => acc + (item.quantity || 1), 0)}
+              </span>
+            )}
           </button>
         </div>
       </header>

@@ -25,12 +25,18 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
 
   React.useEffect(() => {
-    const saved = localStorage.getItem("vastrax_cart");
-    if (saved) {
-      try {
-        setCartItems(JSON.parse(saved));
-      } catch (e) {}
-    }
+    const loadCart = () => {
+      const saved = localStorage.getItem("vastrax_cart");
+      if (saved) {
+        try {
+          setCartItems(JSON.parse(saved));
+        } catch (e) {}
+      }
+    };
+    loadCart();
+
+    window.addEventListener("cart-updated", loadCart);
+    return () => window.removeEventListener("cart-updated", loadCart);
   }, []);
 
   // Save to local storage on changes

@@ -38,6 +38,7 @@ class ProductCreate(BaseModel):
     name: str
     fabric: Optional[str] = None
     colour: Optional[str] = None
+    occasion: Optional[str] = None
     price_mrp: Decimal
     price_selling: Decimal
     description: Optional[str] = None
@@ -53,6 +54,7 @@ class ProductUpdate(BaseModel):
     name: Optional[str] = None
     fabric: Optional[str] = None
     colour: Optional[str] = None
+    occasion: Optional[str] = None
     price_mrp: Optional[Decimal] = None
     price_selling: Optional[Decimal] = None
     description: Optional[str] = None
@@ -68,6 +70,7 @@ class ProductResponse(BaseModel):
     name: str
     fabric: str | None
     colour: str | None
+    occasion: str | None
     price_mrp: Decimal
     price_selling: Decimal
     description: str | None

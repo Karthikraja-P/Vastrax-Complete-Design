@@ -133,6 +133,65 @@ def mock_chat(messages: list, profile: dict) -> str:
 
     profile_tag = _profile_tag(merged) if merged != profile else ""
 
+    # Priority Action Checks
+    if any(w in last_user for w in ["start over", "reset", "again", "new"]):
+        return (
+            "Of course! Let's start fresh. What brings you in today — are you shopping for a specific occasion, or would you like some general style advice? "
+            "[CHIPS:Wedding / Festive|Office / Work|Casual / Everyday|Party / Night out|Style advice]"
+        )
+
+    if any(w in last_user for w in ["try on", "tryon", "virtual"]):
+        return (
+            "Absolutely! Our AI Virtual Try-On lets you see exactly how any garment looks on *you* — just upload a photo and the AI drapes the outfit on your image. "
+            "Head to any product page and tap the ✨ Try On button, or click the Try On link on any product card above!"
+        )
+
+    if any(w in last_user for w in ["sizing", "size", "what size", "fit"]):
+        return (
+            "All our garments come in S, M, L, and XL. Here's a quick guide:\n"
+            "• S — Bust 34\", Waist 28\"\n• M — Bust 36\", Waist 30\"\n"
+            "• L — Bust 38\", Waist 32\"\n• XL — Bust 40\", Waist 34\"\n\n"
+            "When in doubt, size up — our fabrics are designed to drape beautifully with a little extra room. "
+            "The Virtual Try-On is also a great way to visualise fit before ordering!"
+        )
+
+    if any(w in last_user for w in ["more", "other", "different", "show more", "options"]):
+        if s:
+            fallback = _FALLBACK_RECS.get(s)
+            if fallback:
+                ids, _ = fallback
+                return (
+                    "Here are a few more pieces I think you'll love based on your complexion — each one is a strong match for your skin tone: "
+                    + _product_tags(ids)
+                    + " [CHIPS:Tell me why these suit me|How to try on|Start over]"
+                    + _profile_tag(merged)
+                )
+
+    if any(w in last_user for w in ["offer", "offers", "discount", "sale", "current offers"]):
+        return (
+            "We have some amazing offers running right now! 🎊\n\n"
+            "• ✨ **WELCOME10** for 10% off your first purchase\n"
+            "• 🛍️ **Buy 2, Get 15% Off** on all tops\n"
+            "• 🚚 **Free Shipping** on orders over ₹2,999\n\n"
+            "Would you like me to suggest some pieces to help you make the most of these offers?"
+            " [CHIPS:Yes, show me|How to try on|Start over]"
+            + profile_tag
+        )
+
+    if any(w in last_user for w in ["why", "tell me why", "suit me", "explain"]):
+        ids = ["vtx-frock-floral", "vtx-pants-beige"]
+        if s and _FALLBACK_RECS.get(s):
+            ids = _FALLBACK_RECS.get(s)[0][:2]
+        return (
+            "Absolutely! I look at three things: your height, your skin tone, and the occasion. "
+            "For instance, based on your profile, I selected these pieces because their colours "
+            "complement your complexion beautifully, and the silhouettes are tailored to flatter your frame. "
+            "Here they are again so you can see the details and Try them on! "
+            + _product_tags(ids)
+            + " [CHIPS:How to try on|Tell me about sizing|Show more options]"
+            + _profile_tag(merged)
+        )
+
     if any(w in last_user for w in ["stripe", "stripes"]):
         return (
             "Great question! Vertical stripes are a petite person's best friend — they draw the eye up and down, creating the illusion of height. "
@@ -242,39 +301,6 @@ def mock_chat(messages: list, profile: dict) -> str:
             + _profile_tag(merged)
         )
 
-    if any(w in last_user for w in ["try on", "tryon", "virtual"]):
-        return (
-            "Absolutely! Our AI Virtual Try-On lets you see exactly how any garment looks on *you* — just upload a photo and the AI drapes the outfit on your image. "
-            "Head to any product page and tap the ✨ Try On button, or click the Try On link on any product card above!"
-        )
-
-    if any(w in last_user for w in ["sizing", "size", "what size", "fit"]):
-        return (
-            "All our garments come in S, M, L, and XL. Here's a quick guide:\n"
-            "• S — Bust 34\", Waist 28\"\n• M — Bust 36\", Waist 30\"\n"
-            "• L — Bust 38\", Waist 32\"\n• XL — Bust 40\", Waist 34\"\n\n"
-            "When in doubt, size up — our fabrics are designed to drape beautifully with a little extra room. "
-            "The Virtual Try-On is also a great way to visualise fit before ordering!"
-        )
-
-    if any(w in last_user for w in ["more", "other", "different", "show more", "options"]):
-        if s:
-            fallback = _FALLBACK_RECS.get(s)
-            if fallback:
-                ids, _ = fallback
-                return (
-                    "Here are a few more pieces I think you'll love based on your complexion — each one is a strong match for your skin tone: "
-                    + _product_tags(ids)
-                    + " [CHIPS:Tell me why these suit me|How to try on|Start over]"
-                    + _profile_tag(merged)
-                )
-
-    if any(w in last_user for w in ["start over", "reset", "again", "new"]):
-        return (
-            "Of course! Let's start fresh. What brings you in today — are you shopping for a specific occasion, or would you like some general style advice? "
-            "[CHIPS:Wedding / Festive|Office / Work|Casual / Everyday|Party / Night out|Style advice]"
-        )
-
     return (
         "I'd love to help you find the perfect look! Could you tell me what you're shopping for today? "
         "[CHIPS:Wedding / Festive|Office / Work|Casual / Everyday|Party / Night out|Style advice]"
@@ -366,9 +392,10 @@ def _get_catalog_context(db=None) -> str:
                     cat_name = p.category.name if p.category else "Boutique Collection"
                     fabric = p.fabric or "Premium Luxury Fabric"
                     colour = p.colour or "Signature Shade"
+                    occasion = p.occasion or "Any Occasion"
                     price = f"₹{p.price_selling:,.0f}" if p.price_selling else "₹1,999"
                     desc = p.description or ""
-                    lines.append(f"{i}. ID: {p.id} | Name: {p.name} | Category: {cat_name}")
+                    lines.append(f"{i}. ID: {p.id} | Name: {p.name} | Category: {cat_name} | Occasion: {occasion}")
                     lines.append(f"   Fabric: {fabric} | Colour: {colour} | Price: {price}")
                     if desc:
                         lines.append(f"   Description: {desc}")
@@ -378,7 +405,7 @@ def _get_catalog_context(db=None) -> str:
     return _CATALOG
 
 
-def _build_system_prompt(profile: dict, db=None) -> str:
+def _build_system_prompt(profile: dict, db=None, context_url: str = None, cart_items: list = None) -> str:
     from app.api.routes.settings import get_app_settings
     app_settings = get_app_settings()
     admin_instructions = getattr(app_settings, "stylistSystemPrompt", "You are Vastra, the personal style advisor for VastraX boutique.")
@@ -389,6 +416,13 @@ def _build_system_prompt(profile: dict, db=None) -> str:
         ctx = "Known: " + ", ".join(f"{k}={v}" for k, v in profile.items()) + ". Skip re-asking these."
     else:
         ctx = "No profile yet — gather naturally."
+        
+    if context_url:
+        ctx += f"\n\nCURRENT PAGE: User is currently on this page/product URL: {context_url}. If this is a product page, proactively use this context to provide relevant styling advice for this specific item."
+        
+    if cart_items and len(cart_items) > 0:
+        ctx += f"\n\nCART CONTEXT: User currently has these items in their cart: {', '.join([str(item) for item in cart_items])}. If relevant, suggest complementary pieces to what is already in their cart."
+
     return _SYSTEM_PROMPT_TEMPLATE.format(
         admin_instructions=admin_instructions,
         active_offers=active_offers,
@@ -400,7 +434,7 @@ def _build_system_prompt(profile: dict, db=None) -> str:
 
 # ── Public entry point ────────────────────────────────────────────────────────
 
-def chat(messages: list, profile: dict, db=None) -> str:
+def chat(messages: list, profile: dict, db=None, context_url: str = None, cart_items: list = None) -> str:
     openai_key = os.getenv("OPENAI_API_KEY", "").strip()
     anthropic_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
 
@@ -408,7 +442,7 @@ def chat(messages: list, profile: dict, db=None) -> str:
     if openai_key and not openai_key.startswith("your_"):
         try:
             model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-            system_prompt = _build_system_prompt(profile, db=db)
+            system_prompt = _build_system_prompt(profile, db=db, context_url=context_url, cart_items=cart_items)
             openai_messages = [{"role": "system", "content": system_prompt}] + messages
             
             with httpx.Client(timeout=30.0) as client:
@@ -439,7 +473,7 @@ def chat(messages: list, profile: dict, db=None) -> str:
             response = _get_anthropic_client().messages.create(
                 model="claude-haiku-4-5-20251001",
                 max_tokens=512,
-                system=_build_system_prompt(profile, db=db),
+                system=_build_system_prompt(profile, db=db, context_url=context_url, cart_items=cart_items),
                 messages=messages,
             )
             return response.content[0].text

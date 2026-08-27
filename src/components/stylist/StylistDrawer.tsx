@@ -4,10 +4,11 @@ import React, { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
   Sparkles, X, Send, Bot, User, ArrowRight, 
-  Shirt, RefreshCcw, Loader2, CheckCircle2, MessageSquare
+  Shirt, RefreshCcw, Loader2, CheckCircle2, MessageSquare, Heart, ShoppingBag, Eye
 } from "lucide-react";
 import { chatApi, tryonApi } from "@/lib/api";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { useFavorites } from "@/hooks/useFavorites";
 
 interface Message {
   id: string;
@@ -28,23 +29,9 @@ const initialMessages: Message[] = [
   {
     id: "m-1",
     sender: "stylist",
-    text: "Welcome to VASTRAX Concierge. I am your personal AI Haute Couture Stylist. How may I tailor your aesthetic today?",
+    text: "Hi there! I'm your VASTRAX AI Stylist. How can I help you find the perfect outfit today?",
     timestamp: "Just now",
-    chips: ["Wedding / Festive", "Office / Work", "Casual / Everyday", "Current Offers"],
-    suggestedProducts: [
-      {
-        name: "Noir Silk Evening Blazer",
-        price: "₹4,800",
-        image: "https://images.unsplash.com/photo-1598033129183-c4f50c736f10?q=80&w=400&auto=format&fit=crop",
-        category: "tops"
-      },
-      {
-        name: "Minimalist Cashmere Turtleneck",
-        price: "₹3,800",
-        image: "https://images.unsplash.com/photo-1624542313043-30df84aee15d?q=80&w=400&auto=format&fit=crop",
-        category: "tops"
-      }
-    ]
+    chips: ["Wedding / Festive", "Office / Work", "Casual / Everyday", "Current Offers"]
   }
 ];
 
@@ -82,18 +69,58 @@ interface StylistDrawerProps {
 
 export function StylistDrawer({ isOpen, onClose }: StylistDrawerProps) {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [sessionId, setSessionId] = useState<string>("");
+  const [addedToCart, setAddedToCart] = useState<string[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  
+  const { isFavorite, toggleFavorite } = useFavorites();
+
+  const handleAddToCart = (product: any) => {
+    const pId = product.id || product.name;
+    setAddedToCart(prev => [...prev, pId]);
+    setTimeout(() => {
+      setAddedToCart(prev => prev.filter(item => item !== pId));
+    }, 2000);
+
+    const saved = localStorage.getItem("vastrax_cart");
+    const currentCart = saved ? JSON.parse(saved) : [];
+    
+    const existingIndex = currentCart.findIndex((i: any) => i.id === pId);
+    if (existingIndex >= 0) {
+      currentCart[existingIndex].quantity += 1;
+    } else {
+      currentCart.push({
+        id: pId,
+        name: product.name,
+        price: typeof product.price === 'string' ? parseFloat(product.price.replace(/[^0-9.-]+/g,"")) : product.price,
+        quantity: 1,
+        size: "M",
+        color: "Default",
+        image: product.image
+      });
+    }
+    
+    localStorage.setItem("vastrax_cart", JSON.stringify(currentCart));
+    window.dispatchEvent(new Event("cart-updated"));
+  };
 
   // Initialize or load session & history
   useEffect(() => {
+    const SESSION_TIMEOUT_MS = 24 * 60 * 60 * 1000; // 24 hours
     let sid = localStorage.getItem("vastrax_stylist_session_id");
-    if (!sid) {
+    let lastActive = localStorage.getItem("vastrax_stylist_last_active");
+    
+    if (!sid || !lastActive || (Date.now() - parseInt(lastActive, 10)) > SESSION_TIMEOUT_MS) {
       sid = `ses_${Math.random().toString(36).substring(2, 11)}_${Date.now()}`;
       localStorage.setItem("vastrax_stylist_session_id", sid);
+      localStorage.setItem("vastrax_stylist_last_active", Date.now().toString());
+    } else {
+      localStorage.setItem("vastrax_stylist_last_active", Date.now().toString());
     }
     setSessionId(sid);
 
@@ -136,6 +163,7 @@ export function StylistDrawer({ isOpen, onClose }: StylistDrawerProps) {
     setMessages(prev => [...prev, userMsg]);
     setInput("");
     setIsTyping(true);
+    localStorage.setItem("vastrax_stylist_last_active", Date.now().toString());
 
     try {
       const historyPayload = messages.map(m => ({
@@ -143,7 +171,9 @@ export function StylistDrawer({ isOpen, onClose }: StylistDrawerProps) {
         content: m.text
       }));
 
-      const res = await chatApi.sendMessage(query, sessionId, historyPayload);
+      const contextUrl = typeof window !== 'undefined' ? `${pathname}${searchParams.toString() ? `?${searchParams.toString()}` : ''}` : '';
+      
+      const res = await chatApi.sendMessage(query, sessionId, historyPayload, {}, contextUrl, []);
       const { cleanText, chips } = parseTagsFromReply(res.message);
 
       const stylistMsg: Message = {
@@ -200,16 +230,16 @@ export function StylistDrawer({ isOpen, onClose }: StylistDrawerProps) {
               animate={{ x: 0 }}
               exit={{ x: "100%" }}
               transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className="fixed inset-y-0 right-0 z-50 w-full max-w-lg bg-[#111214] border-l border-white/10 shadow-2xl flex flex-col overflow-hidden text-[#ededed]"
+              className="fixed inset-y-0 right-0 z-50 w-full max-w-lg bg-background border-l border-border shadow-2xl flex flex-col overflow-hidden text-foreground"
             >
               {/* Header */}
-              <div className="flex items-center justify-between px-6 py-4 border-b border-white/5 bg-[#141518]">
+              <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-surface">
                 <div className="flex items-center gap-3">
                   <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-accent to-[#e2733d] flex items-center justify-center shadow-[0_0_12px_rgba(224,122,63,0.4)]">
                     <Sparkles className="w-4 h-4 text-white" />
                   </div>
                   <div>
-                    <h3 className="font-bold text-sm tracking-tight text-white flex items-center gap-2">
+                    <h3 className="font-bold text-sm tracking-tight text-foreground flex items-center gap-2">
                       VASTRAX AI Stylist
                       <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                     </h3>
@@ -221,13 +251,13 @@ export function StylistDrawer({ isOpen, onClose }: StylistDrawerProps) {
                   <button 
                     onClick={handleClearChat}
                     title="Reset chat history"
-                    className="p-2 rounded-full hover:bg-white/5 text-muted-foreground hover:text-white transition-colors"
+                    className="p-2 rounded-full hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
                   >
                     <RefreshCcw className="w-4 h-4" />
                   </button>
                   <button 
                     onClick={onClose}
-                    className="p-2 rounded-full hover:bg-white/5 text-muted-foreground hover:text-white transition-colors"
+                    className="p-2 rounded-full hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -252,8 +282,8 @@ export function StylistDrawer({ isOpen, onClose }: StylistDrawerProps) {
                         <div 
                           className={`p-4 rounded-2xl text-sm leading-relaxed whitespace-pre-line ${
                             msg.sender === "user"
-                              ? "bg-accent text-white rounded-tr-none shadow-[0_0_15px_rgba(224,122,63,0.25)]"
-                              : "bg-[#18191d] border border-white/5 text-zinc-200 rounded-tl-none"
+                              ? "bg-accent text-accent-foreground rounded-tr-none shadow-[0_0_15px_rgba(224,122,63,0.25)]"
+                              : "bg-surface border border-border text-foreground rounded-tl-none"
                           }`}
                         >
                           {msg.text}
@@ -266,7 +296,7 @@ export function StylistDrawer({ isOpen, onClose }: StylistDrawerProps) {
                               <button
                                 key={idx}
                                 onClick={() => handleSend(chip)}
-                                className="px-3 py-1 rounded-full bg-accent/15 hover:bg-accent text-accent hover:text-white text-xs font-medium border border-accent/30 transition-all cursor-pointer shadow-sm hover:scale-105"
+                                className="px-3 py-1 rounded-full bg-accent/15 hover:bg-accent text-accent hover:text-accent-foreground text-xs font-medium border border-accent/30 transition-all cursor-pointer shadow-sm hover:scale-105"
                               >
                                 {chip}
                               </button>
@@ -284,19 +314,70 @@ export function StylistDrawer({ isOpen, onClose }: StylistDrawerProps) {
                               {msg.suggestedProducts.map((p, idx) => (
                                 <div 
                                   key={idx}
-                                  className="bg-black/40 border border-white/5 rounded-xl p-2.5 flex flex-col justify-between hover:border-accent/40 transition-colors group"
+                                  className="bg-surface border border-border rounded-xl p-2.5 flex flex-col justify-between hover:border-accent/40 transition-colors group"
                                 >
-                                  <div className="aspect-square rounded-lg overflow-hidden bg-white/5 mb-2 relative">
+                                  <div 
+                                    className="aspect-square rounded-lg overflow-hidden bg-muted mb-2 relative cursor-pointer"
+                                    onClick={() => {
+                                      router.push(`/storefront/product/${p.id || 1}`);
+                                      onClose();
+                                    }}
+                                    title="View Details"
+                                  >
                                     <img src={p.image} alt={p.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
                                   </div>
-                                  <h5 className="text-xs font-semibold text-white truncate">{p.name}</h5>
-                                  <p className="text-[11px] text-accent font-bold mt-0.5">{p.price}</p>
-                                  <button 
-                                    onClick={() => router.push(`/storefront/product/${p.id || 1}/tryon`)}
-                                    className="mt-2 w-full py-1.5 rounded bg-accent/15 hover:bg-accent text-accent hover:text-white text-[10px] font-bold uppercase tracking-wider transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                                  <h5 
+                                    className="text-xs font-semibold text-foreground truncate cursor-pointer hover:text-accent transition-colors"
+                                    onClick={() => {
+                                      router.push(`/storefront/product/${p.id || 1}`);
+                                      onClose();
+                                    }}
                                   >
-                                    <Shirt className="w-3 h-3" /> Try On
-                                  </button>
+                                    {p.name}
+                                  </h5>
+                                  <p className="text-[11px] text-accent font-bold mt-0.5">{p.price}</p>
+                                  <div className="mt-2 flex items-center justify-between gap-1.5">
+                                    <button 
+                                      onClick={() => toggleFavorite(p.id || p.name)}
+                                      className={`flex-1 py-1.5 rounded flex items-center justify-center transition-colors cursor-pointer ${
+                                        isFavorite(p.id || p.name) ? "bg-red-500/10 text-red-500" : "bg-surface-hover text-muted-foreground hover:text-foreground"
+                                      }`}
+                                      title="Favorite"
+                                    >
+                                      <Heart className={`w-3.5 h-3.5 ${isFavorite(p.id || p.name) ? "fill-red-500" : ""}`} />
+                                    </button>
+                                    <button 
+                                      onClick={() => handleAddToCart(p)}
+                                      className="flex-1 py-1.5 rounded bg-surface-hover hover:bg-muted text-muted-foreground hover:text-foreground transition-colors flex items-center justify-center cursor-pointer"
+                                      title="Add to Cart"
+                                    >
+                                      {addedToCart.includes(p.id || p.name) ? (
+                                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                                      ) : (
+                                        <ShoppingBag className="w-3.5 h-3.5" />
+                                      )}
+                                    </button>
+                                    <button 
+                                      onClick={() => {
+                                        router.push(`/storefront/product/${p.id || 1}/tryon`);
+                                        onClose();
+                                      }}
+                                      className="flex-1 py-1.5 rounded bg-accent/15 hover:bg-accent text-accent hover:text-accent-foreground transition-colors flex items-center justify-center cursor-pointer"
+                                      title="Try On"
+                                    >
+                                      <Shirt className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button 
+                                      onClick={() => {
+                                        router.push(`/storefront/product/${p.id || 1}`);
+                                        onClose();
+                                      }}
+                                      className="flex-1 py-1.5 rounded bg-surface-hover hover:bg-muted text-muted-foreground hover:text-foreground transition-colors flex items-center justify-center cursor-pointer"
+                                      title="View Details"
+                                    >
+                                      <Eye className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
                                 </div>
                               ))}
                             </div>
@@ -317,12 +398,12 @@ export function StylistDrawer({ isOpen, onClose }: StylistDrawerProps) {
               </div>
 
               {/* Sample Prompts */}
-              <div className="px-6 py-2 border-t border-white/5 bg-[#141518]/50 overflow-x-auto whitespace-nowrap scrollbar-none flex gap-2">
+              <div className="px-6 py-2 border-t border-border bg-surface overflow-x-auto whitespace-nowrap scrollbar-none flex gap-2">
                 {samplePrompts.map((prompt, i) => (
                   <button
                     key={i}
                     onClick={() => handleSend(prompt)}
-                    className="px-3 py-1 rounded-full bg-white/5 hover:bg-white/10 text-[11px] text-zinc-300 transition-colors border border-white/5 shrink-0"
+                    className="px-3 py-1 rounded-full bg-muted hover:bg-surface-hover text-[11px] text-muted-foreground transition-colors border border-border shrink-0"
                   >
                     {prompt}
                   </button>
@@ -330,25 +411,25 @@ export function StylistDrawer({ isOpen, onClose }: StylistDrawerProps) {
               </div>
 
               {/* Input Bar */}
-              <div className="p-4 border-t border-white/5 bg-[#141518]">
+              <div className="p-4 border-t border-border bg-surface">
                 <form 
                   onSubmit={(e) => {
                     e.preventDefault();
                     handleSend();
                   }}
-                  className="flex items-center gap-2 bg-black/40 border border-white/10 rounded-full px-4 py-2 focus-within:border-accent transition-colors"
+                  className="flex items-center gap-2 bg-background border border-border rounded-full px-4 py-2 focus-within:border-accent transition-colors"
                 >
                   <input 
                     type="text"
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     placeholder="Ask your stylist anything about fit, color, or occasions..."
-                    className="flex-1 bg-transparent text-sm text-white placeholder:text-muted-foreground/60 focus:outline-none"
+                    className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
                   />
                   <button 
                     type="submit"
                     disabled={!input.trim() || isTyping}
-                    className="w-8 h-8 rounded-full bg-accent hover:bg-accent/90 disabled:opacity-40 text-white flex items-center justify-center transition-all shadow-[0_0_10px_rgba(224,122,63,0.3)] shrink-0"
+                    className="w-8 h-8 rounded-full bg-accent hover:bg-accent/90 disabled:opacity-40 text-accent-foreground flex items-center justify-center transition-all shadow-[0_0_10px_rgba(224,122,63,0.3)] shrink-0"
                   >
                     <Send className="w-3.5 h-3.5" />
                   </button>
@@ -368,7 +449,7 @@ export function StylistDrawer({ isOpen, onClose }: StylistDrawerProps) {
             const ev = new CustomEvent("open-stylist");
             window.dispatchEvent(ev);
           }}
-          className="fixed bottom-6 right-6 z-40 px-4 py-3 rounded-full bg-gradient-to-r from-accent to-[#e2733d] text-white font-medium text-xs uppercase tracking-wider flex items-center gap-2 shadow-[0_0_25px_rgba(224,122,63,0.5)] hover:scale-105 transition-all"
+          className="fixed bottom-6 right-6 z-40 px-4 py-3 rounded-full bg-gradient-to-r from-accent to-[#e2733d] text-accent-foreground font-medium text-xs uppercase tracking-wider flex items-center gap-2 shadow-[0_0_25px_rgba(224,122,63,0.5)] hover:scale-105 transition-all"
         >
           <Sparkles className="w-4 h-4" />
           <span>Stylist Concierge</span>

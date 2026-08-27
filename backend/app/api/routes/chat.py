@@ -30,7 +30,7 @@ def chat_endpoint(req: ChatRequest, db: Session = Depends(get_db)):
         db.commit()
 
     # Generate stylist response
-    reply_text = vastra_chat(messages, req.profile, db=db)
+    reply_text = vastra_chat(messages, req.profile, db=db, context_url=req.context_url, cart_items=req.cart_items)
 
     # Extract suggested products from reply tags e.g. [PRODUCT:vtx-frock-floral]
     suggested = []
