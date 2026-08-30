@@ -13,6 +13,7 @@ from app.core.exceptions import (
     UnauthorizedError,
 )
 from app.core.logging import get_logger
+from app.services.sms_service import SMSService
 from app.core.security import (
     create_access_token,
     create_refresh_token,
@@ -34,10 +35,16 @@ class AuthService:
     def _token_hash(token: str) -> str:
         return hashlib.sha256(token.encode()).hexdigest()
 
-    def register(self, full_name: str, email: str, phone_number: str | None, password: str) -> dict:
+    async def register(self, full_name: str, email: str, phone_number: str | None, password: str) -> dict:
         email = email.lower().strip()
-        if self.db.query(User).filter(User.email == email).first():
+        
+        # Check if email exists
+        existing_user = self.db.query(User).filter(User.email == email).first()
+        if existing_user:
+            # If user exists but is not active (abandoned signup), we can delete them or reject.
+            # Let's just reject for now.
             raise ConflictError("Email already registered")
+            
         if phone_number:
             if self.db.query(User).filter(User.phone_number == phone_number).first():
                 raise ConflictError("Phone number already registered")
@@ -49,10 +56,22 @@ class AuthService:
             phone_number=phone_number,
             hashed_password=hash_password(password),
             role="customer",
-            is_active=True,
+            is_active=not bool(phone_number), # Inactive if phone provided (needs OTP)
+            is_2fa_enabled=bool(phone_number), # Auto-enable 2FA if they provide a phone
         )
         self.db.add(user)
-        self.db.flush()  # get the id without committing
+        self.db.flush()
+
+        if phone_number:
+            sms_service = SMSService()
+            session_id = await sms_service.send_2fa_code(phone_number)
+            user.sms_session_id = session_id
+            self.db.commit()
+            return {
+                "status": "requires_verification",
+                "user_id": user.id,
+                "message": "OTP sent to your mobile number to complete registration."
+            }
 
         access_token = create_access_token({"sub": user.id, "role": user.role})
         refresh_token = create_refresh_token(user.id)
@@ -72,7 +91,7 @@ class AuthService:
             },
         }
 
-    def login(self, email: str, password: str) -> dict:
+    async def login(self, email: str, password: str) -> dict:
         email = email.lower().strip()
         user = self.db.query(User).filter(User.email == email).first()
         if not user or not verify_password(password, user.hashed_password):
@@ -80,11 +99,89 @@ class AuthService:
         if not user.is_active:
             raise ForbiddenError("Account is disabled")
 
+        if getattr(user, 'is_2fa_enabled', False):
+            if not user.phone_number:
+                raise ForbiddenError("2FA is enabled but no phone number is registered")
+            sms_service = SMSService()
+            session_id = await sms_service.send_2fa_code(user.phone_number)
+            user.sms_session_id = session_id
+            self.db.commit()
+            return {
+                "status": "requires_2fa",
+                "user_id": user.id,
+                "message": "OTP sent to your registered phone number."
+            }
+
         access_token = create_access_token({"sub": user.id, "role": user.role})
         refresh_token = create_refresh_token(user.id)
         user.refresh_token_hash = self._token_hash(refresh_token)
         self.db.commit()
         logger.info("User logged in: %s", user.id)
+
+        return {
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "token_type": "bearer",
+            "user": {
+                "id": user.id,
+                "full_name": user.full_name,
+                "email": user.email,
+                "role": user.role,
+            },
+        }
+
+    async def verify_2fa(self, user_id: str, code: str) -> dict:
+        user = self.db.query(User).filter(User.id == user_id).first()
+        if not user or not getattr(user, 'sms_session_id', None):
+            raise UnauthorizedError("Invalid session")
+
+        sms_service = SMSService()
+        is_valid = await sms_service.verify_2fa_code(user.sms_session_id, code)
+        
+        if not is_valid:
+            raise UnauthorizedError("Invalid or expired 2FA code")
+
+        # Clear session id after successful login
+        user.sms_session_id = None
+        
+        access_token = create_access_token({"sub": user.id, "role": user.role})
+        refresh_token = create_refresh_token(user.id)
+        user.refresh_token_hash = self._token_hash(refresh_token)
+        self.db.commit()
+        logger.info("User logged in via 2FA: %s", user.id)
+
+        return {
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "token_type": "bearer",
+            "user": {
+                "id": user.id,
+                "full_name": user.full_name,
+                "email": user.email,
+                "role": user.role,
+            },
+        }
+
+    async def verify_registration(self, user_id: str, code: str) -> dict:
+        user = self.db.query(User).filter(User.id == user_id).first()
+        if not user or user.is_active or not getattr(user, 'sms_session_id', None):
+            raise UnauthorizedError("Invalid session or user already active")
+
+        sms_service = SMSService()
+        is_valid = await sms_service.verify_2fa_code(user.sms_session_id, code)
+        
+        if not is_valid:
+            raise UnauthorizedError("Invalid or expired verification code")
+
+        # Activate user and clear session
+        user.is_active = True
+        user.sms_session_id = None
+        
+        access_token = create_access_token({"sub": user.id, "role": user.role})
+        refresh_token = create_refresh_token(user.id)
+        user.refresh_token_hash = self._token_hash(refresh_token)
+        self.db.commit()
+        logger.info("User completed registration via OTP: %s", user.id)
 
         return {
             "access_token": access_token,

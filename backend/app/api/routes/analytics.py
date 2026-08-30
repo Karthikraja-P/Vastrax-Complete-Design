@@ -6,8 +6,21 @@ from app.middleware.auth import require_admin
 from app.models.chat_message import ChatMessage
 from app.models.tryon_session import TryonSession
 from app.models.user import User
+from app.services.analytics_service import AnalyticsService
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
+
+@router.get("/insights")
+def get_dynamic_insights(
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin)
+):
+    """
+    Returns AI insights and threshold-based alerts for the dashboard metrics.
+    """
+    service = AnalyticsService(db)
+    return service.get_dynamic_insights()
+
 
 @router.get("/overview")
 def get_analytics_overview(

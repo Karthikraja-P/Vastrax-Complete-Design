@@ -14,7 +14,7 @@ import {
   UserCog,
   ShieldCheck,
   Settings,
-  LogOut,
+  Store,
   ChevronDown,
 } from "lucide-react";
 import { useState } from "react";
@@ -228,19 +228,6 @@ export function Sidebar({ isCollapsed = false }: { isCollapsed?: boolean }) {
         ))}
       </div>
 
-      <div className={cn("p-4 border-t border-border", isCollapsed ? "px-2 flex justify-center" : "")}>
-        <Link
-          href="/storefront/home"
-          title={isCollapsed ? "Logout" : undefined}
-          className={cn(
-            "flex items-center py-2.5 text-sm font-medium text-muted-foreground rounded-md transition-colors hover:bg-surface-hover hover:text-foreground",
-            isCollapsed ? "px-0 justify-center w-full" : "px-2"
-          )}
-        >
-          <LogOut className={cn("h-5 w-5 shrink-0", !isCollapsed && "mr-3")} />
-          {!isCollapsed && <span>Logout</span>}
-        </Link>
-      </div>
     </aside>
   );
 }

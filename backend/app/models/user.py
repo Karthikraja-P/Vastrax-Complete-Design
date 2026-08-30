@@ -21,6 +21,8 @@ class User(Base):
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[str] = mapped_column(String(20), nullable=False, default="customer")
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    is_2fa_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    sms_session_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     refresh_token_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now)

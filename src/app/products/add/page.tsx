@@ -52,6 +52,9 @@ export default function AddProductPage() {
   const [fabric, setFabric] = useState("");
   const [colour, setColour] = useState("");
   const [occasion, setOccasion] = useState("");
+  const [modelPath, setModelPath] = useState("");
+  const [isUploadingGlb, setIsUploadingGlb] = useState(false);
+  const glbInputRef = useRef<HTMLInputElement>(null);
 
   // Pricing
   const [priceSelling, setPriceSelling] = useState("");
@@ -148,13 +151,46 @@ export default function AddProductPage() {
       setReconstructResult("reconstruction_complete");
       showToast("3D model reconstructed successfully! The GLB model is ready.");
     } catch (err: any) {
-      showToast(`Reconstruction failed: ${err?.message || "Unknown error"}`);
+      console.error(err);
+      showToast("Reconstruction failed.");
     } finally {
       setReconstructing(false);
     }
   };
 
-  // ─── Save / Publish ─────────────────────────────────────────
+  const handleUploadGlb = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploadingGlb(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!res.ok) throw new Error("Upload failed");
+      const data = await res.json();
+      
+      if (data.success) {
+        setModelPath(data.url);
+        showToast("3D Model uploaded successfully!");
+      } else {
+        throw new Error(data.error || "Upload failed");
+      }
+    } catch (err: any) {
+      console.error(err);
+      showToast(err.message || "Failed to upload model");
+    } finally {
+      setIsUploadingGlb(false);
+      if (glbInputRef.current) glbInputRef.current.value = "";
+    }
+  };
+
+  // ─── Save & Publish ─────────────────────────────────────────
   const handleSave = async (publish: boolean) => {
     if (!name.trim()) {
       showToast("Please enter a product name");
@@ -185,7 +221,8 @@ export default function AddProductPage() {
         category_id: categoryId || (categories.length > 0 ? String(categories[0].id) : ""),
         fabric: fabric.trim() || undefined,
         colour: colour.trim() || undefined,
-        occasion: occasion || undefined,
+        occasion: occasion.trim() || undefined,
+        model_path: modelPath.trim() || undefined,
         price_selling: parseFloat(priceSelling),
         price_mrp: priceMrp ? parseFloat(priceMrp) : parseFloat(priceSelling),
         is_published: publish,
@@ -374,7 +411,7 @@ export default function AddProductPage() {
 
         {/* Content Area */}
         <div className="flex-1 bg-surface border border-border rounded-xl p-8 min-h-[600px]">
-          {/* ═══════════════ BASIC INFO ═══════════════ */}
+          {/* MEDIA AND PHOTOGRAPHY */}
           {activeTab === "basic" && (
             <div className="space-y-6 animate-in fade-in">
               <h2 className="text-lg font-semibold text-foreground mb-4">
@@ -452,6 +489,22 @@ export default function AddProductPage() {
                     />
                   </div>
                 </div>
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-1.5">
+                      Occasion
+                    </label>
+                    <select
+                      value={occasion}
+                      onChange={(e) => setOccasion(e.target.value)}
+                      className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent focus:ring-1 focus:ring-accent outline-none transition-all appearance-none text-foreground"
+                    >
+                      <option value="">Select Occasion</option>
+                      <option value="Wedding / Festive">Wedding / Festive</option>
+                      <option value="Office / Work">Office / Work</option>
+                      <option value="Casual / Everyday">Casual / Everyday</option>
+                      <option value="Party / Night out">Party / Night out</option>
+                    </select>
+                  </div>
                 <div>
                   <label className="block text-sm font-medium text-foreground mb-1.5">
                     Description
@@ -468,7 +521,7 @@ export default function AddProductPage() {
             </div>
           )}
 
-          {/* ═══════════════ PRICING & INVENTORY ═══════════════ */}
+          {/* PRICING & INVENTORY */}
           {activeTab === "pricing" && (
             <div className="space-y-6 animate-in fade-in">
               <h2 className="text-lg font-semibold text-foreground mb-4">
@@ -501,58 +554,61 @@ export default function AddProductPage() {
                     />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-foreground mb-1.5">
-                      Stock Quantity
-                    </label>
-                    <input
-                      type="number"
-                      value={stock}
-                      onChange={(e) => setStock(e.target.value)}
-                      placeholder="10"
-                      className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent focus:ring-1 focus:ring-accent outline-none transition-all text-foreground"
-                    />
-                  </div>
-                  <div className="flex flex-col justify-end gap-3">
-                    <label className="flex items-center gap-3 cursor-pointer select-none">
+                <div className="w-1/2 pr-2">
+                  <label className="block text-sm font-medium text-foreground mb-1.5">
+                    Stock Quantity
+                  </label>
+                  <input
+                    type="number"
+                    value={stock}
+                    onChange={(e) => setStock(e.target.value)}
+                    placeholder="10"
+                    className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent focus:ring-1 focus:ring-accent outline-none transition-all text-foreground"
+                  />
+                </div>
+
+                <div className="pt-4 border-t border-border/50 mt-6">
+                  <h3 className="text-sm font-medium text-foreground mb-4">Visibility & Status</h3>
+                  <div className="flex items-center gap-10">
+                    <label className="flex items-center gap-3 cursor-pointer select-none group">
                       <button
                         type="button"
                         onClick={() => setIsPublished(!isPublished)}
                         className={cn(
-                          "w-10 h-5 rounded-full transition-colors relative",
-                          isPublished ? "bg-accent" : "bg-border"
+                          "w-11 h-6 rounded-full transition-colors relative flex items-center shadow-inner",
+                          isPublished ? "bg-accent" : "bg-surface-hover border border-border"
                         )}
                       >
                         <span
                           className={cn(
-                            "absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform",
-                            isPublished ? "translate-x-5" : "translate-x-0.5"
+                            "absolute w-4 h-4 rounded-full bg-white shadow-sm transition-all",
+                            isPublished ? "translate-x-6" : "translate-x-1"
                           )}
                         />
                       </button>
-                      <span className="text-sm font-medium text-foreground">
-                        Published
+                      <span className="text-sm font-medium text-foreground group-hover:text-accent transition-colors">
+                        Published to Storefront
                       </span>
                     </label>
-                    <label className="flex items-center gap-3 cursor-pointer select-none">
+
+                    <label className="flex items-center gap-3 cursor-pointer select-none group">
                       <button
                         type="button"
                         onClick={() => setIsFeatured(!isFeatured)}
                         className={cn(
-                          "w-10 h-5 rounded-full transition-colors relative",
-                          isFeatured ? "bg-accent" : "bg-border"
+                          "w-11 h-6 rounded-full transition-colors relative flex items-center shadow-inner",
+                          isFeatured ? "bg-accent" : "bg-surface-hover border border-border"
                         )}
                       >
                         <span
                           className={cn(
-                            "absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform",
-                            isFeatured ? "translate-x-5" : "translate-x-0.5"
+                            "absolute w-4 h-4 rounded-full bg-white shadow-sm transition-all",
+                            isFeatured ? "translate-x-6" : "translate-x-1"
                           )}
                         />
                       </button>
-                      <span className="text-sm font-medium text-foreground">
-                        Featured
+                      <span className="text-sm font-medium text-foreground group-hover:text-accent transition-colors">
+                        Featured Item
                       </span>
                     </label>
                   </div>
@@ -707,10 +763,56 @@ export default function AddProductPage() {
                   </button>
                 </div>
               )}
+
+              {/* 3D Model Section */}
+              <div className="mt-8 pt-8 border-t border-border">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-10 h-10 rounded-xl bg-accent/10 border border-accent/20 flex items-center justify-center">
+                    <Box className="w-5 h-5 text-accent" />
+                  </div>
+                  <div>
+                    <h2 className="text-sm font-bold text-foreground">
+                      Interactive 3D Model
+                    </h2>
+                    <p className="text-[11px] text-muted-foreground">
+                      Link a 3D .glb file for the immersive product viewer
+                    </p>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-1.5 flex justify-between items-center">
+                    <span>3D Model Path (.glb)</span>
+                    <button
+                      type="button"
+                      onClick={() => glbInputRef.current?.click()}
+                      disabled={isUploadingGlb}
+                      className="text-xs text-accent hover:text-accent/80 transition-colors flex items-center gap-1 disabled:opacity-50"
+                    >
+                      {isUploadingGlb ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
+                      Upload File
+                    </button>
+                  </label>
+                  <input
+                    type="file"
+                    accept=".glb"
+                    ref={glbInputRef}
+                    className="hidden"
+                    onChange={handleUploadGlb}
+                  />
+                  <input
+                    type="text"
+                    value={modelPath}
+                    onChange={(e) => setModelPath(e.target.value)}
+                    placeholder="/models/3d/my-model.glb"
+                    className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent focus:ring-1 focus:ring-accent outline-none transition-all text-foreground"
+                  />
+                </div>
+              </div>
+
             </div>
           )}
 
-          {/* ═══════════════ VIRTUAL TRY-ON ═══════════════ */}
+          {/* VIRTUAL TRY-ON */}
           {activeTab === "vto" && (
             <div className="space-y-6 animate-in fade-in text-center py-20">
               <Shirt className="w-16 h-16 text-accent/50 mx-auto mb-4" />
@@ -727,10 +829,10 @@ export default function AddProductPage() {
             </div>
           )}
 
-          {/* ═══════════════ AI VIDEO ═══════════════ */}
+          {/* AI VIDEO */}
           {activeTab === "ai-video" && <AiVideoGenerator />}
 
-          {/* ═══════════════ 3D PRODUCT ═══════════════ */}
+          {/* 3D PRODUCT */}
           {activeTab === "3d" && (
             <div className="space-y-8 animate-in fade-in">
               {/* Header */}

@@ -12,6 +12,10 @@ class LoginRequest(BaseModel):
     email: EmailStr
     password: str
 
+class Verify2FARequest(BaseModel):
+    user_id: str
+    code: str
+
 
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr

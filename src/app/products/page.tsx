@@ -175,7 +175,7 @@ export default function ProductsPage() {
           <p className="text-muted-foreground mt-1 text-sm">Manage store inventory, garment catalog, and live pricing</p>
         </div>
         <Link 
-          href="/products/create" 
+          href="/products/add" 
           className="flex items-center gap-2 px-5 py-2.5 bg-accent hover:bg-accent/90 text-white font-medium text-sm rounded-full transition-colors shadow-[0_0_15px_rgba(224,122,63,0.3)] shrink-0"
         >
           <Plus className="w-4 h-4" />

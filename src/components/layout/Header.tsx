@@ -247,7 +247,7 @@ export function Header({ isSidebarCollapsed, toggleSidebar, onOpenCart }: Header
                     if (session) signOut();
                     setIsUserMenuOpen(false); 
                   }}
-                  className="w-full text-left px-4 py-3 text-sm font-medium text-red-500 hover:bg-surface transition-colors"
+                  className="w-full text-left px-4 py-3 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-500/10 transition-colors"
                 >
                   Sign Out
                 </button>

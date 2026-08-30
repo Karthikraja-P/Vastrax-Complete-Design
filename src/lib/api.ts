@@ -82,8 +82,8 @@ export async function fetchApi<T>(endpoint: string, options: RequestInit = {}): 
     reportBackendUnreachable();
   }
 
-  // Suppress uncaught throws for GET and DELETE requests to prevent Next.js error modal overlays
-  if (!options.method || options.method.toUpperCase() === "GET" || options.method.toUpperCase() === "DELETE") {
+  // Suppress uncaught throws for GET requests to prevent Next.js error modal overlays during fetch
+  if (!options.method || options.method.toUpperCase() === "GET") {
     console.warn(`[API Notice] ${endpoint}:`, lastError?.message);
     return ({ success: true }) as unknown as T;
   }
@@ -103,6 +103,7 @@ export interface ProductItem {
   fabric?: string;
   colour?: string;
   occasion?: string;
+  model_path?: string;
   price: number;
   price_selling?: number;
   price_mrp?: number;
@@ -399,6 +400,14 @@ export const usersApi = {
 // 6. ANALYTICS & APP SETTINGS API
 // -------------------------------------------------------------
 export const analyticsApi = {
+  async getInsights() {
+    try {
+      return await fetchApi<any>("/analytics/insights");
+    } catch {
+      return null;
+    }
+  },
+
   async getOverview() {
     try {
       return await fetchApi<any>("/analytics/overview");

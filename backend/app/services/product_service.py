@@ -108,6 +108,7 @@ class ProductService:
             colour=payload.colour,
             price_mrp=payload.price_mrp,
             price_selling=payload.price_selling,
+            model_path=payload.model_path,
             description=payload.description,
             is_featured=payload.is_featured,
             is_published=payload.is_published,
@@ -144,6 +145,19 @@ class ProductService:
             value = getattr(payload, field)
             if value is not None:
                 setattr(product, field, value)
+
+        if payload.model_path is not None:
+            product.model_path = payload.model_path
+
+        if payload.images is not None:
+            for img in product.images:
+                self.db.delete(img)
+            for img_data in payload.images:
+                self.db.add(ProductImage(
+                    product_id=product.id,
+                    s3_url=img_data.s3_url,
+                    display_order=img_data.display_order,
+                ))
 
         if payload.category_id is not None:
             product.category_id = self._resolve_category_id(payload.category_id)

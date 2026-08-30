@@ -14,6 +14,9 @@ export function AuthModal({ isOpen, onClose, initialMode = "signin", onSuccess }
   const [isLoading, setIsLoading] = useState(false);
   const [loginMethod, setLoginMethod] = useState<"email" | "mobile">("email");
   const [isVerifying, setIsVerifying] = useState(false);
+  const [verifyType, setVerifyType] = useState<"login" | "register">("login");
+  const [pending2FAUserId, setPending2FAUserId] = useState<string | null>(null);
+  const [authBaseUrl, setAuthBaseUrl] = useState<string | null>(null);
   const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [forgotPasswordSuccess, setForgotPasswordSuccess] = useState(false);
   
@@ -32,11 +35,62 @@ export function AuthModal({ isOpen, onClose, initialMode = "signin", onSuccess }
   useEffect(() => {
     if (isOpen) {
       setIsSignUp(initialMode === "signup");
-      setIsForgotPassword(false);
-      setIsVerifying(false);
       setForgotPasswordSuccess(false);
+      setIsVerifying(false);
+      setPending2FAUserId(null);
+      setAuthBaseUrl(null);
+      setOtp("");
+      setIsForgotPassword(false);
     }
   }, [isOpen, initialMode]);
+
+  const handleVerifyOTP = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!otp.trim()) {
+      alert("Please enter the verification code");
+      return;
+    }
+    setIsLoading(true);
+
+    try {
+      const endpoint = verifyType === "register" ? "verify-registration" : "verify-2fa";
+      const res = await fetch(`${authBaseUrl || "http://localhost:8090/api/v1"}/auth/${endpoint}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: pending2FAUserId, code: otp })
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (res.ok && data.access_token) {
+        if (typeof window !== "undefined") {
+          localStorage.setItem("vastrax_token", data.access_token);
+        }
+        await signIn("credentials", {
+          redirect: false,
+          id: String(data.user?.id || `usr_${Date.now()}`),
+          name: data.user?.full_name || email.split("@")[0],
+          email: email,
+          password: "AUTHENTICATED",
+          accessToken: data.access_token
+        });
+        
+        setIsLoading(false);
+        setIsSuccess(true);
+        setTimeout(() => {
+          setIsSuccess(false);
+          onSuccess?.(data.user?.full_name || email.split("@")[0]);
+          onClose();
+        }, 1200);
+      } else {
+        setIsLoading(false);
+        alert(data.detail || "Invalid verification code");
+      }
+    } catch (err) {
+      setIsLoading(false);
+      alert("Failed to verify code. Please try again.");
+    }
+  };
 
   const toggleMode = () => {
     setIsSignUp(!isSignUp);
@@ -97,6 +151,16 @@ export function AuthModal({ isOpen, onClose, initialMode = "signin", onSuccess }
             reportBackendReachable();
 
             const data = await res.json().catch(() => ({}));
+
+            if (res.ok && data.status === "requires_verification") {
+              setPending2FAUserId(data.user_id);
+              setAuthBaseUrl(base);
+              setVerifyType("register");
+              setIsVerifying(true);
+              setIsLoading(false);
+              return;
+            }
+
             if (res.ok && data.access_token) {
               if (typeof window !== "undefined") {
                 localStorage.setItem("vastrax_token", data.access_token);
@@ -152,6 +216,15 @@ export function AuthModal({ isOpen, onClose, initialMode = "signin", onSuccess }
           reportBackendReachable();
 
           const data = await res.json().catch(() => ({}));
+          if (res.ok && data.status === "requires_2fa") {
+            setPending2FAUserId(data.user_id);
+            setAuthBaseUrl(base);
+            setVerifyType("login");
+            setIsVerifying(true);
+            setIsLoading(false);
+            return;
+          }
+
           if (res.ok && data.access_token) {
             loggedUser = data.user;
             if (typeof window !== "undefined") {
@@ -257,6 +330,62 @@ export function AuthModal({ isOpen, onClose, initialMode = "signin", onSuccess }
                       <p className="text-slate-500 text-[17px]">
                         Welcome back, {firstName || "Aishwarya"}. You have successfully signed in.
                       </p>
+                    </motion.div>
+                  ) : isVerifying ? (
+                    <motion.div
+                      key="verify"
+                      initial={{ opacity: 0, x: 20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -20 }}
+                      transition={{ duration: 0.3 }}
+                      className="w-full max-w-sm mx-auto"
+                    >
+                      <div className="mb-8">
+                        <h2 className="text-2xl md:text-3xl font-medium text-[#0A192F] mb-2 leading-tight py-1">
+                          Two-Step Verification
+                        </h2>
+                        <p className="text-slate-500 text-[17px]">
+                          Enter the 6-digit verification code sent to your registered phone number.
+                        </p>
+                      </div>
+                      <form onSubmit={handleVerifyOTP} className="space-y-4">
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-700 mb-1.5 uppercase tracking-wider">
+                            Verification Code
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="000000"
+                            required
+                            value={otp}
+                            onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                            className="w-full bg-slate-100/80 border border-slate-200 rounded-lg px-4 py-3 text-[17px] text-center tracking-[0.3em] font-medium focus:bg-white focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] outline-none transition-all placeholder:text-slate-400 placeholder:tracking-normal"
+                          />
+                        </div>
+                        <button
+                          type="submit"
+                          disabled={isLoading}
+                          className="w-full mt-6 py-3.5 bg-[#D4AF37] hover:bg-[#c5a030] text-white rounded-lg font-medium text-[17px] transition-all relative overflow-hidden"
+                        >
+                          {isLoading ? (
+                            <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin mx-auto" />
+                          ) : (
+                            "Verify & Sign In"
+                          )}
+                        </button>
+                        <div className="mt-4 text-center">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsVerifying(false);
+                              setPending2FAUserId(null);
+                            }}
+                            className="text-[17px] font-semibold text-slate-500 hover:text-[#0A192F] transition-colors"
+                          >
+                            Back to Sign In
+                          </button>
+                        </div>
+                      </form>
                     </motion.div>
                   ) : (
                     <motion.div

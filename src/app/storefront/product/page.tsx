@@ -38,6 +38,7 @@ function ProductContent() {
   const [activeColor, setActiveColor] = useState('Black');
   const [activeSize, setActiveSize] = useState('M');
   const [quantity, setQuantity] = useState(1);
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [activeTab, setActiveTab] = useState('Description');
   const [favorites, setFavorites] = useState<string[]>([]);
   
@@ -64,6 +65,7 @@ function ProductContent() {
     rating: number;
     reviewsCount: number;
     model3dUrl?: string;
+    model_path?: string;
   }>({
     id: "vtx-default",
     name: "Cyber Silk Trench Coat",
@@ -110,7 +112,7 @@ function ProductContent() {
             const allImgs = item.images?.length 
               ? item.images.map((i: any) => typeof i === 'string' ? i : i.s3_url || img) 
               : [img];
-            const modelUrl = item.model3dUrl || get3DModelForProduct(item.name || item.title || "", catName);
+            const modelUrl = item.model_path || item.model3dUrl || get3DModelForProduct(item.name || item.title || "", catName);
 
             setProduct({
               id: String(item.id),
@@ -143,7 +145,7 @@ function ProductContent() {
           const allImgs = item.images?.length 
             ? item.images.map((i: any) => typeof i === 'string' ? i : i.s3_url || img) 
             : [img];
-          const modelUrl = item.model3dUrl || get3DModelForProduct(item.name || item.title || "", catName);
+          const modelUrl = item.model_path || item.model3dUrl || get3DModelForProduct(item.name || item.title || "", catName);
 
           setProduct({
             id: String(item.id),
@@ -158,7 +160,8 @@ function ProductContent() {
             images: allImgs,
             rating: item.rating || 4.9,
             reviewsCount: item.reviewsCount || 14,
-            model3dUrl: modelUrl
+            model3dUrl: modelUrl,
+            model_path: item.model_path
           });
           if (item.colour) setActiveColor(item.colour);
         }
@@ -365,17 +368,48 @@ function ProductContent() {
                       <GarmentViewer3D
                         src={product.model3dUrl || "/models/3d/garment2_textured.glb"}
                         alt={product.name}
-                        poster={product.image}
+                        poster={product.images?.[activeImageIndex] || product.image}
                         badgeTitle="Hunyuan3D-2.1 PBR"
                         className="w-full h-full"
                       />
                     </div>
                   ) : (
                     <img 
-                      src={product.image} 
+                      src={product.images?.[activeImageIndex] || product.image} 
                       alt={product.name} 
                       className="w-full h-full object-cover rounded-2xl drop-shadow-2xl animate-fade-in"
                     />
+                  )}
+                </div>
+
+                {/* Thumbnails Carousel */}
+                <div className="mt-4 flex items-center gap-3 overflow-x-auto pb-2 scrollbar-hide">
+                  {(product.images || [product.image]).map((img: string, idx: number) => (
+                    <button
+                      key={idx}
+                      onClick={() => {
+                        setActiveImageIndex(idx);
+                        setIs3DMode(false);
+                      }}
+                      className={`relative flex-shrink-0 w-20 h-24 rounded-xl overflow-hidden border-2 transition-all ${
+                        !is3DMode && activeImageIndex === idx ? 'border-[#e07a3f] shadow-md' : 'border-transparent opacity-70 hover:opacity-100'
+                      }`}
+                    >
+                      <img src={img} alt={`${product.name} ${idx + 1}`} className="w-full h-full object-cover" />
+                    </button>
+                  ))}
+                  
+                  {/* 3D Model Thumbnail */}
+                  {(product.model3dUrl || product.model_path) && (
+                    <button
+                      onClick={() => setIs3DMode(true)}
+                      className={`relative flex-shrink-0 w-20 h-24 rounded-xl overflow-hidden border-2 transition-all flex flex-col items-center justify-center bg-surface-hover ${
+                        is3DMode ? 'border-[#38bdf8] shadow-md' : 'border-transparent opacity-70 hover:opacity-100'
+                      }`}
+                    >
+                      <Box className="w-6 h-6 text-[#38bdf8] mb-1" />
+                      <span className="text-[9px] font-semibold text-foreground/70">3D VIEW</span>
+                    </button>
                   )}
                 </div>
               </div>

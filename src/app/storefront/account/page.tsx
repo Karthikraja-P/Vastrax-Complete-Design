@@ -40,6 +40,7 @@ export default function CustomerAccountPage() {
   const [headerName, setHeaderName] = useState("Aishwarya R");
   const [email, setEmail] = useState("aishwarya.r@outlook.com");
   const [phone, setPhone] = useState("+91 99622 88110");
+  const [is2FAEnabled, setIs2FAEnabled] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
 
   // Address state
@@ -394,6 +395,37 @@ export default function CustomerAccountPage() {
                     </button>
                   </div>
                 </form>
+
+                <div className="mt-12 bg-surface/60 border border-border/80 rounded-2xl p-6 max-w-xl">
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <h3 className="text-xl font-bold text-foreground">Security Settings</h3>
+                      <p className="text-sm text-muted-foreground mt-1">Manage your account security.</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between py-4 border-t border-border/40">
+                    <div>
+                      <p className="text-base font-semibold text-foreground">Two-Factor Authentication (SMS)</p>
+                      <p className="text-sm text-muted-foreground mt-1 max-w-sm">
+                        Require a 6-digit code sent to your mobile device when logging in.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIs2FAEnabled(!is2FAEnabled)}
+                      className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                        is2FAEnabled ? "bg-accent" : "bg-border/60"
+                      }`}
+                    >
+                      <span
+                        aria-hidden="true"
+                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                          is2FAEnabled ? "translate-x-5" : "translate-x-0"
+                        }`}
+                      />
+                    </button>
+                  </div>
+                </div>
 
                 <div className="mt-12">
                   <div className="flex items-center justify-between mb-6">
