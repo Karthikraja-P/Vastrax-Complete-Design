@@ -12,8 +12,10 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { useSession } from "next-auth/react";
 import { AuthModal } from "@/components/auth/AuthModal";
 import { reportBackendReachable, reportBackendUnreachable } from "@/lib/backendStatus";
+import { getCart, clearCart, CartItem } from "@/lib/cart";
+import { showToast } from "@/lib/toast";
 
-const BACKEND_BASE = "http://localhost:8000/api/v1";
+const BACKEND_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8090/api/v1";
 
 /** Wraps fetch to report backend connectivity — a thrown network error means the backend
  * is unreachable, distinct from a normal HTTP error response (which still reaches the server). */
@@ -29,13 +31,13 @@ async function backendFetch(url: string, options: RequestInit) {
 }
 
 interface OrderItem {
-  id: number;
+  id: string | number;
   name: string;
   price: number;
   quantity: number;
-  size: string;
-  color: string;
-  image: string;
+  size?: string;
+  color?: string;
+  image?: string;
 }
 
 export default function CheckoutPage() {
@@ -81,12 +83,26 @@ export default function CheckoutPage() {
   const [items, setItems] = useState<OrderItem[]>([]);
   
   React.useEffect(() => {
-    const saved = localStorage.getItem("vastrax_cart");
-    if (saved) {
-      try {
-        setItems(JSON.parse(saved));
-      } catch(e) {}
-    }
+    const loadItems = () => {
+      const currentCart = getCart();
+      setItems(currentCart.map(c => ({
+        id: c.id,
+        name: c.name,
+        price: Number(c.price) || 0,
+        quantity: c.quantity || 1,
+        size: c.size,
+        color: c.color,
+        image: c.image
+      })));
+    };
+
+    loadItems();
+    window.addEventListener("cart-updated", loadItems);
+    window.addEventListener("storage", loadItems);
+    return () => {
+      window.removeEventListener("cart-updated", loadItems);
+      window.removeEventListener("storage", loadItems);
+    };
   }, []);
 
   const subtotal = items.reduce((acc, item) => acc + item.price * item.quantity, 0);
@@ -100,9 +116,16 @@ export default function CheckoutPage() {
     setOrderNumber(orderId.split('-')[0].toUpperCase()); // Short mock order ID
     setOrderComplete(true);
 
-    // Clear cart
-    localStorage.removeItem("vastrax_cart");
+    // Clear cart across application
+    clearCart();
     setItems([]);
+
+    showToast({
+      title: "Order Placed Successfully",
+      description: `Order #${orderId.split('-')[0].toUpperCase()} confirmed. Thank you!`,
+      type: "success",
+      duration: 5000
+    });
   };
 
   const openRazorpayCheckout = (token: string, orderId: string, initiateData: any) => {
@@ -162,22 +185,37 @@ export default function CheckoutPage() {
       } else {
         setIsProcessing(false);
         setSimPayment(null);
-        alert("Payment was not completed. Your order has been cancelled and stock restored.");
+        showToast({
+          title: "Payment Declined",
+          description: "Transaction was declined by card issuer. Your order has been cancelled and inventory restored.",
+          type: "error",
+          duration: 5000,
+        });
       }
     } catch (err) {
       console.error(err);
       setIsProcessing(false);
-      alert("Failed to process simulated payment.");
+      showToast({
+        title: "Payment Error",
+        description: "Failed to process payment response.",
+        type: "error",
+        duration: 4000,
+      });
     }
   };
 
   const handlePlaceOrder = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isProcessing) return;
     setIsProcessing(true);
 
     try {
       const token = (session as any)?.accessToken;
-      if (!token) throw new Error("No access token");
+      if (!token) throw new Error("Please sign in to complete your purchase.");
+
+      if (items.length === 0) {
+        throw new Error("Your cart is empty.");
+      }
 
       // 1. Create Address
       const addressRes = await backendFetch(`${BACKEND_BASE}/users/me/addresses`, {
@@ -205,7 +243,8 @@ export default function CheckoutPage() {
           total_amount: total,
           items: items.map(item => ({
             product_id: String(item.id),
-            variant_id: "var_dummy", // Assuming mock variants for now until cart has real variant ids
+            size: item.size || "M",
+            color: item.color || "Default",
             quantity: item.quantity,
             unit_price: item.price
           }))

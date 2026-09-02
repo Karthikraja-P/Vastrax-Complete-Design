@@ -9,7 +9,9 @@ from app.schemas.products import ProductVariantResponse
 
 class OrderItemCreate(BaseModel):
     product_id: str
-    variant_id: str
+    variant_id: Optional[str] = None
+    size: Optional[str] = "M"
+    color: Optional[str] = None
     quantity: int
     unit_price: Decimal
 
@@ -38,13 +40,15 @@ class OrderResponse(BaseModel):
     total_amount: Decimal
     status: str
     payment_status: str
-    shipping_shipment_id: str | None
-    shipping_awb: str | None
-    shipping_courier: str | None
-    shipping_status: str | None
+    shipping_shipment_id: str | None = None
+    shipping_awb: str | None = None
+    shipping_courier: str | None = None
+    shipping_status: str | None = None
     placed_at: datetime
     updated_at: datetime
     items: list[OrderItemResponse] = []
+    customer_name: Optional[str] = None
+    customer_email: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 

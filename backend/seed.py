@@ -19,14 +19,25 @@ def seed_database():
     db = SessionLocal()
     try:
         # Seed dummy users
+        from app.core.security import hash_password
         admin_email = "admin@vastrax.com"
         customer_email = "customer@vastrax.com"
 
-        if not db.query(User).filter(User.email == admin_email).first():
-            db.add(User(email=admin_email, full_name="Admin User", hashed_password="MOCKED", role="admin", is_active=True))
+        admin_user = db.query(User).filter(User.email == admin_email).first()
+        if not admin_user:
+            db.add(User(email=admin_email, phone_number="+919962288111", full_name="Admin User", hashed_password=hash_password("admin123"), role="admin", is_active=True))
+        else:
+            admin_user.hashed_password = hash_password("admin123")
+            admin_user.phone_number = "+919962288111"
         
-        if not db.query(User).filter(User.email == customer_email).first():
-            db.add(User(email=customer_email, full_name="Demo Customer", hashed_password="MOCKED", role="customer", is_active=True))
+        customer_user = db.query(User).filter(User.email == customer_email).first()
+        if not customer_user:
+            db.add(User(email=customer_email, phone_number="+919962288110", full_name="Demo Customer", hashed_password=hash_password("customer123"), role="customer", is_active=True))
+        else:
+            customer_user.hashed_password = hash_password("customer123")
+            customer_user.phone_number = "+919962288110"
+        
+        db.commit()
 
 
         # Seed Categories

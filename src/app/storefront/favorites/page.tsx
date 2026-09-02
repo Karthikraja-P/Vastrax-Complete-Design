@@ -11,6 +11,8 @@ import { StylistDrawer } from "@/components/stylist/StylistDrawer";
 import { Product3DModal } from "@/components/3d/Product3DModal";
 import { productsApi } from "@/lib/api";
 import { useFavorites } from "@/hooks/useFavorites";
+import { addToCart as addCartItem, getCart } from "@/lib/cart";
+import { showToast } from "@/lib/toast";
 
 export default function FavoritesPage() {
   const { data: session } = useSession();
@@ -27,7 +29,6 @@ export default function FavoritesPage() {
 
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isStylistOpen, setIsStylistOpen] = useState(false);
-  const [bagItems, setBagItems] = useState<number[]>([]);
 
   const [selectedProductForSize, setSelectedProductForSize] = useState<any | null>(null);
   const [selected3DProduct, setSelected3DProduct] = useState<any | null>(null);
@@ -76,24 +77,60 @@ export default function FavoritesPage() {
     }
   }, [session]);
 
-  const toggleBag = (id: number) => {
-    setBagItems(prev => prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]);
+  const [bagItems, setBagItems] = useState<any[]>([]);
+
+  useEffect(() => {
+    const syncCart = () => {
+      setBagItems(getCart());
+    };
+    syncCart();
+    window.addEventListener("cart-updated", syncCart);
+    window.addEventListener("storage", syncCart);
+    return () => {
+      window.removeEventListener("cart-updated", syncCart);
+      window.removeEventListener("storage", syncCart);
+    };
+  }, []);
+
+  const isItemInBag = (productId: string | number) => {
+    return bagItems.some((item) => String(item.id) === String(productId));
+  };
+
+  const addItemToBag = (product: any, size = "M") => {
+    const priceNum = typeof product.price === 'string'
+      ? parseFloat(String(product.price).replace(/[^0-9.-]+/g, "")) || 0
+      : Number(product.price) || 0;
+
+    addCartItem({
+      id: product.id,
+      name: product.name,
+      price: priceNum,
+      quantity: 1,
+      size: size,
+      color: product.colour || "Default",
+      image: product.image
+    });
+
+    showToast({
+      title: "Added to Shopping Bag",
+      description: `${product.name} (Size: ${size})`,
+      type: "gold",
+      image: product.image,
+      duration: 3000
+    });
+
+    setSelectedProductForSize(null);
   };
 
   const handleAddToBagClick = (product: any, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
 
-    if (bagItems.includes(product.id)) {
-      toggleBag(product.id);
-      return;
-    }
-
-    const isOneSize = /cap|hat|beanie/i.test(product.name);
+    const isOneSize = /cap|hat|beanie/i.test(product.name || "");
     if (!isOneSize) {
       setSelectedProductForSize(product);
     } else {
-      toggleBag(product.id);
+      addItemToBag(product, "One Size");
     }
   };
 
@@ -203,14 +240,15 @@ export default function FavoritesPage() {
             AI Stylist
           </button>
 
-          <button
+          <button 
             onClick={() => setIsCartOpen(true)}
+            aria-label="Open Shopping Bag"
             className="w-10 h-10 rounded-full bg-surface dark:bg-[#2a2a2a] flex items-center justify-center text-foreground dark:text-white hover:text-[#e07a3f] transition-colors relative"
           >
             <ShoppingBag className="w-5 h-5" />
             {bagItems.length > 0 && (
-              <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-[#e07a3f] text-[9px] font-bold text-white flex items-center justify-center">
-                {bagItems.length}
+              <span className="absolute -top-1 -right-1 bg-[#e07a3f] text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center font-bold shadow-sm animate-in zoom-in">
+                {bagItems.reduce((acc, i) => acc + (i.quantity || 1), 0)}
               </span>
             )}
           </button>
@@ -295,8 +333,9 @@ export default function FavoritesPage() {
 
                   <button
                     onClick={(e) => handleAddToBagClick(product, e)}
-                    className={`w-10 h-10 shrink-0 rounded-full flex items-center justify-center transition-all shadow-md cursor-pointer ${bagItems.includes(product.id)
-                        ? 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-emerald-500/20'
+                    className={`w-10 h-10 rounded-full flex items-center justify-center transition-all shadow-md ${
+                      isItemInBag(product.id)
+                        ? 'bg-[#e07a3f] text-white shadow-[#e07a3f]/20 scale-105'
                         : 'bg-black dark:bg-white text-white dark:text-black hover:bg-black/90 dark:hover:bg-white/90 shadow-black/10'
                       }`}
                   >
@@ -321,9 +360,11 @@ export default function FavoritesPage() {
         <Product3DModal
           isOpen={!!selected3DProduct}
           onClose={() => setSelected3DProduct(null)}
-          modelUrl={selected3DProduct.model3dUrl}
-          productName={selected3DProduct.name}
-          posterImage={selected3DProduct.image}
+          product={selected3DProduct}
+          onAddToBag={(prod) => {
+            addItemToBag(prod, "M");
+            setSelected3DProduct(null);
+          }}
         />
       )}
 
@@ -338,8 +379,7 @@ export default function FavoritesPage() {
                 <button
                   key={size}
                   onClick={() => {
-                    toggleBag(selectedProductForSize.id);
-                    setSelectedProductForSize(null);
+                    addItemToBag(selectedProductForSize, size);
                   }}
                   className="py-2.5 border border-border/50 rounded-xl text-foreground font-medium hover:bg-accent hover:text-white hover:border-accent transition-colors"
                 >

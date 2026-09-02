@@ -1,19 +1,11 @@
-"use client";
-
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { X, Trash2, Plus, Minus, ArrowRight, ShieldCheck, ShoppingBag, Sparkles, CheckCircle2 } from "lucide-react";
 import Link from "next/link";
 import { promosApi } from "@/lib/api";
+import { CartItem, getCart, updateCartQuantity as updateQty, removeFromCart as removeItemFromCart } from "@/lib/cart";
+import { showToast } from "@/lib/toast";
 
-export interface CartItem {
-  id: number | string;
-  name: string;
-  price: number;
-  image: string;
-  quantity: number;
-  size?: string;
-  color?: string;
-}
+export type { CartItem };
 
 interface CartDrawerProps {
   isOpen: boolean;
@@ -24,25 +16,25 @@ interface CartDrawerProps {
 export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
 
-  React.useEffect(() => {
-    const loadCart = () => {
-      const saved = localStorage.getItem("vastrax_cart");
-      if (saved) {
-        try {
-          setCartItems(JSON.parse(saved));
-        } catch (e) {}
-      }
-    };
-    loadCart();
-
-    window.addEventListener("cart-updated", loadCart);
-    return () => window.removeEventListener("cart-updated", loadCart);
+  const loadCart = useCallback(() => {
+    const items = getCart();
+    setCartItems(items);
   }, []);
 
-  // Save to local storage on changes
-  React.useEffect(() => {
-    localStorage.setItem("vastrax_cart", JSON.stringify(cartItems));
-  }, [cartItems]);
+  // Sync cart on initial mount and when drawer opens
+  useEffect(() => {
+    loadCart();
+  }, [loadCart, isOpen]);
+
+  // Listen to cross-component cart events
+  useEffect(() => {
+    window.addEventListener("cart-updated", loadCart);
+    window.addEventListener("storage", loadCart);
+    return () => {
+      window.removeEventListener("cart-updated", loadCart);
+      window.removeEventListener("storage", loadCart);
+    };
+  }, [loadCart]);
 
   const [promoCode, setPromoCode] = useState("");
   const [discountPercent, setDiscountPercent] = useState(0);
@@ -50,18 +42,20 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
   const [promoError, setPromoError] = useState("");
   const [promoApplied, setPromoApplied] = useState(false);
 
-  const updateQuantity = (id: number | string, delta: number) => {
-    setCartItems(prev => prev.map(item => {
-      if (item.id === id) {
-        const newQty = Math.max(1, item.quantity + delta);
-        return { ...item, quantity: newQty };
-      }
-      return item;
-    }));
+  const updateQuantity = (id: number | string, delta: number, size?: string) => {
+    const updated = updateQty(id, delta, size);
+    setCartItems(updated);
   };
 
-  const removeItem = (id: number | string) => {
-    setCartItems(prev => prev.filter(item => item.id !== id));
+  const removeItem = (id: number | string, size?: string, name?: string) => {
+    const updated = removeItemFromCart(id, size);
+    setCartItems(updated);
+    showToast({
+      title: "Removed from Bag",
+      description: name ? `${name} was removed from your bag.` : undefined,
+      type: "info",
+      duration: 2500,
+    });
   };
 
   const subtotal = cartItems.reduce((acc, item) => acc + item.price * item.quantity, 0);
@@ -161,7 +155,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
           ) : (
             cartItems.map((item) => (
               <div 
-                key={item.id}
+                key={`${item.id}-${item.size || 'M'}`}
                 className="flex gap-4 p-3 bg-background/60 rounded-xl border border-border/80 group hover:border-accent/30 transition-all"
               >
                 <div className="w-20 h-24 rounded-lg bg-surface-hover overflow-hidden shrink-0 border border-border/40">
@@ -172,22 +166,22 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                   <div className="flex items-start justify-between gap-2">
                     <div>
                       <h4 className="text-sm font-semibold text-foreground leading-snug line-clamp-1">{item.name}</h4>
-                      <p className="text-[11px] text-muted-foreground mt-0.5">{item.color} · {item.size}</p>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">{item.color} · Size: {item.size || "M"}</p>
                     </div>
-                    <span className="text-sm font-bold text-foreground">${item.price * item.quantity}</span>
+                    <span className="text-sm font-bold text-foreground">₹{(item.price * item.quantity).toLocaleString('en-IN')}</span>
                   </div>
 
                   <div className="flex items-center justify-between pt-2">
                     <div className="flex items-center gap-2 bg-surface border border-border rounded-lg p-1">
                       <button 
-                        onClick={() => updateQuantity(item.id, -1)}
+                        onClick={() => updateQuantity(item.id, -1, item.size)}
                         className="w-5 h-5 rounded flex items-center justify-center hover:bg-surface-hover text-muted-foreground hover:text-foreground transition-colors"
                       >
                         <Minus className="w-3 h-3" />
                       </button>
                       <span className="text-xs font-semibold w-4 text-center">{item.quantity}</span>
                       <button 
-                        onClick={() => updateQuantity(item.id, 1)}
+                        onClick={() => updateQuantity(item.id, 1, item.size)}
                         className="w-5 h-5 rounded flex items-center justify-center hover:bg-surface-hover text-muted-foreground hover:text-foreground transition-colors"
                       >
                         <Plus className="w-3 h-3" />
@@ -195,7 +189,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                     </div>
 
                     <button 
-                      onClick={() => removeItem(item.id)}
+                      onClick={() => removeItem(item.id, item.size, item.name)}
                       className="text-muted-foreground hover:text-red-400 p-1.5 transition-colors"
                       title="Remove item"
                     >
@@ -237,21 +231,21 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
             <div className="space-y-2 text-xs">
               <div className="flex justify-between text-muted-foreground">
                 <span>Subtotal</span>
-                <span className="text-foreground font-medium">${subtotal.toFixed(2)}</span>
+                <span className="text-foreground font-medium">₹{subtotal.toLocaleString('en-IN')}</span>
               </div>
               {discountPercent > 0 && (
                 <div className="flex justify-between text-green-500">
                   <span>Discount ({discountPercent}%)</span>
-                  <span>-${discountAmount.toFixed(2)}</span>
+                  <span>-₹{discountAmount.toLocaleString('en-IN')}</span>
                 </div>
               )}
               <div className="flex justify-between text-muted-foreground">
                 <span>Estimated Shipping</span>
-                <span className="text-foreground font-medium">{shipping === 0 ? "Free" : `$${shipping.toFixed(2)}`}</span>
+                <span className="text-foreground font-medium">{shipping === 0 ? "Free" : `₹${shipping.toLocaleString('en-IN')}`}</span>
               </div>
               <div className="flex justify-between text-sm font-bold text-foreground pt-2 border-t border-border">
                 <span>Estimated Total</span>
-                <span className="text-accent text-base font-extrabold">${total.toFixed(2)}</span>
+                <span className="text-accent text-base font-extrabold">₹{total.toLocaleString('en-IN')}</span>
               </div>
             </div>
 

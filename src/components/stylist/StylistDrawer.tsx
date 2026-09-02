@@ -9,6 +9,8 @@ import {
 import { chatApi, tryonApi } from "@/lib/api";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useFavorites } from "@/hooks/useFavorites";
+import { addToCart as addCartItem } from "@/lib/cart";
+import { showToast } from "@/lib/toast";
 
 interface Message {
   id: string;
@@ -68,15 +70,15 @@ interface StylistDrawerProps {
 }
 
 export function StylistDrawer({ isOpen, onClose }: StylistDrawerProps) {
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [sessionId, setSessionId] = useState<string>("");
   const [addedToCart, setAddedToCart] = useState<string[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   
   const { isFavorite, toggleFavorite } = useFavorites();
 
@@ -87,26 +89,27 @@ export function StylistDrawer({ isOpen, onClose }: StylistDrawerProps) {
       setAddedToCart(prev => prev.filter(item => item !== pId));
     }, 2000);
 
-    const saved = localStorage.getItem("vastrax_cart");
-    const currentCart = saved ? JSON.parse(saved) : [];
-    
-    const existingIndex = currentCart.findIndex((i: any) => i.id === pId);
-    if (existingIndex >= 0) {
-      currentCart[existingIndex].quantity += 1;
-    } else {
-      currentCart.push({
-        id: pId,
-        name: product.name,
-        price: typeof product.price === 'string' ? parseFloat(product.price.replace(/[^0-9.-]+/g,"")) : product.price,
-        quantity: 1,
-        size: "M",
-        color: "Default",
-        image: product.image
-      });
-    }
-    
-    localStorage.setItem("vastrax_cart", JSON.stringify(currentCart));
-    window.dispatchEvent(new Event("cart-updated"));
+    const priceNum = typeof product.price === 'string' 
+      ? parseFloat(product.price.replace(/[^0-9.-]+/g,"")) || 0
+      : Number(product.price) || 0;
+
+    addCartItem({
+      id: pId,
+      name: product.name,
+      price: priceNum,
+      quantity: 1,
+      size: "M",
+      color: "Default",
+      image: product.image
+    });
+
+    showToast({
+      title: "Added to Shopping Bag",
+      description: `${product.name} (Stylist Pick)`,
+      type: "gold",
+      image: product.image,
+      duration: 3000
+    });
   };
 
   // Initialize or load session & history

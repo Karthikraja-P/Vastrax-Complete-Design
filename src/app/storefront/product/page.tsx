@@ -17,6 +17,8 @@ import { GarmentViewer3D } from "@/components/3d/GarmentViewer3D";
 import { Product3DModal } from "@/components/3d/Product3DModal";
 
 import { productsApi } from "@/lib/api";
+import { addToCart as addCartItem, getCart } from "@/lib/cart";
+import { showToast } from "@/lib/toast";
 
 const colors = [
   { name: 'Black', value: '#1a1a1a' },
@@ -100,6 +102,19 @@ function ProductContent() {
     if (/pant|trouser/i.test(p)) return "/models/3d/garment_photo_textured.glb";
     return "/models/3d/garment2_textured.glb";
   };
+
+  useEffect(() => {
+    const syncCart = () => {
+      setBagItems(getCart());
+    };
+    syncCart();
+    window.addEventListener("cart-updated", syncCart);
+    window.addEventListener("storage", syncCart);
+    return () => {
+      window.removeEventListener("cart-updated", syncCart);
+      window.removeEventListener("storage", syncCart);
+    };
+  }, []);
 
   useEffect(() => {
     async function loadProduct() {
@@ -217,27 +232,34 @@ function ProductContent() {
     return () => window.removeEventListener("open-stylist", handleOpenStylist);
   }, []);
 
-  const addToCart = () => {
-    const saved = localStorage.getItem("vastrax_cart");
-    const currentCart = saved ? JSON.parse(saved) : [];
-    
-    const existingIndex = currentCart.findIndex((i: any) => i.id === product.id && i.size === activeSize);
-    if (existingIndex >= 0) {
-      currentCart[existingIndex].quantity += quantity;
-    } else {
-      currentCart.push({
-        id: product.id,
-        name: product.name,
-        price: product.price,
-        quantity: quantity,
-        size: activeSize,
-        color: activeColor,
-        image: product.image
-      });
+  const addToCart = (openDrawer = true) => {
+    const priceNum = typeof product.price === 'string' 
+      ? parseFloat(String(product.price).replace(/[^0-9.-]+/g, "")) || 0
+      : Number(product.price) || 0;
+
+    const updated = addCartItem({
+      id: product.id,
+      name: product.name,
+      price: priceNum,
+      quantity: quantity,
+      size: activeSize,
+      color: activeColor,
+      image: product.image
+    });
+
+    setBagItems(updated);
+
+    showToast({
+      title: "Added to Shopping Bag",
+      description: `${product.name} (Size: ${activeSize}, Qty: ${quantity})`,
+      type: "gold",
+      image: product.image,
+      duration: 3000
+    });
+
+    if (openDrawer) {
+      setIsCartOpen(true);
     }
-    
-    localStorage.setItem("vastrax_cart", JSON.stringify(currentCart));
-    setBagItems(currentCart);
   };
 
   const handleOpenTryOn = () => {
@@ -285,9 +307,15 @@ function ProductContent() {
 
           <button 
             onClick={() => setIsCartOpen(true)}
+            aria-label="Open Shopping Bag"
             className="w-10 h-10 rounded-full bg-surface dark:bg-[#2a2a2a] flex items-center justify-center text-foreground dark:text-white hover:text-[#e07a3f] transition-colors relative"
           >
             <ShoppingBag className="w-5 h-5" />
+            {bagItems.length > 0 && (
+              <span className="absolute -top-1 -right-1 bg-[#e07a3f] text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center font-bold shadow-sm animate-in zoom-in">
+                {bagItems.reduce((acc, i) => acc + (i.quantity || 1), 0)}
+              </span>
+            )}
           </button>
         </div>
       </header>
@@ -502,17 +530,18 @@ function ProductContent() {
                   </button>
 
                   <div className="flex flex-col sm:flex-row gap-4">
-                    <a 
-                      href="/storefront/checkout"
-                      onClick={() => addToCart()}
+                    <button 
+                      onClick={() => {
+                        addToCart(false);
+                        router.push("/storefront/checkout");
+                      }}
                       className="flex-1 bg-[#e07a3f] hover:bg-[#d06a2f] text-white h-[52px] rounded-full font-medium text-sm transition-colors shadow-lg shadow-[#e07a3f]/20 flex items-center justify-center cursor-pointer"
                     >
                       Buy Now
-                    </a>
+                    </button>
                     <button 
                       onClick={() => {
-                        addToCart();
-                        setIsCartOpen(true);
+                        addToCart(true);
                       }}
                       className="flex-1 bg-transparent border border-foreground/20 hover:border-foreground/50 hover:bg-foreground/5 text-foreground h-[52px] rounded-full font-medium text-sm transition-all flex items-center justify-center gap-2 cursor-pointer"
                     >

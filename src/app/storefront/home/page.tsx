@@ -10,6 +10,7 @@ import { useSession, signOut } from "next-auth/react";
 import Link from "next/link";
 import { productsApi, categoriesApi } from "@/lib/api";
 import { useFavorites } from "@/hooks/useFavorites";
+import { getCart } from "@/lib/cart";
 
 const defaultCategories = [
   { name: "Dresses", slug: "dresses", image: "https://images.unsplash.com/photo-1572804013309-59a88b7e92f1?q=80&w=600&auto=format&fit=crop" },
@@ -34,17 +35,16 @@ export default function StorefrontHome() {
   
   useEffect(() => {
     const loadCart = () => {
-      const saved = localStorage.getItem("vastrax_cart");
-      if (saved) {
-        try {
-          setBagItems(JSON.parse(saved));
-        } catch (e) {}
-      }
+      setBagItems(getCart());
     };
     loadCart();
 
     window.addEventListener("cart-updated", loadCart);
-    return () => window.removeEventListener("cart-updated", loadCart);
+    window.addEventListener("storage", loadCart);
+    return () => {
+      window.removeEventListener("cart-updated", loadCart);
+      window.removeEventListener("storage", loadCart);
+    };
   }, []);
   
   // Sync NextAuth session with local state for seamless transition

@@ -4,12 +4,12 @@ from pydantic import BaseModel, EmailStr
 class RegisterRequest(BaseModel):
     full_name: str
     email: EmailStr
-    phone_number: str | None = None
+    phone_number: str
     password: str
 
 
 class LoginRequest(BaseModel):
-    email: EmailStr
+    email: str
     password: str
 
 class Verify2FARequest(BaseModel):

@@ -8,6 +8,8 @@ import {
 } from "lucide-react";
 import { tryonApi, productsApi } from "@/lib/api";
 import { useSession } from "next-auth/react";
+import { addToCart as addCartItem } from "@/lib/cart";
+import { showToast } from "@/lib/toast";
 
 const PHOTO_TIPS = {
   bottoms: "Avoid wearing a long top, kurti, or dress that covers your legs. Wear shorts or leggings so the AI can drape the pants correctly.",
@@ -161,18 +163,30 @@ export default function VirtualTryOnPage() {
       setSizeError(true);
       return;
     }
-    const saved = localStorage.getItem("vastrax_cart");
-    const currentCart = saved ? JSON.parse(saved) : [];
-    currentCart.push({
+    const priceNum = typeof product.price_selling === 'number' 
+      ? product.price_selling 
+      : typeof product.price === 'number' 
+      ? product.price 
+      : 2499;
+
+    addCartItem({
       id: product.id,
       name: product.name,
-      price: product.price_selling || product.price,
+      price: priceNum,
       quantity: 1,
       size: selectedSize,
       color: product.colour || "Default",
       image: product.images?.[0]?.s3_url || product.image
     });
-    localStorage.setItem("vastrax_cart", JSON.stringify(currentCart));
+
+    showToast({
+      title: "Added to Shopping Bag",
+      description: `${product.name} (Size: ${selectedSize})`,
+      type: "gold",
+      image: product.images?.[0]?.s3_url || product.image,
+      duration: 3000
+    });
+
     setAddedBag(true);
     setTimeout(() => setAddedBag(false), 3000);
   };

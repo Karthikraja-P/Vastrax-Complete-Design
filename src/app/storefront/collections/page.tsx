@@ -11,6 +11,8 @@ import { StylistDrawer } from "@/components/stylist/StylistDrawer";
 import { Product3DModal } from "@/components/3d/Product3DModal";
 import { productsApi, categoriesApi } from "@/lib/api";
 import { reportBackendReachable, reportBackendUnreachable } from "@/lib/backendStatus";
+import { addToCart as addCartItem, getCart } from "@/lib/cart";
+import { showToast } from "@/lib/toast";
 
 // --- Mock Data ---
 
@@ -204,8 +206,6 @@ export default function CollectionsPage() {
   const [isStylistOpen, setIsStylistOpen] = useState(false);
   const [activeBanner, setActiveBanner] = useState(0);
   const [isMobileFiltersOpen, setIsMobileFiltersOpen] = useState(false);
-  const [bagItems, setBagItems] = useState<number[]>([]);
-
   const [isSortOpen, setIsSortOpen] = useState(false);
   const [sortBy, setSortBy] = useState("Recommended");
   const sortOptions = ["Recommended", "Newest Arrivals", "Price: Low to High", "Price: High to Low", "Top Rated"];
@@ -217,30 +217,60 @@ export default function CollectionsPage() {
     return () => clearInterval(timer);
   }, []);
 
+  const [bagItems, setBagItems] = useState<any[]>([]);
+
   useEffect(() => {
-    const handleOpenStylist = () => setIsStylistOpen(true);
-    window.addEventListener("open-stylist", handleOpenStylist);
-    return () => window.removeEventListener("open-stylist", handleOpenStylist);
+    const syncCart = () => {
+      setBagItems(getCart());
+    };
+    syncCart();
+    window.addEventListener("cart-updated", syncCart);
+    window.addEventListener("storage", syncCart);
+    return () => {
+      window.removeEventListener("cart-updated", syncCart);
+      window.removeEventListener("storage", syncCart);
+    };
   }, []);
 
-  const toggleBag = (id: number) => {
-    setBagItems(prev => prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]);
+  const isItemInBag = (productId: string | number) => {
+    return bagItems.some((item) => String(item.id) === String(productId));
+  };
+
+  const addItemToBag = (product: any, size = "M") => {
+    const priceNum = typeof product.price === 'string'
+      ? parseFloat(String(product.price).replace(/[^0-9.-]+/g, "")) || 0
+      : Number(product.price) || 0;
+
+    addCartItem({
+      id: product.id,
+      name: product.name,
+      price: priceNum,
+      quantity: 1,
+      size: size,
+      color: product.colour || "Default",
+      image: product.image
+    });
+
+    showToast({
+      title: "Added to Shopping Bag",
+      description: `${product.name} (Size: ${size})`,
+      type: "gold",
+      image: product.image,
+      duration: 3000
+    });
+
+    setSelectedProductForSize(null);
   };
 
   const handleAddToBagClick = (product: any, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
 
-    if (bagItems.includes(product.id)) {
-      toggleBag(product.id);
-      return;
-    }
-
-    const isOneSize = /cap|hat|beanie/i.test(product.name);
+    const isOneSize = /cap|hat|beanie/i.test(product.name || "");
     if (!isOneSize) {
       setSelectedProductForSize(product);
     } else {
-      toggleBag(product.id);
+      addItemToBag(product, "One Size");
     }
   };
   // Compute filtered & sorted products
@@ -407,15 +437,15 @@ export default function CollectionsPage() {
             )}
           </div>
 
-          <button
+          <button 
             onClick={() => setIsCartOpen(true)}
-            className="text-muted-foreground hover:text-[#e07a3f] transition-colors relative"
             aria-label="Open Shopping Bag"
+            className="w-10 h-10 rounded-full bg-surface dark:bg-[#2a2a2a] flex items-center justify-center text-foreground dark:text-white hover:text-[#e07a3f] transition-colors relative"
           >
             <ShoppingBag className="w-5 h-5" />
             {bagItems.length > 0 && (
-              <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-[#e07a3f] text-foreground dark:text-white text-[10px] font-bold rounded-full flex items-center justify-center">
-                {bagItems.length}
+              <span className="absolute -top-1 -right-1 bg-[#e07a3f] text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center font-bold shadow-sm animate-in zoom-in">
+                {bagItems.reduce((acc, i) => acc + (i.quantity || 1), 0)}
               </span>
             )}
           </button>
@@ -625,10 +655,10 @@ export default function CollectionsPage() {
                           className="w-11 h-11 rounded-full bg-background dark:bg-[#2a2a2a] flex items-center justify-center text-foreground dark:text-white relative overflow-hidden group/btn shrink-0 shadow-sm"
                         >
                           {/* Semi-circle hover effect */}
-                          <div className={`absolute inset-x-0 bottom-0 bg-[#e07a3f] transition-all duration-300 ease-out ${bagItems.includes(product.id) ? 'h-full' : 'h-0 group-hover/btn:h-1/2 rounded-t-full'}`} />
+                          <div className={`absolute inset-x-0 bottom-0 bg-[#e07a3f] transition-all duration-300 ease-out ${isItemInBag(product.id) ? 'h-full' : 'h-0 group-hover/btn:h-1/2 rounded-t-full'}`} />
 
                           {/* Icon */}
-                          <ShoppingBag className={`w-4 h-4 relative z-10 transition-transform duration-300 ${bagItems.includes(product.id) ? 'scale-110' : 'group-hover/btn:-translate-y-0.5'}`} />
+                          <ShoppingBag className={`w-4 h-4 relative z-10 transition-transform duration-300 ${isItemInBag(product.id) ? 'scale-110 text-white' : 'group-hover/btn:-translate-y-0.5'}`} />
                         </button>
                       </div>
                     </div>
@@ -658,7 +688,7 @@ export default function CollectionsPage() {
         onClose={() => setSelected3DProduct(null)}
         product={selected3DProduct}
         onAddToBag={(prod) => {
-          toggleBag(prod.id);
+          addItemToBag(prod, "M");
           setSelected3DProduct(null);
         }}
       />
@@ -674,8 +704,7 @@ export default function CollectionsPage() {
                 <button
                   key={size}
                   onClick={() => {
-                    toggleBag(selectedProductForSize.id);
-                    setSelectedProductForSize(null);
+                    addItemToBag(selectedProductForSize, size);
                   }}
                   className="py-2.5 border border-border/50 rounded-xl text-foreground font-medium hover:bg-accent hover:text-white hover:border-accent transition-colors"
                 >

@@ -37,15 +37,17 @@ This is a complete Next.js 16 + FastAPI PostgreSQL project integrating a modern,
 - `/src/components/products/` - Product management and interactive modules.
   - `ProductTable.tsx` - Products listing wired to `productsApi`.
 - `/src/components/admin/` - Admin specific components (`NotchedCard.tsx` with interactive `<Bell />` threshold alerts and `<Sparkles />` AI insights popovers).
-- `/src/components/auth/` - Storefront authentication modals (`AuthModal.tsx`).
+- `/src/components/auth/` - Storefront authentication modals (`AuthModal.tsx` supporting dual email+mobile registration, email OTP verification, and direct email/phone login).
 - `/src/components/BackendStatusProvider.tsx` / `ServerDownScreen.tsx` - Global backend-reachability gate: probes the API before rendering any page, shows a full-page fallback (instead of mock/zeroed data) when the backend is unreachable, and auto-recovers.
 - `/src/lib/api.ts` - Unified typed API client connecting directly to live FastAPI / PostgreSQL backend REST endpoints (/api/v1) without mock data.
+- `/src/lib/cart.ts` - Centralized cart state manager (`getCart`, `addToCart`, `updateCartQuantity`, `removeFromCart`, `clearCart`, `getCartCount`, `getCartSubtotal`) with localStorage persistence and cross-component custom event broadcasting.
+- `/src/lib/toast.ts` & `/src/components/ui/Toast.tsx` - Global cyber-luxury Toast notification dispatcher and floating glassmorphic container for instant user feedback.
 - `/src/lib/backendStatus.ts` - Shared connectivity pub/sub consumed by `api.ts` and every raw-`fetch` call site (checkout, auth, try-on) to report backend reachability.
 - `/backend/` - FastAPI backend application (SQLAlchemy 2.0 + Alembic, SQLite for local dev).
   - `app/main.py` - FastAPI entrypoint.
   - `app/api/routes/` - REST endpoints: `auth`, `users`, `products`, `categories`, `orders`, `payments`, `shipping`, `tryon`, `chat` (`POST /`, `GET /history`, `DELETE /history`), `analytics`, `settings`, `otp`, `health`.
   - `app/models/` - SQLAlchemy models (`User`, `Product`, `Order`, `Payment`, `ChatMessage`, `TryonSession`, etc.).
-  - `app/services/` - Business logic services (Razorpay, Fashn VTON, Shiprocket, OpenAI GPT-4o mini Stylist).
+  - `app/services/` - Business logic services (Razorpay, Fashn VTON, Shiprocket, OpenAI GPT-4o mini Stylist, Resend email notifications, OrderService with variant resolution, stock decrements/restorations, and PaymentService).
   - `app/middleware/auth.py` - JWT auth (`get_current_user`, `require_admin`) — no anonymous/admin fallback; missing or invalid credentials are always rejected.
 - `/virtual-try-on/` - Standalone Virtual Try-On sub-system (FASHN VTON 1.5 engine + Fitting Room UI).
   - `backend/` - Dedicated VTON FastAPI service with GPU inference execution.

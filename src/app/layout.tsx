@@ -4,6 +4,7 @@ import { MainLayout } from "@/components/layout/MainLayout";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { Providers } from "@/components/Providers";
 import { BackendStatusProvider } from "@/components/BackendStatusProvider";
+import { ToastContainer } from "@/components/ui/Toast";
 import "./globals.css";
 
 const outfit = Outfit({
@@ -28,6 +29,7 @@ export default function RootLayout({
           <Providers>
             <BackendStatusProvider>
               <MainLayout>{children}</MainLayout>
+              <ToastContainer />
             </BackendStatusProvider>
           </Providers>
         </ThemeProvider>

@@ -153,10 +153,11 @@ class PaymentService:
             order.payment_status = "paid"
 
             try:
-                from app.services.order_service import _book_shiprocket
+                from app.services.order_service import _book_shiprocket, send_order_email_notification
                 _book_shiprocket(order, order.user, order.address)
+                send_order_email_notification(order, order.user, order.address)
             except Exception as exc:
-                logger.error("Failed to book shipment on payment success: %s", exc)
+                logger.error("Failed post-payment hooks: %s", exc)
 
         self.db.commit()
         logger.info("Payment success: %s for order: %s", payment.id, payment.order_id)

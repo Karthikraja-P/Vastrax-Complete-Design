@@ -129,10 +129,11 @@ export function AuthModal({ isOpen, onClose, initialMode = "signin", onSuccess }
       if (isSignUp) {
         // Register Real User
         const fullName = `${firstName} ${lastName}`.trim() || firstName || cleanEmail.split("@")[0] || "Customer";
+        const formattedPhone = mobileNumber.trim().startsWith("+91") ? mobileNumber.trim() : `+91${mobileNumber.trim()}`;
         const regPayload = {
           full_name: fullName,
           email: cleanEmail,
-          phone_number: mobileNumber ? `+91${mobileNumber}` : undefined,
+          phone_number: formattedPhone,
           password: password
         };
 
@@ -202,15 +203,17 @@ export function AuthModal({ isOpen, onClose, initialMode = "signin", onSuccess }
       // Real User Sign In
       let loginSuccess = false;
       let loginGotResponse = false;
-      let lastLoginError = "Invalid email or password";
+      let lastLoginError = "Invalid email/mobile number or password";
       let loggedUser: any = null;
+      const formattedPhone = mobileNumber.trim().startsWith("+91") ? mobileNumber.trim() : `+91${mobileNumber.trim()}`;
+      const identifier = loginMethod === "mobile" ? formattedPhone : cleanEmail;
 
       for (const base of authBaseUrls) {
         try {
           const res = await fetch(`${base}/login`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ email: cleanEmail, password })
+            body: JSON.stringify({ email: identifier, password })
           });
           loginGotResponse = true;
           reportBackendReachable();
@@ -342,10 +345,10 @@ export function AuthModal({ isOpen, onClose, initialMode = "signin", onSuccess }
                     >
                       <div className="mb-8">
                         <h2 className="text-2xl md:text-3xl font-medium text-[#0A192F] mb-2 leading-tight py-1">
-                          Two-Step Verification
+                          Email Verification
                         </h2>
                         <p className="text-slate-500 text-[17px]">
-                          Enter the 6-digit verification code sent to your registered phone number.
+                          Enter the 6-digit verification code sent to your email address ({email || "your email"}).
                         </p>
                       </div>
                       <form onSubmit={handleVerifyOTP} className="space-y-4">
@@ -547,13 +550,14 @@ export function AuthModal({ isOpen, onClose, initialMode = "signin", onSuccess }
                               
                               <div>
                                 <label className="block text-xs font-semibold text-slate-700 mb-1.5 uppercase tracking-wider">
-                                  Email Address (Optional)
+                                  Email Address *
                                 </label>
                                 <div className="relative">
                                   <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                                   <input
                                     type="email"
                                     placeholder="you@example.com"
+                                    required
                                     value={email}
                                     onChange={(e) => setEmail(e.target.value)}
                                     className="w-full bg-slate-100/80 border border-slate-200 rounded-lg pl-10 pr-4 py-3 text-[17px] focus:bg-white focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] outline-none transition-all placeholder:text-slate-400"
