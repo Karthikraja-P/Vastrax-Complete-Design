@@ -138,7 +138,7 @@ export default function CollectionsPage() {
       if ((session as any)?.accessToken) {
         // Fetch from backend if logged in
         try {
-          const res = await fetch("http://localhost:8000/api/v1/users/me/wishlist", {
+          const res = await fetch("/api/v1/users/me/wishlist", {
             headers: { Authorization: `Bearer ${(session as any).accessToken}` }
           });
           reportBackendReachable();
@@ -175,7 +175,7 @@ export default function CollectionsPage() {
     if ((session as any)?.accessToken) {
       // Sync with Backend if logged in
       try {
-        await fetch(`http://localhost:8000/api/v1/users/me/wishlist/${product.id}`, {
+        await fetch(`/api/v1/users/me/wishlist/${product.id}`, {
           method: "POST",
           headers: { Authorization: `Bearer ${(session as any).accessToken}` }
         });

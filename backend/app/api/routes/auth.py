@@ -19,22 +19,28 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 @router.post("/register", status_code=status.HTTP_201_CREATED)
 async def register(req: RegisterRequest, db: Session = Depends(get_db)):
-    return await AuthService(db).register(req.full_name, req.email, req.phone_number, req.password)
+    return await AuthService(db).register(req.full_name, req.email, req.final_phone_number, req.password)
 
 
 @router.post("/login")
 async def login(req: LoginRequest, db: Session = Depends(get_db)):
-    return await AuthService(db).login(req.email, req.password)
+    return await AuthService(db).login(req.login_identifier, req.password)
 
 
 @router.post("/verify-2fa")
 async def verify_2fa(req: Verify2FARequest, db: Session = Depends(get_db)):
-    return await AuthService(db).verify_2fa(req.user_id, req.code)
+    return await AuthService(db).verify_2fa(req.user_identifier, req.verification_code)
 
 
 @router.post("/verify-registration")
 async def verify_registration(req: Verify2FARequest, db: Session = Depends(get_db)):
-    return await AuthService(db).verify_registration(req.user_id, req.code)
+    return await AuthService(db).verify_registration(req.user_identifier, req.verification_code)
+
+
+@router.get("/me")
+def get_auth_me(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    from app.services.user_service import UserService
+    return UserService(db).get_profile(current_user)
 
 
 @router.post("/logout")

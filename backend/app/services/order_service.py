@@ -96,7 +96,7 @@ class OrderService:
                 product_id=item_data.product_id,
                 variant_id=variant.id,
                 quantity=item_data.quantity,
-                unit_price=item_data.unit_price,
+                unit_price=item_data.final_unit_price,
             ))
 
         self.db.commit()

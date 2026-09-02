@@ -109,6 +109,11 @@ export function Header({ isSidebarCollapsed, toggleSidebar, onOpenCart }: Header
             <input
               type="text"
               placeholder="Search garments, orders, clients..."
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && (e.target as HTMLInputElement).value.trim()) {
+                  window.location.href = `/products?search=${encodeURIComponent((e.target as HTMLInputElement).value.trim())}`;
+                }
+              }}
               className="w-full bg-surface border border-border rounded-full py-1.5 pl-9 pr-14 text-sm text-foreground focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-all placeholder:text-muted-foreground/50"
             />
             <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-50 pointer-events-none">
@@ -138,24 +143,25 @@ export function Header({ isSidebarCollapsed, toggleSidebar, onOpenCart }: Header
             className="relative p-2 text-muted-foreground hover:text-foreground transition-colors rounded-full hover:bg-surface-hover focus:outline-none"
             aria-label="Notifications"
           >
-            <Bell className="h-4 w-4" />
+            <Bell className="h-5 w-5" />
             {unreadCount > 0 && (
-              <span className="absolute top-1 right-1 min-w-[14px] h-[14px] px-1 bg-accent text-[9px] font-bold text-white rounded-full flex items-center justify-center border border-background">
-                {unreadCount}
-              </span>
+              <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-accent animate-pulse" />
             )}
           </button>
 
           {isNotificationsOpen && (
             <>
-              <div className="fixed inset-0 z-40" onClick={() => setIsNotificationsOpen(false)} />
-              <div className="absolute right-0 mt-3 w-80 sm:w-96 bg-background border border-border rounded-2xl shadow-2xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+              <div 
+                className="fixed inset-0 z-40" 
+                onClick={() => setIsNotificationsOpen(false)} 
+              />
+              <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-background border border-border rounded-xl shadow-2xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
                 {/* Header */}
-                <div className="p-4 border-b border-border flex items-center justify-between">
+                <div className="p-4 border-b border-border flex items-center justify-between bg-surface/50">
                   <div className="flex items-center gap-2">
-                    <h3 className="text-sm font-bold text-foreground">Notifications</h3>
+                    <h3 className="text-sm font-semibold text-foreground">Notifications</h3>
                     {unreadCount > 0 && (
-                      <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-accent/15 text-accent rounded-full border border-accent/30">
+                      <span className="px-1.5 py-0.5 text-[10px] font-bold bg-accent/15 text-accent rounded-full">
                         {unreadCount} new
                       </span>
                     )}
@@ -163,37 +169,37 @@ export function Header({ isSidebarCollapsed, toggleSidebar, onOpenCart }: Header
                   {unreadCount > 0 && (
                     <button 
                       onClick={markAllAsRead}
-                      className="text-xs text-accent hover:text-accent-hover font-medium transition-colors"
+                      className="text-xs text-accent hover:underline cursor-pointer"
                     >
-                      Mark all read
+                      Mark all as read
                     </button>
                   )}
                 </div>
 
                 {/* Notification List */}
-                <div className="max-h-[340px] overflow-y-auto divide-y divide-border/40">
+                <div className="max-h-80 overflow-y-auto divide-y divide-border/50">
                   {notifications.length === 0 ? (
-                    <div className="p-6 text-center text-muted-foreground text-xs">
-                      No notifications at this time.
+                    <div className="p-6 text-center text-xs text-muted-foreground">
+                      No recent alerts or notifications
                     </div>
                   ) : (
-                    notifications.map((notif) => (
+                    notifications.map((n) => (
                       <Link 
-                        key={notif.id}
-                        href={notif.href}
+                        key={n.id}
+                        href={n.href}
                         onClick={() => {
-                          markAsRead(notif.id);
+                          markAsRead(n.id);
                           setIsNotificationsOpen(false);
                         }}
-                        className={`block p-3.5 hover:bg-surface-hover/60 transition-colors ${!notif.read ? 'bg-accent/5' : ''}`}
+                        className={`p-3.5 flex items-start gap-3 hover:bg-surface transition-colors ${
+                          !n.read ? "bg-accent/5" : ""
+                        }`}
                       >
-                        <div className="flex items-start gap-3">
-                          <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${!notif.read ? 'bg-accent' : 'bg-transparent'}`} />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-semibold text-foreground truncate">{notif.title}</p>
-                            <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2 leading-relaxed">{notif.description}</p>
-                            <span className="text-[10px] text-muted-foreground/70 mt-1 block">{notif.time}</span>
-                          </div>
+                        <div className={`mt-0.5 w-2 h-2 rounded-full shrink-0 ${!n.read ? "bg-accent" : "bg-transparent"}`} />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-semibold text-foreground truncate">{n.title}</p>
+                          <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2 leading-relaxed">{n.description}</p>
+                          <span className="text-[10px] text-muted-foreground/60 mt-1 block">{n.time}</span>
                         </div>
                       </Link>
                     ))
@@ -207,7 +213,7 @@ export function Header({ isSidebarCollapsed, toggleSidebar, onOpenCart }: Header
                     onClick={() => setIsNotificationsOpen(false)}
                     className="text-[11px] font-semibold text-muted-foreground hover:text-foreground transition-colors"
                   >
-                    View All Activity →
+                    View All Activity & Orders →
                   </Link>
                 </div>
               </div>
@@ -234,20 +240,28 @@ export function Header({ isSidebarCollapsed, toggleSidebar, onOpenCart }: Header
                 className="fixed inset-0 z-40" 
                 onClick={() => setIsUserMenuOpen(false)} 
               />
-              <div className="absolute right-0 mt-2 w-48 bg-background border border-border rounded-xl shadow-lg py-2 z-50 overflow-hidden">
+              <div className="absolute right-0 mt-2 w-52 bg-background border border-border rounded-xl shadow-lg py-2 z-50 overflow-hidden">
+                <Link 
+                  href="/settings"
+                  onClick={() => setIsUserMenuOpen(false)}
+                  className="block w-full text-left px-4 py-2.5 text-sm font-medium text-foreground hover:bg-surface transition-colors"
+                >
+                  Admin Settings & Profile
+                </Link>
                 <Link 
                   href="/storefront/account"
                   onClick={() => setIsUserMenuOpen(false)}
-                  className="block w-full text-left px-4 py-3 text-sm font-medium text-foreground hover:bg-surface transition-colors"
+                  className="block w-full text-left px-4 py-2.5 text-sm font-medium text-muted-foreground hover:bg-surface hover:text-foreground transition-colors"
                 >
-                  My Account
+                  Customer Account Portal
                 </Link>
+                <div className="border-t border-border my-1" />
                 <button 
                   onClick={() => { 
                     if (session) signOut();
                     setIsUserMenuOpen(false); 
                   }}
-                  className="w-full text-left px-4 py-3 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-500/10 transition-colors"
+                  className="w-full text-left px-4 py-2.5 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-500/10 transition-colors"
                 >
                   Sign Out
                 </button>

@@ -12,8 +12,13 @@ class OrderItemCreate(BaseModel):
     variant_id: Optional[str] = None
     size: Optional[str] = "M"
     color: Optional[str] = None
-    quantity: int
-    unit_price: Decimal
+    quantity: int = 1
+    unit_price: Optional[Decimal] = None
+    price: Optional[Decimal] = None
+
+    @property
+    def final_unit_price(self) -> Decimal:
+        return self.unit_price or self.price or Decimal("0.00")
 
 
 class OrderCreate(BaseModel):

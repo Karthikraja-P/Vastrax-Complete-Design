@@ -54,7 +54,8 @@ export function AuthModal({ isOpen, onClose, initialMode = "signin", onSuccess }
 
     try {
       const endpoint = verifyType === "register" ? "verify-registration" : "verify-2fa";
-      const res = await fetch(`${authBaseUrl || "http://localhost:8090/api/v1"}/auth/${endpoint}`, {
+      const base = authBaseUrl ? authBaseUrl.replace(/\/+$/, "") : "/api/v1/auth";
+      const res = await fetch(`${base}/${endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ user_id: pending2FAUserId, code: otp })
@@ -121,9 +122,7 @@ export function AuthModal({ isOpen, onClose, initialMode = "signin", onSuccess }
     try {
       const cleanEmail = (email || "").trim().toLowerCase();
       const authBaseUrls = [
-        "http://localhost:8090/api/v1/auth",
-        "http://localhost:8088/api/v1/auth",
-        "http://localhost:8000/api/v1/auth"
+        "/api/v1/auth",
       ];
 
       if (isSignUp) {

@@ -27,6 +27,7 @@ export default function CategoriesPage() {
   // New Category form state
   const [newCatName, setNewCatName] = useState("");
   const [newCatDesc, setNewCatDesc] = useState("");
+  const [newCatImage, setNewCatImage] = useState<string | null>(null);
   const [isActiveStatus, setIsActiveStatus] = useState(true);
 
   // Filter State
@@ -37,6 +38,21 @@ export default function CategoriesPage() {
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 10;
+
+  const handleCatImageUpload = (e: React.ChangeEvent<HTMLInputElement>, isEdit: boolean = false) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        if (isEdit && editingCategory) {
+          setEditingCategory({ ...editingCategory, image_url: reader.result as string });
+        } else {
+          setNewCatImage(reader.result as string);
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   const loadCategories = async () => {
     setLoading(true);
@@ -87,13 +103,15 @@ export default function CategoriesPage() {
       desc: newCatDesc || "Luxury collection",
       count: 0,
       status: isActiveStatus ? "Active" : "Inactive",
-      sort: String(categories.length + 1)
+      sort: String(categories.length + 1),
+      image_url: newCatImage
     };
 
     // Optimistic UI update
     setCategories(prev => [...prev, newCategory]);
     setNewCatName("");
     setNewCatDesc("");
+    setNewCatImage(null);
     setIsAddCategoryOpen(false);
     showToast(`Category "${cleanName}" created successfully.`);
 
@@ -495,12 +513,29 @@ export default function CategoriesPage() {
               <div className="space-y-2">
                 <label className="text-xs font-semibold text-foreground">Description</label>
                 <textarea 
-                  rows={4} 
+                  rows={3} 
                   value={newCatDesc}
                   onChange={(e) => setNewCatDesc(e.target.value)}
                   placeholder="Brief description of this collection..." 
                   className="w-full px-4 py-3 bg-background border border-border rounded-lg text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-accent transition-all resize-none" 
                 />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-foreground">Banner / Thumbnail Image</label>
+                <div className="flex items-center gap-3">
+                  {newCatImage && (
+                    <div className="w-12 h-12 rounded-lg border border-accent overflow-hidden bg-background shrink-0">
+                      <img src={newCatImage} alt="Preview" className="w-full h-full object-cover" />
+                    </div>
+                  )}
+                  <input 
+                    type="file" 
+                    accept="image/*" 
+                    onChange={(e) => handleCatImageUpload(e, false)}
+                    className="w-full text-xs text-muted-foreground file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-accent file:text-white hover:file:bg-accent/90 cursor-pointer"
+                  />
+                </div>
               </div>
 
               <div className="space-y-2">
@@ -554,11 +589,28 @@ export default function CategoriesPage() {
               <div className="space-y-2">
                 <label className="text-xs font-semibold text-foreground">Description</label>
                 <textarea 
-                  rows={4} 
+                  rows={3} 
                   value={editingCategory.desc || ""}
                   onChange={(e) => setEditingCategory({ ...editingCategory, desc: e.target.value })}
                   className="w-full px-4 py-3 bg-background border border-border rounded-lg text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-accent transition-all resize-none" 
                 />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-foreground">Banner / Thumbnail Image</label>
+                <div className="flex items-center gap-3">
+                  {editingCategory.image_url && (
+                    <div className="w-12 h-12 rounded-lg border border-accent overflow-hidden bg-background shrink-0">
+                      <img src={editingCategory.image_url} alt="Preview" className="w-full h-full object-cover" />
+                    </div>
+                  )}
+                  <input 
+                    type="file" 
+                    accept="image/*" 
+                    onChange={(e) => handleCatImageUpload(e, true)}
+                    className="w-full text-xs text-muted-foreground file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-accent file:text-white hover:file:bg-accent/90 cursor-pointer"
+                  />
+                </div>
               </div>
 
               <div className="space-y-2">

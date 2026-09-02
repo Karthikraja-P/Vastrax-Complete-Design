@@ -13,6 +13,7 @@ def root():
 
 
 @router.get("/health")
+@router.get("/api/v1/health")
 def health():
     return {
         "status": "ok"

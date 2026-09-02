@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.models.product import Product
 from app.models.user import User
+from app.models.order import Order
 from app.models.order_item import OrderItem
 
 logger = logging.getLogger(__name__)
@@ -51,11 +52,17 @@ class AnalyticsService:
             return "AI Insights currently offline."
 
     def get_dynamic_insights(self) -> dict:
-        # Fetch current database metrics
-        total_revenue = self.db.query(func.sum(OrderItem.totalAmount)).scalar() or 0
-        orders_count = self.db.query(func.count(OrderItem.id)).scalar() or 0
-        products_count = self.db.query(func.count(Product.id)).filter(Product.is_published == True).scalar() or 0
-        users_count = self.db.query(func.count(User.id)).scalar() or 0
+        try:
+            total_revenue = float(self.db.query(func.sum(Order.total_amount)).filter(Order.status != "cancelled").scalar() or 0.0)
+            orders_count = int(self.db.query(func.count(Order.id)).scalar() or 0)
+            products_count = int(self.db.query(func.count(Product.id)).filter(Product.is_published == True).scalar() or 0)
+            users_count = int(self.db.query(func.count(User.id)).scalar() or 0)
+        except Exception as e:
+            logger.error("Database analytics metric query failed: %s", e)
+            total_revenue = 0.0
+            orders_count = 0
+            products_count = 0
+            users_count = 0
 
         # Pre-calculate simple alerts based on thresholds
         alerts = {

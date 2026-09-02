@@ -70,11 +70,11 @@ class UserService:
 
         new_addr = Address(
             user_id=user.id,
-            label=payload.label,
-            address_line1=payload.address_line1,
-            city=payload.city,
-            state=payload.state,
-            pincode=payload.pincode,
+            label=payload.final_label,
+            address_line1=payload.final_address_line1,
+            city=payload.city or "City",
+            state=payload.state or "State",
+            pincode=payload.final_pincode,
             is_default=payload.is_default,
         )
         self.db.add(new_addr)
@@ -133,24 +133,58 @@ class UserService:
                 result.append(ProductResponse.model_validate(product))
         return result
 
-    def toggle_wishlist(self, user: User, product_id: str) -> dict:
-        product = self.db.query(Product).filter(Product.id == product_id).first()
+    def add_to_wishlist(self, user: User, product_id: str) -> dict:
+        clean_id = (product_id or "").strip()
+        product = self.db.query(Product).filter(
+            (Product.id == clean_id) | (Product.id == f"vtx-{clean_id}")
+        ).first()
         if not product:
             raise NotFoundError("Product not found")
 
         entry = self.db.query(Wishlist).filter(
-            Wishlist.user_id == user.id, Wishlist.product_id == product_id
+            Wishlist.user_id == user.id, Wishlist.product_id == product.id
+        ).first()
+        if not entry:
+            self.db.add(Wishlist(user_id=user.id, product_id=product.id))
+            self.db.commit()
+        return {"product_id": product.id, "action": "added"}
+
+    def remove_from_wishlist(self, user: User, product_id: str) -> dict:
+        clean_id = (product_id or "").strip()
+        product = self.db.query(Product).filter(
+            (Product.id == clean_id) | (Product.id == f"vtx-{clean_id}")
+        ).first()
+        target_id = product.id if product else clean_id
+
+        entry = self.db.query(Wishlist).filter(
+            Wishlist.user_id == user.id, Wishlist.product_id == target_id
+        ).first()
+        if entry:
+            self.db.delete(entry)
+            self.db.commit()
+        return {"product_id": target_id, "action": "removed"}
+
+    def toggle_wishlist(self, user: User, product_id: str) -> dict:
+        clean_id = (product_id or "").strip()
+        product = self.db.query(Product).filter(
+            (Product.id == clean_id) | (Product.id == f"vtx-{clean_id}")
+        ).first()
+        if not product:
+            raise NotFoundError("Product not found")
+
+        entry = self.db.query(Wishlist).filter(
+            Wishlist.user_id == user.id, Wishlist.product_id == product.id
         ).first()
 
         if entry:
             self.db.delete(entry)
             action = "removed"
         else:
-            self.db.add(Wishlist(user_id=user.id, product_id=product_id))
+            self.db.add(Wishlist(user_id=user.id, product_id=product.id))
             action = "added"
 
         self.db.commit()
-        return {"product_id": product_id, "action": action}
+        return {"product_id": product.id, "action": action}
 
     # ── Admin ──────────────────────────────────────────────────────────────────
 

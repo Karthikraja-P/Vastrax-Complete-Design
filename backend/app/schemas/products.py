@@ -60,6 +60,7 @@ class ProductUpdate(BaseModel):
     description: Optional[str] = None
     is_featured: Optional[bool] = None
     is_published: Optional[bool] = None
+    model_path: Optional[str] = None
     images: Optional[list[ProductImageCreate]] = None
     variants: Optional[list[ProductVariantCreate]] = None
 

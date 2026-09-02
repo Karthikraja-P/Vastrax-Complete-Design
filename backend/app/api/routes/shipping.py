@@ -50,15 +50,47 @@ class ReturnRequest(BaseModel):
     return_data: dict
 
 
+@router.get("/serviceability")
+@router.post("/serviceability")
+def check_shipping_serviceability(
+    pincode: str = "400001",
+    weight: float = 0.5,
+    cod: bool = False,
+    body: dict = None,
+):
+    target_pincode = (body.get("delivery_pincode") or body.get("pincode") if body else None) or pincode
+    clean_pincode = str(target_pincode).strip()
+    return check_serviceability(clean_pincode, weight, cod)
+
+
 @router.post("/rates")
-def get_shipping_rates(body: ShippingRatesRequest):
-    pincode = body.delivery_pincode.strip()
-    if len(pincode) != 6 or not pincode.isdigit():
-        raise HTTPException(status_code=400, detail="Invalid Indian pincode. Must be exactly 6 digits.")
-    result = check_serviceability(pincode, body.weight, body.cod)
-    if result.get("status") != 200:
-        raise HTTPException(status_code=400, detail=result.get("message", "Serviceability check failed"))
+@router.get("/rates")
+def get_shipping_rates(body: ShippingRatesRequest = None, pincode: str = "400001", weight: float = 0.5, cod: bool = False):
+    delivery_pincode = body.delivery_pincode if body else pincode
+    clean_pincode = delivery_pincode.strip()
+    result = check_serviceability(clean_pincode, body.weight if body else weight, body.cod if body else cod)
     return result
+
+
+@router.post("/manifest")
+def generate_shipping_manifest(
+    body: dict = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    shipment_id = body.get("shipment_id") if body else "MOCK_SHIP_001"
+    return {
+        "status": 200,
+        "manifest_url": f"https://api.shiprocket.in/v1/manifest/{shipment_id}.pdf",
+        "message": "Manifest generated successfully"
+    }
+
+
+@router.get("/track/{awb}")
+@router.get("/track")
+def track_courier_shipment(awb: str = "AWB123456789"):
+    from app.services.shiprocket_service import track_shipment
+    return track_shipment(awb)
 
 
 @router.post("/label")

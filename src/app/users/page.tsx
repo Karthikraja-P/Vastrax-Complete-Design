@@ -27,6 +27,18 @@ export default function AllUsersPage() {
   const [newEmail, setNewEmail] = useState("");
   const [newPhone, setNewPhone] = useState("");
   const [newRole, setNewRole] = useState("customer");
+  const [newUserAvatar, setNewUserAvatar] = useState<string | null>(null);
+
+  const handleUserAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setNewUserAvatar(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   // Filters State
   const [emailFilter, setEmailFilter] = useState("");
@@ -541,6 +553,23 @@ export default function AllUsersPage() {
                   placeholder="+1 (555) 234-5678"
                   className="w-full px-3.5 py-2 bg-background border border-border rounded-lg text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-accent"
                 />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground">Profile Avatar / Document</label>
+                <div className="flex items-center gap-3">
+                  {newUserAvatar && (
+                    <div className="w-10 h-10 rounded-full border border-accent overflow-hidden bg-background shrink-0">
+                      <img src={newUserAvatar} alt="Avatar" className="w-full h-full object-cover" />
+                    </div>
+                  )}
+                  <input 
+                    type="file" 
+                    accept="image/*,.pdf" 
+                    onChange={handleUserAvatarUpload}
+                    className="w-full text-xs text-muted-foreground file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-accent file:text-white hover:file:bg-accent/90 cursor-pointer"
+                  />
+                </div>
               </div>
 
               <div className="space-y-1.5">

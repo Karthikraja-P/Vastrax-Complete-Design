@@ -136,35 +136,36 @@ class ProductService:
         return self._to_response(product)
 
     def update_product(self, product_id: str, payload: ProductUpdate) -> ProductResponse:
-        product = self.db.query(Product).filter(Product.id == product_id).first()
+        clean_id = str(product_id).strip()
+        product = self.db.query(Product).filter(
+            (Product.id == clean_id) | 
+            (Product.id == f"vtx-{clean_id}")
+        ).first()
         if not product:
             raise NotFoundError("Product not found")
 
         for field in ("name", "fabric", "colour", "price_mrp",
                       "price_selling", "description", "is_featured", "is_published"):
-            value = getattr(payload, field)
+            value = getattr(payload, field, None)
             if value is not None:
+                if field in ("price_mrp", "price_selling"):
+                    try:
+                        value = float(value)
+                    except (ValueError, TypeError):
+                        pass
                 setattr(product, field, value)
 
         if payload.model_path is not None:
             product.model_path = payload.model_path
 
-        if payload.images is not None:
-            for img in product.images:
-                self.db.delete(img)
-            for img_data in payload.images:
-                self.db.add(ProductImage(
-                    product_id=product.id,
-                    s3_url=img_data.s3_url,
-                    display_order=img_data.display_order,
-                ))
-
         if payload.category_id is not None:
             product.category_id = self._resolve_category_id(payload.category_id)
 
+        from app.models.product_image import ProductImage
+        from app.models.product_variant import ProductVariant
+
         if payload.images is not None:
-            for img in product.images:
-                self.db.delete(img)
+            self.db.query(ProductImage).filter(ProductImage.product_id == product.id).delete(synchronize_session=False)
             for img_data in payload.images:
                 self.db.add(ProductImage(
                     product_id=product.id,
@@ -173,12 +174,11 @@ class ProductService:
                 ))
 
         if payload.variants is not None:
-            for var in product.variants:
-                self.db.delete(var)
+            self.db.query(ProductVariant).filter(ProductVariant.product_id == product.id).delete(synchronize_session=False)
             for var_data in payload.variants:
                 self.db.add(ProductVariant(
                     product_id=product.id,
-                    sku=var_data.sku,
+                    sku=var_data.sku or f"{product.id}-{var_data.size}",
                     size=var_data.size,
                     stock_qty=var_data.stock_qty,
                 ))
@@ -200,8 +200,7 @@ class ProductService:
             product = self.db.query(Product).filter(Product.id.ilike(f"%{clean_id}%")).first()
 
         if not product:
-            logger.warning("Product not found for deletion: %s", product_id)
-            return
+            raise NotFoundError(f"Product {product_id} not found")
 
         try:
             from app.models.order_item import OrderItem

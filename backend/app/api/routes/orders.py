@@ -21,7 +21,10 @@ def place_order(
     return OrderService(db).place_order(current_user, body)
 
 
+@router.get("")
 @router.get("/my")
+@router.get("/my-orders")
+@router.get("/me")
 def my_orders(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     return OrderService(db).list_user_orders(current_user)
 

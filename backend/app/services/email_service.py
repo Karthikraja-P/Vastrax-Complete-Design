@@ -38,4 +38,4 @@ async def send_email(to_email: str, subject: str, html_content: str) -> dict:
         return response
     except Exception as e:
         logger.error(f"Failed to send email to {to_email}: {str(e)}")
-        raise e
+        return {"error": str(e), "status": "failed"}

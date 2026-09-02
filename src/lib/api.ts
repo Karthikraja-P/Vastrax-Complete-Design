@@ -12,7 +12,8 @@ const CANDIDATE_API_BASES = [
 
 // Helper fetch wrapper
 export async function fetchApi<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-  const token = typeof window !== "undefined" ? localStorage.getItem("vastrax_token") : null;
+  const isBrowser = typeof window !== "undefined";
+  const token = isBrowser ? localStorage.getItem("vastrax_token") : null;
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     "Cache-Control": "no-cache, no-store, must-revalidate",
@@ -24,11 +25,16 @@ export async function fetchApi<T>(endpoint: string, options: RequestInit = {}): 
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  // Always try 8090 first, followed by others
-  const primaryBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8090/api/v1";
-  const basesToTry = Array.from(new Set([primaryBase, ...CANDIDATE_API_BASES]));
+  // Use relative proxy /api/v1 in browser (works seamlessly across tunnels and localhost)
+  const basesToTry = isBrowser
+    ? ["/api/v1"]
+    : [
+        process.env.INTERNAL_BACKEND_URL
+          ? `${process.env.INTERNAL_BACKEND_URL}/api/v1`
+          : "http://127.0.0.1:8090/api/v1",
+      ];
   let lastError: any = null;
-  let gotResponse = false; // true once any attempt reaches the server, regardless of status code
+  let gotResponse = false;
 
   for (const base of basesToTry) {
     try {

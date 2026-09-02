@@ -78,11 +78,29 @@ def delete_address(
     UserService(db).delete_address(current_user, address_id)
 
 
+# ── Orders ─────────────────────────────────────────────────────────────────────
+
+@router.get("/me/orders")
+def get_user_orders(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    from app.services.order_service import OrderService
+    return OrderService(db).list_user_orders(current_user)
+
+
 # ── Wishlist ───────────────────────────────────────────────────────────────────
 
 @router.get("/me/wishlist")
 def get_wishlist(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     return UserService(db).get_wishlist(current_user)
+
+
+@router.post("/me/wishlist")
+def add_to_wishlist_body(
+    body: dict,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    product_id = str(body.get("product_id") or body.get("id") or "").strip()
+    return UserService(db).add_to_wishlist(current_user, product_id)
 
 
 @router.post("/me/wishlist/{product_id}")
@@ -92,6 +110,15 @@ def toggle_wishlist(
     db: Session = Depends(get_db),
 ):
     return UserService(db).toggle_wishlist(current_user, product_id)
+
+
+@router.delete("/me/wishlist/{product_id}")
+def remove_from_wishlist(
+    product_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return UserService(db).remove_from_wishlist(current_user, product_id)
 
 
 # ── Admin ──────────────────────────────────────────────────────────────────────

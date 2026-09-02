@@ -147,18 +147,18 @@ export default function StorefrontHome() {
             <Menu className="w-6 h-6" />
           </button>
           <nav className="hidden md:flex items-center gap-8">
-            <a href="#" className="text-lg font-medium hover:text-accent transition-colors">New Arrivals</a>
-            <a href="#" className="text-lg font-medium hover:text-accent transition-colors">Women</a>
-            <a href="#" className="text-lg font-medium hover:text-accent transition-colors">Men</a>
-            <a href="/storefront/collections" className="text-lg font-medium hover:text-accent transition-colors">Collections</a>
+            <Link href="/storefront/collections?sort=newest" className="text-lg font-medium hover:text-accent transition-colors">New Arrivals</Link>
+            <Link href="/storefront/collections?category=cat-dresses" className="text-lg font-medium hover:text-accent transition-colors">Women</Link>
+            <Link href="/storefront/collections?category=cat-tops" className="text-lg font-medium hover:text-accent transition-colors">Men</Link>
+            <Link href="/storefront/collections" className="text-lg font-medium hover:text-accent transition-colors">Collections</Link>
           </nav>
         </div>
         
         {/* Center: Logo */}
         <div className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center pointer-events-none">
-          <div className="text-3xl md:text-4xl font-bold tracking-[0.25em] uppercase pointer-events-auto">
+          <Link href="/storefront/home" className="text-3xl md:text-4xl font-bold tracking-[0.25em] uppercase pointer-events-auto hover:text-accent transition-colors">
             VASTRAX
-          </div>
+          </Link>
         </div>
 
         {/* Right Side: Actions */}
@@ -171,8 +171,13 @@ export default function StorefrontHome() {
             <Search className="w-4 h-4 text-muted-foreground" />
             <input 
               type="text" 
-              placeholder="Search" 
-              className="flex-1 bg-transparent border-none outline-none text-foreground placeholder:text-muted-foreground"
+              placeholder="Search garments..." 
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && (e.target as HTMLInputElement).value.trim()) {
+                  window.location.href = `/storefront/collections?search=${encodeURIComponent((e.target as HTMLInputElement).value.trim())}`;
+                }
+              }}
+              className="flex-1 bg-transparent border-none outline-none text-foreground placeholder:text-muted-foreground text-sm"
             />
           </div>
           <button className="md:hidden text-muted-foreground hover:text-accent transition-colors">

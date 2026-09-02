@@ -45,10 +45,13 @@ class AuthService:
         if existing_user and existing_user.is_active:
             raise ConflictError("Email already registered")
 
-        # Check if phone number is registered to another active account
+        # Check if phone number is registered to another account
         existing_phone = self.db.query(User).filter(User.phone_number == phone).first()
         if existing_phone and existing_phone.is_active and existing_phone.email != email:
             raise ConflictError("Phone number already registered")
+        elif existing_phone and not existing_phone.is_active and existing_phone.email != email:
+            self.db.delete(existing_phone)
+            self.db.flush()
 
         if existing_user and not existing_user.is_active:
             user = existing_user
@@ -152,15 +155,21 @@ class AuthService:
     async def verify_2fa(self, user_id: str, code: str) -> dict:
         return await self.verify_registration(user_id, code)
 
-    async def verify_registration(self, user_id: str, code: str) -> dict:
-        user = self.db.query(User).filter(User.id == user_id).first()
+    async def verify_registration(self, identifier: str, code: str) -> dict:
+        clean_id = (identifier or "").strip()
+        user = self.db.query(User).filter(
+            (User.id == clean_id) | 
+            (User.email == clean_id.lower()) | 
+            (User.phone_number == clean_id) | 
+            (User.phone_number == f"+91{clean_id}")
+        ).first()
         if not user:
             raise UnauthorizedError("User not found")
 
         if not user.is_active:
-            clean_code = code.strip()
+            clean_code = (code or "").strip()
             otp = self.db.query(OTP).filter(
-                OTP.identifier == user.email,
+                (OTP.identifier == user.email) | (OTP.identifier == user.id),
                 OTP.code == clean_code,
                 OTP.is_used == False
             ).order_by(OTP.created_at.desc()).first()

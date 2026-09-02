@@ -23,7 +23,10 @@ export function subscribeToBackendStatus(cb: BackendStatusListener): () => void 
   return () => listeners.delete(cb);
 }
 
-const DEFAULT_ORIGIN = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8090").replace(/\/api\/v1\/?$/, "");
+const DEFAULT_ORIGIN =
+  typeof window !== "undefined"
+    ? ""
+    : (process.env.INTERNAL_BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8090").replace(/\/api\/v1\/?$/, "");
 
 /** Raw, unauthenticated probe against the backend's unprefixed `GET /health` route. */
 export async function probeBackendHealth(timeoutMs = 4000): Promise<boolean> {

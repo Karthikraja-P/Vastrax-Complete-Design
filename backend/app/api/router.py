@@ -14,6 +14,7 @@ from app.api.routes.chat import router as chat_router
 from app.api.routes.analytics import router as analytics_router
 from app.api.routes.settings import router as settings_router
 from app.api.routes.otp import router as otp_router
+from app.api.routes.three_d import router as three_d_router
 
 api_router = APIRouter()
 
@@ -32,6 +33,7 @@ api_router.include_router(tryon_router)
 api_router.include_router(shipping_router, prefix="/api/v1")
 api_router.include_router(analytics_router, prefix="/api/v1")
 api_router.include_router(settings_router, prefix="/api/v1")
+api_router.include_router(three_d_router, prefix="/api/v1")
 api_router.include_router(chat_router, prefix="/api")
 api_router.include_router(chat_router, prefix="/api/v1")
 api_router.include_router(otp_router, prefix="/api/v1/otp")
