@@ -1,3 +1,4 @@
+import threading
 import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -18,6 +19,9 @@ from app.schemas.orders import OrderCreate, OrderResponse
 logger = get_logger(__name__)
 
 VALID_ADMIN_STATUSES = {"packed", "shipped", "delivered", "cancelled"}
+
+# Thread-safe lock to prevent overselling race conditions during concurrent checkouts
+_inventory_lock = threading.Lock()
 
 
 class OrderService:
@@ -52,55 +56,56 @@ class OrderService:
         self.db.add(order)
         self.db.flush()
 
-        for item_data in payload.items:
-            variant = None
-            if item_data.variant_id and item_data.variant_id != "var_dummy":
-                variant = self.db.query(ProductVariant).filter(
-                    ProductVariant.id == item_data.variant_id
-                ).first()
-
-            product = self.db.query(Product).filter(Product.id == item_data.product_id).first()
-            if not product:
-                raise NotFoundError(f"Product {item_data.product_id} not found")
-
-            if not variant:
-                target_size = item_data.size or "Standard"
-                variant = self.db.query(ProductVariant).filter(
-                    ProductVariant.product_id == item_data.product_id,
-                    ProductVariant.size == target_size
-                ).first()
-
-                if not variant:
+        with _inventory_lock:
+            for item_data in payload.items:
+                variant = None
+                if item_data.variant_id and item_data.variant_id != "var_dummy":
                     variant = self.db.query(ProductVariant).filter(
-                        ProductVariant.product_id == item_data.product_id
+                        ProductVariant.id == item_data.variant_id
                     ).first()
 
+                product = self.db.query(Product).filter(Product.id == item_data.product_id).first()
+                if not product:
+                    raise NotFoundError(f"Product {item_data.product_id} not found")
+
                 if not variant:
-                    variant = ProductVariant(
-                        id=str(uuid.uuid4()),
-                        product_id=item_data.product_id,
-                        size=target_size,
-                        stock_qty=50,
+                    target_size = item_data.size or "Standard"
+                    variant = self.db.query(ProductVariant).filter(
+                        ProductVariant.product_id == item_data.product_id,
+                        ProductVariant.size == target_size
+                    ).first()
+
+                    if not variant:
+                        variant = self.db.query(ProductVariant).filter(
+                            ProductVariant.product_id == item_data.product_id
+                        ).first()
+
+                    if not variant:
+                        variant = ProductVariant(
+                            id=str(uuid.uuid4()),
+                            product_id=item_data.product_id,
+                            size=target_size,
+                            stock_qty=50,
+                        )
+                        self.db.add(variant)
+                        self.db.flush()
+
+                if variant.stock_qty < item_data.quantity:
+                    raise BadRequestError(
+                        f"Insufficient stock for {product.name} size {variant.size} (Available: {variant.stock_qty})"
                     )
-                    self.db.add(variant)
-                    self.db.flush()
+                variant.stock_qty -= item_data.quantity
 
-            if variant.stock_qty < item_data.quantity:
-                raise BadRequestError(
-                    f"Insufficient stock for {product.name} size {variant.size} (Available: {variant.stock_qty})"
-                )
-            variant.stock_qty -= item_data.quantity
+                self.db.add(OrderItem(
+                    order_id=order.id,
+                    product_id=item_data.product_id,
+                    variant_id=variant.id,
+                    quantity=item_data.quantity,
+                    unit_price=item_data.final_unit_price,
+                ))
 
-            self.db.add(OrderItem(
-                order_id=order.id,
-                product_id=item_data.product_id,
-                variant_id=variant.id,
-                quantity=item_data.quantity,
-                unit_price=item_data.final_unit_price,
-            ))
-
-        self.db.commit()
-        self.db.refresh(order)
+            self.db.commit()
+            self.db.refresh(order)
         logger.info("Order placed: %s by user: %s", order_id, user.id)
 
         if is_cod:

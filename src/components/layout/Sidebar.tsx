@@ -33,6 +33,7 @@ const navGroups = [
     items: [
       {
         name: "Products",
+        href: "/products",
         icon: Package,
         subItems: [
           { name: "All Products", href: "/products" },
@@ -41,6 +42,7 @@ const navGroups = [
       },
       {
         name: "Categories",
+        href: "/categories",
         icon: Tags,
         subItems: [
           { name: "All Categories", href: "/categories" },
@@ -55,6 +57,7 @@ const navGroups = [
       { name: "Orders", href: "/orders", icon: ShoppingCart },
       { 
         name: "Users", 
+        href: "/users",
         icon: Users,
         subItems: [
           { name: "All Users", href: "/users" },
@@ -124,23 +127,25 @@ export function Sidebar({ isCollapsed = false }: { isCollapsed?: boolean }) {
                 if (item.subItems) {
                   const isAnySubActive = item.subItems.some(
                     (sub) => pathname === sub.href
-                  );
+                  ) || pathname === item.href;
                   const isOpen = openMenus[item.name] && !isCollapsed;
 
                   return (
                     <li key={item.name}>
-                      <button
-                        onClick={() => toggleMenu(item.name)}
-                        title={isCollapsed ? item.name : undefined}
+                      <div
                         className={cn(
-                          "w-full flex items-center justify-between py-2.5 rounded-md transition-colors",
+                          "w-full flex items-center justify-between py-1 rounded-md transition-colors group/nav",
                           isCollapsed ? "px-0 justify-center" : "px-2",
                           isAnySubActive
                             ? "text-accent bg-accent/5"
                             : "text-foreground hover:bg-surface-hover hover:text-foreground"
                         )}
                       >
-                        <div className={cn("flex items-center w-full", isCollapsed && "justify-center")}>
+                        <Link
+                          href={item.href || item.subItems[0].href}
+                          title={isCollapsed ? item.name : undefined}
+                          className={cn("flex items-center flex-1 py-1.5", isCollapsed && "justify-center")}
+                        >
                           <item.icon
                             className={cn(
                               "h-5 w-5 shrink-0",
@@ -149,16 +154,27 @@ export function Sidebar({ isCollapsed = false }: { isCollapsed?: boolean }) {
                             )}
                           />
                           {!isCollapsed && <span className="text-sm font-medium">{item.name}</span>}
-                        </div>
+                        </Link>
                         {!isCollapsed && (
-                          <ChevronDown
-                            className={cn(
-                              "h-4 w-4 shrink-0 transition-transform text-muted-foreground ml-auto",
-                              isOpen && "rotate-180"
-                            )}
-                          />
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              toggleMenu(item.name);
+                            }}
+                            className="p-1.5 hover:bg-surface-hover rounded-md text-muted-foreground hover:text-foreground transition-colors ml-1"
+                            aria-label={`Toggle ${item.name} submenu`}
+                          >
+                            <ChevronDown
+                              className={cn(
+                                "h-4 w-4 shrink-0 transition-transform",
+                                isOpen && "rotate-180"
+                              )}
+                            />
+                          </button>
                         )}
-                      </button>
+                      </div>
                       <AnimatePresence>
                         {isOpen && !isCollapsed && (
                           <motion.ul

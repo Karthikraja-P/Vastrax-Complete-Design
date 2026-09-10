@@ -176,7 +176,15 @@ export const productsApi = {
       method: "DELETE",
     });
   },
+
+  async subscribeStockNotification(productId: string | number, email: string, size?: string): Promise<{ success: boolean; message: string }> {
+    return await fetchApi<{ success: boolean; message: string }>(`/products/${productId}/notify`, {
+      method: "POST",
+      body: JSON.stringify({ email, size }),
+    });
+  },
 };
+
 
 // -------------------------------------------------------------
 // 2. CATEGORIES API
@@ -484,14 +492,20 @@ export const settingsApi = {
 // -------------------------------------------------------------
 export interface ChatResponse {
   message: string;
-  session_id?: string;
+  session_id: string;
   suggested_products?: {
-    id: string;
+    id?: string;
     name: string;
     price: string;
     image: string;
     category: string;
   }[];
+  executed_tools?: {
+    tool: string;
+    arguments?: any;
+    result?: any;
+  }[];
+  is_escalated?: boolean;
 }
 
 export interface ChatHistoryMessage {
@@ -500,11 +514,14 @@ export interface ChatHistoryMessage {
   text: string;
   timestamp: string;
   suggestedProducts?: {
+    id?: string;
     name: string;
     price: string;
     image: string;
     category: string;
   }[];
+  tool_calls?: any;
+  is_escalated?: boolean;
 }
 
 export const chatApi = {
@@ -514,7 +531,8 @@ export const chatApi = {
     history: { role: string; content: string }[] = [],
     profile: Record<string, any> = {},
     contextUrl?: string,
-    cartItems?: any[]
+    cartItems?: any[],
+    userId?: string
   ): Promise<ChatResponse> {
     const messagesPayload = [...history, { role: "user", content: message }];
     return await fetchApi<ChatResponse>("/chat", {
@@ -524,7 +542,8 @@ export const chatApi = {
         session_id: sessionId,
         profile,
         context_url: contextUrl,
-        cart_items: cartItems
+        cart_items: cartItems,
+        user_id: userId
       }),
     });
   },

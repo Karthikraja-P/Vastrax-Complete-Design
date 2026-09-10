@@ -286,12 +286,12 @@ export default function StorefrontHome() {
                 "In the language of beauty, every detail tells a tale."
               </p>
               <div className="flex flex-wrap gap-4">
-                <a href="/storefront/product" className="inline-block px-10 py-4 bg-accent text-accent-foreground text-lg hover:bg-accent-hover rounded-full font-semibold transition-colors duration-300">
+                <Link href="/storefront/collections" className="inline-block px-10 py-4 bg-accent text-accent-foreground text-lg hover:bg-accent-hover rounded-full font-semibold transition-colors duration-300">
                   Shop Now &rarr;
-                </a>
-                <button className="px-10 py-4 bg-transparent border border-border text-foreground text-lg hover:bg-surface hover:border-foreground rounded-full font-semibold transition-colors duration-300">
+                </Link>
+                <Link href="/storefront/collections?sort=newest" className="inline-block px-10 py-4 bg-transparent border border-border text-foreground text-lg hover:bg-surface hover:border-foreground rounded-full font-semibold transition-colors duration-300">
                   New Arrivals
-                </button>
+                </Link>
               </div>
             </div>
           </div>
@@ -306,9 +306,9 @@ export default function StorefrontHome() {
                 Shop by <span className="font-semibold">Category</span>
               </h2>
             </div>
-            <a href="#" className="text-sm font-medium text-muted-foreground hover:text-accent transition-colors flex items-center gap-1">
+            <Link href="/storefront/collections" className="text-sm font-medium text-muted-foreground hover:text-accent transition-colors flex items-center gap-1">
               View All &rarr;
-            </a>
+            </Link>
           </div>
           
           <div className="relative group/slider mt-4 max-w-7xl mx-auto px-6 md:px-12">

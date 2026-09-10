@@ -252,103 +252,109 @@ export default function Dashboard() {
 
         {/* Customer Count */}
         <div className="lg:col-span-1">
-          <NotchedCard 
-            subtitle="Registered accounts" 
-            title="Customers"
-            actionIcon1={<Bell className="w-3.5 h-3.5" />}
-            actionIcon2={<Sparkles className="w-3.5 h-3.5" />}
-            alertTitle={insights?.users?.alertTitle || "Clientele Count"}
-            alertContent={insights?.users?.alertContent || `Total of ${usersCount} registered accounts active in database.`}
-            insightTitle={insights?.users?.insightTitle || "Patron Management"}
-            insightContent={insights?.users?.insightContent || "View and manage user permissions from the Admin Management console."}
-            className="h-[320px]"
-          >
-            <div className="flex flex-col h-full justify-center pb-12 relative">
-              {loading ? (
-                <div className="h-10 w-28 bg-surface-hover/80 rounded-xl animate-pulse mb-2" />
-              ) : (
-                <span className="text-4xl font-bold tracking-tight">
-                  {usersCount}
-                </span>
-              )}
-              <div className="mt-4 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-                <Users className="w-3.5 h-3.5 text-accent" />
-                <span>Active Users</span>
+          <Link href="/users" className="block h-full cursor-pointer group">
+            <NotchedCard 
+              subtitle="Registered accounts" 
+              title="Customers"
+              actionIcon1={<Bell className="w-3.5 h-3.5" />}
+              actionIcon2={<Sparkles className="w-3.5 h-3.5" />}
+              alertTitle={insights?.users?.alertTitle || "Clientele Count"}
+              alertContent={insights?.users?.alertContent || `Total of ${usersCount} registered accounts active in database.`}
+              insightTitle={insights?.users?.insightTitle || "Patron Management"}
+              insightContent={insights?.users?.insightContent || "View and manage user permissions from the Admin Management console."}
+              className="h-[320px] transition-transform duration-300 group-hover:-translate-y-1"
+            >
+              <div className="flex flex-col h-full justify-center pb-12 relative">
+                {loading ? (
+                  <div className="h-10 w-28 bg-surface-hover/80 rounded-xl animate-pulse mb-2" />
+                ) : (
+                  <span className="text-4xl font-bold tracking-tight">
+                    {usersCount}
+                  </span>
+                )}
+                <div className="mt-4 flex items-center gap-1.5 text-xs font-medium text-muted-foreground group-hover:text-accent transition-colors">
+                  <Users className="w-3.5 h-3.5 text-accent" />
+                  <span>Active Users &rarr;</span>
+                </div>
+                
+                <div className="absolute bottom-0 left-0 right-0 h-24 overflow-hidden pointer-events-none">
+                  <svg viewBox="0 0 100 40" preserveAspectRatio="none" className="w-full h-full stroke-accent drop-shadow-[0_0_8px_rgba(224,122,63,0.8)] fill-none">
+                    <path d="M0 35 Q 20 32, 40 30 T 70 20 T 100 10" strokeWidth="1.5" pathLength="100" className="animate-draw-line" />
+                  </svg>
+                </div>
               </div>
-              
-              <div className="absolute bottom-0 left-0 right-0 h-24 overflow-hidden pointer-events-none">
-                <svg viewBox="0 0 100 40" preserveAspectRatio="none" className="w-full h-full stroke-accent drop-shadow-[0_0_8px_rgba(224,122,63,0.8)] fill-none">
-                  <path d="M0 35 Q 20 32, 40 30 T 70 20 T 100 10" strokeWidth="1.5" pathLength="100" className="animate-draw-line" />
-                </svg>
-              </div>
-            </div>
-          </NotchedCard>
+            </NotchedCard>
+          </Link>
         </div>
 
         {/* Catalog Products */}
         <div className="lg:col-span-1">
-          <NotchedCard 
-            subtitle="Live Catalog" 
-            title="Products"
-            actionIcon1={<Bell className="w-3.5 h-3.5" />}
-            actionIcon2={<Sparkles className="w-3.5 h-3.5" />}
-            alertTitle={insights?.products?.alertTitle || "Inventory Catalog Status"}
-            alertContent={insights?.products?.alertContent || "All published luxury garments are correctly indexed in the database."}
-            insightTitle={insights?.products?.insightTitle || "Merchandising Suggestion"}
-            insightContent={insights?.products?.insightContent || "AI recommends expanding the Fall collection based on current high-margin product velocity."}
-            className="h-[320px]"
-          >
-            <div className="flex flex-col h-full justify-center pb-12 relative">
-              {loading ? (
-                <div className="h-10 w-28 bg-surface-hover/80 rounded-xl animate-pulse mb-2" />
-              ) : (
-                <span className="text-4xl font-bold tracking-tight">
-                  {productsCount}
-                </span>
-              )}
-              <div className="mt-4 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-                <Package className="w-3.5 h-3.5 text-accent" />
-                <span>Live in Catalog</span>
+          <Link href="/products" className="block h-full cursor-pointer group">
+            <NotchedCard 
+              subtitle="Live Catalog" 
+              title="Products"
+              actionIcon1={<Bell className="w-3.5 h-3.5" />}
+              actionIcon2={<Sparkles className="w-3.5 h-3.5" />}
+              alertTitle={insights?.products?.alertTitle || "Inventory Catalog Status"}
+              alertContent={insights?.products?.alertContent || "All published luxury garments are correctly indexed in the database."}
+              insightTitle={insights?.products?.insightTitle || "Merchandising Suggestion"}
+              insightContent={insights?.products?.insightContent || "AI recommends expanding the Fall collection based on current high-margin product velocity."}
+              className="h-[320px] transition-transform duration-300 group-hover:-translate-y-1"
+            >
+              <div className="flex flex-col h-full justify-center pb-12 relative">
+                {loading ? (
+                  <div className="h-10 w-28 bg-surface-hover/80 rounded-xl animate-pulse mb-2" />
+                ) : (
+                  <span className="text-4xl font-bold tracking-tight">
+                    {productsCount}
+                  </span>
+                )}
+                <div className="mt-4 flex items-center gap-1.5 text-xs font-medium text-muted-foreground group-hover:text-accent transition-colors">
+                  <Package className="w-3.5 h-3.5 text-accent" />
+                  <span>Live in Catalog &rarr;</span>
+                </div>
+                
+                <div className="absolute bottom-0 left-0 right-0 h-24 overflow-hidden pointer-events-none">
+                  <svg viewBox="0 0 100 40" preserveAspectRatio="none" className="w-full h-full stroke-accent drop-shadow-[0_0_8px_rgba(224,122,63,0.8)] fill-none">
+                    <path d="M0 35 Q 20 32, 40 30 T 70 20 T 100 10" strokeWidth="1.5" pathLength="100" className="animate-draw-line" />
+                  </svg>
+                </div>
               </div>
-              
-              <div className="absolute bottom-0 left-0 right-0 h-24 overflow-hidden pointer-events-none">
-                <svg viewBox="0 0 100 40" preserveAspectRatio="none" className="w-full h-full stroke-accent drop-shadow-[0_0_8px_rgba(224,122,63,0.8)] fill-none">
-                  <path d="M0 35 Q 20 32, 40 30 T 70 20 T 100 10" strokeWidth="1.5" pathLength="100" className="animate-draw-line" />
-                </svg>
-              </div>
-            </div>
-          </NotchedCard>
+            </NotchedCard>
+          </Link>
         </div>
 
         {/* Bottom Row */}
         
         {/* Total Orders Volume */}
         <div className="lg:col-span-2">
-          <NotchedCard 
-            subtitle="Orders" 
-            title="Orders Volume"
-            actionIcon1={<Bell className="w-3.5 h-3.5" />}
-            actionIcon2={<Sparkles className="w-3.5 h-3.5" />}
-            alertTitle="Order Stream"
-            alertContent={`${ordersCount} total orders have been placed.`}
-            insightTitle="Order Tracking"
-            insightContent="Orders update automatically upon customer checkout completion."
-            className="h-[200px]"
-          >
-            <div className="flex flex-col h-full justify-center relative">
-              <div className="flex items-baseline gap-1">
-                <span className="text-4xl font-bold tracking-tight">{ordersCount}</span>
-                <span className="text-sm font-medium text-muted-foreground ml-2">Total Orders Recorded</span>
-              </div>
-              
-              {/* Progress Bar */}
-              <div className="mt-8 relative w-3/4">
-                <div className="h-1.5 w-full bg-surface-hover border border-border rounded-full overflow-hidden">
-                  <div className="h-full bg-accent drop-shadow-[0_0_8px_rgba(224,122,63,0.8)]" style={{ width: `${Math.min(ordersCount * 10, 100)}%` }} />
+          <Link href="/orders" className="block h-full cursor-pointer group">
+            <NotchedCard 
+              subtitle="Orders" 
+              title="Orders Volume"
+              actionIcon1={<Bell className="w-3.5 h-3.5" />}
+              actionIcon2={<Sparkles className="w-3.5 h-3.5" />}
+              alertTitle="Order Stream"
+              alertContent={`${ordersCount} total orders have been placed.`}
+              insightTitle="Order Tracking"
+              insightContent="Orders update automatically upon customer checkout completion."
+              className="h-[200px] transition-transform duration-300 group-hover:-translate-y-1"
+            >
+              <div className="flex flex-col h-full justify-center relative">
+                <div className="flex items-baseline gap-1">
+                  <span className="text-4xl font-bold tracking-tight">{ordersCount}</span>
+                  <span className="text-sm font-medium text-muted-foreground ml-2 group-hover:text-accent transition-colors">Total Orders Recorded &rarr;</span>
+                </div>
+                
+                {/* Progress Bar */}
+                <div className="mt-8 relative w-3/4">
+                  <div className="h-1.5 w-full bg-surface-hover border border-border rounded-full overflow-hidden">
+                    <div className="h-full bg-accent drop-shadow-[0_0_8px_rgba(224,122,63,0.8)]" style={{ width: `${Math.min(ordersCount * 10, 100)}%` }} />
+                  </div>
                 </div>
               </div>
-            </div>
-          </NotchedCard>
+            </NotchedCard>
+          </Link>
         </div>
 
         {/* Weekly Trend */}

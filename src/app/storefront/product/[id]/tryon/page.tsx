@@ -29,8 +29,16 @@ export default function VirtualTryOnPage() {
   const id = params.id as string;
   const { data: session } = useSession();
 
+  const defaultGarment = {
+    id: id || "vtx-default",
+    name: "Cyber Silk Trench Coat",
+    category: "Outerwear",
+    price: "4999",
+    image: "https://images.unsplash.com/photo-1551028719-00167b16eac5?q=80&w=800&auto=format&fit=crop"
+  };
+
   const [products, setProducts] = useState<any[]>([]);
-  const [product, setProduct] = useState<any>(null);
+  const [product, setProduct] = useState<any>(defaultGarment);
   
   const [personFile, setPersonFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -51,9 +59,11 @@ export default function VirtualTryOnPage() {
     async function loadData() {
       try {
         const allProducts = await productsApi.list();
-        setProducts(allProducts);
-        const current = allProducts.find((p: any) => p.id.toString() === id);
-        setProduct(current || allProducts[0]);
+        if (allProducts && allProducts.length > 0) {
+          setProducts(allProducts);
+          const current = allProducts.find((p: any) => p.id.toString() === id);
+          setProduct(current || allProducts[0]);
+        }
       } catch (e) {
         console.error("Failed to load products", e);
       }

@@ -144,8 +144,9 @@ export default function SettingsPage() {
         <div className="w-full md:w-64 flex-shrink-0">
           <div className="bg-surface border border-border rounded-xl p-2 space-y-1">
             <button 
+              type="button"
               onClick={() => setActiveTab('profile')}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 cursor-pointer ${
                 activeTab === 'profile' 
                   ? 'bg-accent/10 text-accent relative before:absolute before:left-0 before:top-2 before:bottom-2 before:w-1 before:bg-accent before:rounded-r' 
                   : 'text-muted-foreground hover:bg-surface-hover hover:text-foreground'
@@ -155,8 +156,9 @@ export default function SettingsPage() {
               Profile
             </button>
             <button 
+              type="button"
               onClick={() => setActiveTab('security')}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 cursor-pointer ${
                 activeTab === 'security' 
                   ? 'bg-accent/10 text-accent relative before:absolute before:left-0 before:top-2 before:bottom-2 before:w-1 before:bg-accent before:rounded-r' 
                   : 'text-muted-foreground hover:bg-surface-hover hover:text-foreground'
@@ -166,8 +168,9 @@ export default function SettingsPage() {
               Security
             </button>
             <button 
+              type="button"
               onClick={() => setActiveTab('app')}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 cursor-pointer ${
                 activeTab === 'app' 
                   ? 'bg-accent/10 text-accent relative before:absolute before:left-0 before:top-2 before:bottom-2 before:w-1 before:bg-accent before:rounded-r' 
                   : 'text-muted-foreground hover:bg-surface-hover hover:text-foreground'

@@ -11,6 +11,9 @@ from .payment import Payment
 from .tryon_session import TryonSession
 from .otp import OTP
 from .chat_message import ChatMessage
+from .support_ticket import SupportTicket
+
+from .stock_notification import StockNotification
 
 __all__ = [
     "User",
@@ -26,4 +29,7 @@ __all__ = [
     "TryonSession",
     "OTP",
     "ChatMessage",
+    "SupportTicket",
+    "StockNotification",
 ]
+

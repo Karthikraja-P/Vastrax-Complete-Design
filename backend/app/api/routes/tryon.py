@@ -71,14 +71,20 @@ async def submit_tryon(
     except Exception:
         garment_local = garment_url
 
+    session_id = f"ses_{uuid.uuid4().hex[:8]}"
     try:
-        result_path = run_fashn(
-            person_image_path=person_path,
-            garment_image_path=garment_local,
-            garment_type=category,
-            results_dir=settings.results_dir,
-        )
-        result_filename = os.path.basename(result_path)
+        from app.core.gpu_queue import gpu_queue
+        import asyncio
+
+        async with gpu_queue.acquire(f"tryon_submit_{session_id}"):
+            result_path = await asyncio.to_thread(
+                run_fashn,
+                person_image_path=person_path,
+                garment_image_path=garment_local,
+                garment_type=category,
+                results_dir=settings.results_dir,
+            )
+            result_filename = os.path.basename(result_path)
     finally:
         if is_person_tmp and person_path:
             try_remove(person_path)
@@ -86,12 +92,13 @@ async def submit_tryon(
             try_remove(garment_local)
 
     return {
-        "session_id": f"ses_{uuid.uuid4().hex[:8]}",
+        "session_id": session_id,
         "status": "COMPLETED",
         "result_image_url": f"/results/{result_filename}",
         "category_used": category,
         "model": "FASHN VTON 1.5",
     }
+
 
 
 @router.post("")

@@ -1,0 +1,40 @@
+services:
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: vastrax-backend
+    restart: unless-stopped
+    ports:
+      - "8090:8090"
+    environment:
+      - DATABASE_URL=sqlite:////app/vastrax.db
+      - ALLOWED_ORIGINS=*
+      - FRONTEND_URL=http://localhost:3000
+    volumes:
+      - ./backend/vastrax.db:/app/vastrax.db
+      - ./backend/user_uploads:/app/user_uploads
+      - ./backend/results:/app/results
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health')\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: vastrax-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - INTERNAL_BACKEND_URL=http://backend:8090
+      - NEXT_PUBLIC_API_URL=http://localhost:3000/api/v1
+    depends_on:
+      backend:
+        condition: service_healthy

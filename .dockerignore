@@ -1,0 +1,12 @@
+node_modules
+.next
+.git
+.gitignore
+backend
+3d-model
+Virtual try on
+*.log
+.claude
+.gemini
+README.md
+*.md

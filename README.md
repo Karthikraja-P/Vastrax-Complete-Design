@@ -46,10 +46,10 @@ For complete end-to-end architecture documentation, system flow diagrams, and AP
 - `/src/lib/toast.ts` & `/src/components/ui/Toast.tsx` - Global cyber-luxury Toast notification dispatcher and floating glassmorphic container for instant user feedback.
 - `/src/lib/backendStatus.ts` - Shared connectivity pub/sub consumed by `api.ts` and every raw-`fetch` call site (checkout, auth, try-on) to report backend reachability.
 - `/backend/` - FastAPI backend application (SQLAlchemy 2.0 + Alembic, SQLite for local dev).
-  - `app/main.py` - FastAPI entrypoint.
-  - `app/api/routes/` - REST endpoints: `auth`, `users`, `products`, `categories`, `orders`, `payments`, `shipping`, `tryon`, `three_d`, `chat` (`POST /`, `GET /history`, `DELETE /history`), `analytics`, `settings`, `otp`, `health`.
-  - `app/models/` - SQLAlchemy models (`User`, `Product`, `Order`, `Payment`, `ChatMessage`, `TryonSession`, etc.).
-  - `app/services/` - Business logic services (Razorpay, Fashn VTON, Shiprocket, OpenAI GPT-4o mini Stylist, Resend email notifications, OrderService with variant resolution, stock decrements/restorations, and PaymentService).
+  - `app/core/gpu_queue.py` - In-process asynchronous FIFO GPU queue manager (`gpu_queue`) with queue depth tracking, active job counting, and single-concurrency isolation (`asyncio.Semaphore(1)`) protecting RTX 5070 Ti 16GB VRAM from OOM.
+  - `app/api/routes/` - REST endpoints: `auth`, `users`, `products` (including `POST /{id}/notify` waitlist), `categories`, `orders`, `payments`, `shipping`, `tryon` (FIFO GPU queued), `three_d` (FIFO GPU queued), `chat` (`POST /`, `POST /stream`, `GET /history`, `DELETE /history`), `analytics`, `settings`, `otp`, `health`.
+  - `app/models/` - SQLAlchemy models (`User`, `Product`, `Order`, `Payment`, `ChatMessage`, `SupportTicket`, `TryonSession`, `StockNotification`, etc.).
+  - `app/services/` - Business logic services (Razorpay, Fashn VTON, Shiprocket, OpenAI GPT-4o mini Stylist with `chat_tools` function calling & authorization boundary, Resend email notifications, OrderService with thread-safe inventory locking `_inventory_lock` preventing overselling, StockNotificationService with throttled background batch email queue, and PaymentService).
   - `app/middleware/auth.py` - JWT auth (`get_current_user`, `require_admin`) — no anonymous/admin fallback; missing or invalid credentials are always rejected.
 - `/virtual-try-on/` - Standalone Virtual Try-On sub-system (FASHN VTON 1.5 engine + Fitting Room UI).
   - `backend/` - Dedicated VTON FastAPI service with GPU inference execution.
@@ -62,10 +62,27 @@ For complete end-to-end architecture documentation, system flow diagrams, and AP
   - `api_server.py` - FastAPI 3D generation & texture synthesis server.
   - `.venv/` - PyTorch + CUDA environment for 3D model inference.
 
+## Quick Start: Local PC Instant Docker Deployment
+
+Launch the entire stack with a single command:
+```bash
+./start-docker.sh
+# or manually:
+docker compose up --build -d
+```
+
+- **Storefront**: [http://localhost:3000/storefront/home](http://localhost:3000/storefront/home)
+- **Admin Dashboard**: [http://localhost:3000/](http://localhost:3000/)
+- **Backend API & Health**: [http://localhost:8090/health](http://localhost:8090/health)
+- **Data Persistence**: Host directory `./backend/vastrax.db` and `./backend/user_uploads` are mapped directly to preserve all products, media, and orders.
+
 ## Production Ready Status
+
 - [x] Next.js 16 (Turbopack) production build passing with 0 errors across all 18 routes.
 - [x] Full customer shopping journey complete: Home -> Collections -> PDP with VTON -> Shopping Bag with Promo Codes -> Checkout -> Client Portal.
 - [x] Checkout collects real payment via Razorpay Checkout.js (falls back to an in-page simulated gateway when no live Razorpay credentials are configured), with server-side signature verification and a webhook as the durable fallback.
+- [x] Out-of-Stock & "Notify Later" System: Storefront product details and catalog cards automatically detect zero stock, disable "Buy Now" and "Add to Cart", display "Sold Out" badges, and present a luxury "Notify Me When Available" waitlist form connected to `POST /products/{id}/notify`. Automated restock emails are dispatched to subscribers via Resend when inventory is replenished.
+
 - [x] Personal AI Stylist Concierge integrated across all storefront views.
 - [x] Admin dashboard and CRUD modules (Products, Categories, Orders, App Settings) wired to backend API client.
 - [x] Admin usage analytics (`GET /analytics/usage`) and per-user try-on/AI-chat counters on the Users page.
@@ -75,6 +92,8 @@ For complete end-to-end architecture documentation, system flow diagrams, and AP
 - [x] File and asset upload pickers added across Admin Products, Categories, and Users modals.
 - [x] Storefront header dead links fixed and wired to dynamic catalog category filters.
 - [x] Admin header search and profile settings navigation wired.
+- [x] Dashboard sidebar direct navigation, overview KPI card links, settings tabs, and storefront interactive buttons wired.
+- [x] Production AI Support & Stylist agent with OpenAI tool calling, security authorization guards, order tracking, cancellation, and human escalation.
 
 ## Known Gaps / Pending Work
 1. **Cart → order variant mapping**: the storefront cart sends a hardcoded `variant_id: "var_dummy"` for every line item regardless of which product/size was actually added, instead of tracking the real `ProductVariant.id` per cart entry. Works today only because a matching dummy variant exists in seed data; needs a real fix before multiple distinct products can be ordered correctly.

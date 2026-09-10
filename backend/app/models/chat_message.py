@@ -25,4 +25,6 @@ class ChatMessage(Base):
     sender: Mapped[str] = mapped_column(String(20), nullable=False)  # "user" | "stylist"
     content: Mapped[str] = mapped_column(Text, nullable=False)
     suggested_products: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON string
+    tool_calls: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON string of executed tools
+    is_escalated: Mapped[bool] = mapped_column(default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)

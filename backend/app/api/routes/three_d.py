@@ -14,7 +14,7 @@ router = APIRouter(prefix="/3d", tags=["3D Generation"])
 
 
 @router.post("/generate", status_code=status.HTTP_200_OK)
-def generate_3d_mesh(
+async def generate_3d_mesh(
     product_id: str = Form(None),
     front_image: UploadFile = File(None),
     side_image: UploadFile = File(None),
@@ -26,14 +26,17 @@ def generate_3d_mesh(
     Triggers Hunyuan3D-2.1 neural reconstruction & texture painting pipeline.
     Returns preview .glb model path.
     """
+    from app.core.gpu_queue import gpu_queue
+
     job_id = f"job_3d_{uuid.uuid4().hex[:8]}"
     model_url = "/models/garment_perfect.glb"
-    
-    if product_id:
-        product = db.query(Product).filter(Product.id == product_id).first()
-        if product:
-            product.model_path = model_url
-            db.commit()
+
+    async with gpu_queue.acquire(f"3d_reconstruct_{job_id}"):
+        if product_id:
+            product = db.query(Product).filter(Product.id == product_id).first()
+            if product:
+                product.model_path = model_url
+                db.commit()
 
     return {
         "status": "success",
@@ -42,6 +45,7 @@ def generate_3d_mesh(
         "texture_url": "/textures/pbr_fabric_diffuse.png",
         "message": "3D garment mesh generated and texture-painted successfully"
     }
+
 
 
 @router.post("/products/{product_id}/generate-3d", status_code=status.HTTP_200_OK)

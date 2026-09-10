@@ -4,11 +4,13 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
+from fastapi.responses import StreamingResponse
+
 from app.db.database import get_db
 from app.models.chat_message import ChatMessage
 from app.models.product import Product
 from app.schemas.chat import ChatRequest
-from app.services.chat_service import chat as vastra_chat
+from app.services.chat_service import chat as vastra_chat, chat_stream as vastra_chat_stream
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -29,8 +31,16 @@ def chat_endpoint(req: ChatRequest, db: Session = Depends(get_db)):
         db.add(user_msg)
         db.commit()
 
-    # Generate stylist response
-    reply_text = vastra_chat(messages, req.profile, db=db, context_url=req.context_url, cart_items=req.cart_items)
+    # Generate stylist response with secure tool calling
+    reply_text, executed_tools = vastra_chat(
+        messages,
+        req.profile,
+        db=db,
+        context_url=req.context_url,
+        cart_items=req.cart_items,
+        user_id=req.user_id,
+        session_id=session_id,
+    )
 
     # Extract suggested products from reply tags e.g. [PRODUCT:vtx-frock-floral]
     suggested = []
@@ -52,13 +62,17 @@ def chat_endpoint(req: ChatRequest, db: Session = Depends(get_db)):
     except Exception:
         pass
 
+    is_escalated = any(t.get("tool") == "connect_to_human" for t in (executed_tools or []))
+
     # Save assistant message to DB
     assistant_msg = ChatMessage(
         session_id=session_id,
         user_id=req.user_id,
         sender="stylist",
         content=reply_text,
-        suggested_products=json.dumps(suggested) if suggested else None
+        suggested_products=json.dumps(suggested) if suggested else None,
+        tool_calls=json.dumps(executed_tools) if executed_tools else None,
+        is_escalated=is_escalated,
     )
     db.add(assistant_msg)
     db.commit()
@@ -66,8 +80,39 @@ def chat_endpoint(req: ChatRequest, db: Session = Depends(get_db)):
     return {
         "message": reply_text,
         "session_id": session_id,
-        "suggested_products": suggested
+        "suggested_products": suggested,
+        "executed_tools": executed_tools,
+        "is_escalated": is_escalated,
     }
+
+
+@router.post("/stream")
+def chat_stream_endpoint(req: ChatRequest, db: Session = Depends(get_db)):
+    session_id = req.session_id or f"ses_{uuid.uuid4().hex[:12]}"
+    messages = [{"role": m.role, "content": m.content} for m in req.messages]
+
+    if req.messages and req.messages[-1].role == "user":
+        user_msg = ChatMessage(
+            session_id=session_id,
+            user_id=req.user_id,
+            sender="user",
+            content=req.messages[-1].content,
+        )
+        db.add(user_msg)
+        db.commit()
+
+    return StreamingResponse(
+        vastra_chat_stream(
+            messages=messages,
+            profile=req.profile,
+            db=db,
+            context_url=req.context_url,
+            cart_items=req.cart_items,
+            user_id=req.user_id,
+            session_id=session_id,
+        ),
+        media_type="text/event-stream"
+    )
 
 
 @router.get("/history")

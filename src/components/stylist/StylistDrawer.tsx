@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { chatApi, tryonApi } from "@/lib/api";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { useFavorites } from "@/hooks/useFavorites";
 import { addToCart as addCartItem } from "@/lib/cart";
 import { showToast } from "@/lib/toast";
@@ -25,23 +26,29 @@ interface Message {
     image: string;
     category: string;
   }[];
+  executedTools?: {
+    tool: string;
+    arguments?: any;
+    result?: any;
+  }[];
+  isEscalated?: boolean;
 }
 
 const initialMessages: Message[] = [
   {
     id: "m-1",
     sender: "stylist",
-    text: "Hi there! I'm your VASTRAX AI Stylist. How can I help you find the perfect outfit today?",
+    text: "Hi there! I'm your VASTRAX AI Concierge & Stylist. How can I help you find the perfect outfit or assist with your orders today?",
     timestamp: "Just now",
-    chips: ["Wedding / Festive", "Office / Work", "Casual / Everyday", "Current Offers"]
+    chips: ["Where is my order?", "Wedding / Festive", "Current Offers", "Return Policy"]
   }
 ];
 
 const samplePrompts = [
+  "Where is my order?",
   "What active discounts do you have?",
-  "Curate a minimalist evening gala outfit",
-  "How to style the Silk Evening Blazer?",
-  "Recommend monochrome autumn essentials"
+  "What is your return & exchange policy?",
+  "Curate a minimalist evening gala outfit"
 ];
 
 function parseTagsFromReply(rawText: string) {
@@ -79,6 +86,7 @@ export function StylistDrawer({ isOpen, onClose }: StylistDrawerProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const { data: session } = useSession();
   
   const { isFavorite, toggleFavorite } = useFavorites();
 
@@ -175,8 +183,9 @@ export function StylistDrawer({ isOpen, onClose }: StylistDrawerProps) {
       }));
 
       const contextUrl = typeof window !== 'undefined' ? `${pathname}${searchParams.toString() ? `?${searchParams.toString()}` : ''}` : '';
+      const userId = (session?.user as any)?.id || session?.user?.email;
       
-      const res = await chatApi.sendMessage(query, sessionId, historyPayload, {}, contextUrl, []);
+      const res = await chatApi.sendMessage(query, sessionId, historyPayload, {}, contextUrl, [], userId);
       const { cleanText, chips } = parseTagsFromReply(res.message);
 
       const stylistMsg: Message = {
@@ -187,7 +196,9 @@ export function StylistDrawer({ isOpen, onClose }: StylistDrawerProps) {
         chips,
         suggestedProducts: res.suggested_products && res.suggested_products.length > 0 
           ? res.suggested_products 
-          : undefined
+          : undefined,
+        executedTools: res.executed_tools,
+        isEscalated: res.is_escalated,
       };
       setMessages(prev => [...prev, stylistMsg]);
     } catch {
@@ -304,6 +315,17 @@ export function StylistDrawer({ isOpen, onClose }: StylistDrawerProps) {
                                 {chip}
                               </button>
                             ))}
+                          </div>
+                        )}
+
+                        {/* Human Concierge Escalation Banner */}
+                        {msg.isEscalated && (
+                          <div className="mt-2.5 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-center gap-2.5 shadow-sm animate-in fade-in">
+                            <Bot className="w-4 h-4 text-amber-400 shrink-0" />
+                            <div>
+                              <p className="font-semibold text-[11px] text-amber-200">Concierge Ticket Created</p>
+                              <p className="text-[10px] text-amber-300/80 mt-0.5">A senior human atelier specialist has been assigned to this thread.</p>
+                            </div>
                           </div>
                         )}
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Search, Heart, Star, ShoppingBag, Menu, User, ChevronRight, SlidersHorizontal, Box } from "lucide-react";
+import { Search, Heart, Star, ShoppingBag, Menu, User, ChevronRight, SlidersHorizontal, Box, Bell } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { AuthModal } from "@/components/auth/AuthModal";
 import { useSession, signOut } from "next-auth/react";
@@ -601,68 +601,88 @@ export default function CollectionsPage() {
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6">
-                  {filteredProducts.map((product) => (
-                    <div key={product.id} className="bg-surface dark:bg-[#1c1c1c] rounded-3xl p-5 group relative border border-border/50 dark:border-white/5 hover:border-border dark:border-white/10 transition-colors flex flex-col h-[340px]">
-                      {/* Top icons */}
-                      <div className="flex items-start justify-between z-10 relative mb-4 shrink-0">
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            onClick={(e) => toggleFavorite(product, e)}
-                            className="w-8 h-8 rounded-full bg-background dark:bg-[#2a2a2a] flex items-center justify-center text-muted-foreground hover:text-[#e07a3f] transition-colors"
-                          >
-                            <Heart className={`w-4 h-4 ${favorites.includes(product.id) ? 'fill-[#e07a3f] text-[#e07a3f]' : ''}`} />
-                          </button>
-                          <button
-                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); setSelected3DProduct(product); }}
-                            title="Interactive 3D Preview"
-                            className="w-8 h-8 rounded-full bg-background dark:bg-[#2a2a2a] flex items-center justify-center text-muted-foreground hover:text-[#38bdf8] transition-colors shadow-sm cursor-pointer group/3d"
-                          >
-                            <Box className="w-4 h-4 text-[#38bdf8] group-hover/3d:scale-110 transition-transform" />
-                          </button>
-                        </div>
-                        <div className="bg-background dark:bg-[#2a2a2a] px-2.5 py-1 rounded-full flex items-center gap-1.5">
-                          <Star className="w-3 h-3 fill-[#e07a3f] text-[#e07a3f]" />
-                          <span className="text-[10px] font-bold text-foreground dark:text-white">{product.rating}</span>
-                        </div>
-                      </div>
+                  {filteredProducts.map((product) => {
+                    const isOutOfStock = (product.stock !== undefined && product.stock <= 0) || 
+                      (product.variants && product.variants.length > 0 && product.variants.every((v: any) => Number(v.stock_qty ?? 0) <= 0));
 
-                      {/* Image */}
-                      <a href={`/storefront/product?id=${product.id}`} className="relative w-full flex-1 mb-4 flex items-center justify-center overflow-hidden cursor-pointer rounded-2xl bg-black/5">
-                        <img
-                          src={product.image}
-                          alt={product.name}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out"
-                        />
-                      </a>
-
-                      {/* Bottom Info */}
-                      <div className="flex items-end justify-between relative z-10 shrink-0">
-                        <div className="flex-1 pr-4">
-                          <a href={`/storefront/product?id=${product.id}`} className="hover:text-[#e07a3f] transition-colors">
-                            <h3 className="text-sm font-medium text-foreground/90 mb-1.5 line-clamp-1">{product.name}</h3>
-                          </a>
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-lg font-bold">₹{product.price.toLocaleString()}</span>
-                            {product.originalPrice && <span className="text-xs text-muted-foreground line-through">₹{product.originalPrice.toLocaleString()}</span>}
-                            {product.isSale && <span className="text-[9px] bg-[#e07a3f]/20 text-[#e07a3f] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">SALE</span>}
-                            {product.isNew && <span className="text-[9px] bg-white/10 text-foreground dark:text-white px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">NEW</span>}
+                    return (
+                      <div key={product.id} className="bg-surface dark:bg-[#1c1c1c] rounded-3xl p-5 group relative border border-border/50 dark:border-white/5 hover:border-border dark:border-white/10 transition-colors flex flex-col h-[340px]">
+                        {/* Top icons */}
+                        <div className="flex items-start justify-between z-10 relative mb-4 shrink-0">
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              onClick={(e) => toggleFavorite(product, e)}
+                              className="w-8 h-8 rounded-full bg-background dark:bg-[#2a2a2a] flex items-center justify-center text-muted-foreground hover:text-[#e07a3f] transition-colors"
+                            >
+                              <Heart className={`w-4 h-4 ${favorites.includes(product.id) ? 'fill-[#e07a3f] text-[#e07a3f]' : ''}`} />
+                            </button>
+                            <button
+                              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setSelected3DProduct(product); }}
+                              title="Interactive 3D Preview"
+                              className="w-8 h-8 rounded-full bg-background dark:bg-[#2a2a2a] flex items-center justify-center text-muted-foreground hover:text-[#38bdf8] transition-colors shadow-sm cursor-pointer group/3d"
+                            >
+                              <Box className="w-4 h-4 text-[#38bdf8] group-hover/3d:scale-110 transition-transform" />
+                            </button>
+                          </div>
+                          <div className="bg-background dark:bg-[#2a2a2a] px-2.5 py-1 rounded-full flex items-center gap-1.5">
+                            <Star className="w-3 h-3 fill-[#e07a3f] text-[#e07a3f]" />
+                            <span className="text-[10px] font-bold text-foreground dark:text-white">{product.rating}</span>
                           </div>
                         </div>
 
-                        {/* Interactive Add to Bag Button */}
-                        <button
-                          onClick={(e) => handleAddToBagClick(product, e)}
-                          className="w-11 h-11 rounded-full bg-background dark:bg-[#2a2a2a] flex items-center justify-center text-foreground dark:text-white relative overflow-hidden group/btn shrink-0 shadow-sm"
-                        >
-                          {/* Semi-circle hover effect */}
-                          <div className={`absolute inset-x-0 bottom-0 bg-[#e07a3f] transition-all duration-300 ease-out ${isItemInBag(product.id) ? 'h-full' : 'h-0 group-hover/btn:h-1/2 rounded-t-full'}`} />
+                        {/* Image */}
+                        <a href={`/storefront/product?id=${product.id}`} className="relative w-full flex-1 mb-4 flex items-center justify-center overflow-hidden cursor-pointer rounded-2xl bg-black/5">
+                          <img
+                            src={product.image}
+                            alt={product.name}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out"
+                          />
+                          {isOutOfStock && (
+                            <span className="absolute bottom-2 left-2 z-10 bg-red-600/90 text-white text-[9px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider backdrop-blur-sm shadow-sm">
+                              Sold Out
+                            </span>
+                          )}
+                        </a>
 
-                          {/* Icon */}
-                          <ShoppingBag className={`w-4 h-4 relative z-10 transition-transform duration-300 ${isItemInBag(product.id) ? 'scale-110 text-white' : 'group-hover/btn:-translate-y-0.5'}`} />
-                        </button>
+                        {/* Bottom Info */}
+                        <div className="flex items-end justify-between relative z-10 shrink-0">
+                          <div className="flex-1 pr-4">
+                            <a href={`/storefront/product?id=${product.id}`} className="hover:text-[#e07a3f] transition-colors">
+                              <h3 className="text-sm font-medium text-foreground/90 mb-1.5 line-clamp-1">{product.name}</h3>
+                            </a>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-lg font-bold">₹{product.price.toLocaleString()}</span>
+                              {product.originalPrice && <span className="text-xs text-muted-foreground line-through">₹{product.originalPrice.toLocaleString()}</span>}
+                              {product.isSale && <span className="text-[9px] bg-[#e07a3f]/20 text-[#e07a3f] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">SALE</span>}
+                              {product.isNew && <span className="text-[9px] bg-white/10 text-foreground dark:text-white px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">NEW</span>}
+                            </div>
+                          </div>
+
+                          {/* Action Button: Notify if out of stock, else Add to Bag */}
+                          {isOutOfStock ? (
+                            <Link
+                              href={`/storefront/product?id=${product.id}`}
+                              title="Sold Out - Notify Me When Available"
+                              className="w-11 h-11 rounded-full bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-500 hover:bg-red-500 hover:text-white transition-colors shrink-0 shadow-sm"
+                            >
+                              <Bell className="w-4 h-4" />
+                            </Link>
+                          ) : (
+                            <button
+                              onClick={(e) => handleAddToBagClick(product, e)}
+                              className="w-11 h-11 rounded-full bg-background dark:bg-[#2a2a2a] flex items-center justify-center text-foreground dark:text-white relative overflow-hidden group/btn shrink-0 shadow-sm"
+                            >
+                              {/* Semi-circle hover effect */}
+                              <div className={`absolute inset-x-0 bottom-0 bg-[#e07a3f] transition-all duration-300 ease-out ${isItemInBag(product.id) ? 'h-full' : 'h-0 group-hover/btn:h-1/2 rounded-t-full'}`} />
+
+                              {/* Icon */}
+                              <ShoppingBag className={`w-4 h-4 relative z-10 transition-transform duration-300 ${isItemInBag(product.id) ? 'scale-110 text-white' : 'group-hover/btn:-translate-y-0.5'}`} />
+                            </button>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
 
                 {/* Pagination */}

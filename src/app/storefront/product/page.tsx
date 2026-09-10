@@ -5,7 +5,8 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { 
   ChevronRight, Heart, Star, Share2, Ruler, Truck, ShieldCheck, 
   Minus, Plus, ChevronLeft, ArrowRight, Menu, Search, User, ShoppingBag,
-  Phone, Link as LinkIcon, RefreshCw, Check, Sparkles, Shirt, Box
+  Phone, Link as LinkIcon, RefreshCw, Check, Sparkles, Shirt, Box,
+  Bell, AlertCircle
 } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { AuthModal } from "@/components/auth/AuthModal";
@@ -68,6 +69,8 @@ function ProductContent() {
     reviewsCount: number;
     model3dUrl?: string;
     model_path?: string;
+    stock?: number;
+    variants?: any[];
   }>({
     id: "vtx-default",
     name: "Cyber Silk Trench Coat",
@@ -142,7 +145,9 @@ function ProductContent() {
               images: allImgs,
               rating: item.rating || 4.8,
               reviewsCount: item.reviewsCount || 9,
-              model3dUrl: modelUrl
+              model3dUrl: modelUrl,
+              stock: item.stock ?? item.inventoryCount ?? 10,
+              variants: item.variants || []
             });
             if (item.colour) setActiveColor(item.colour);
             if (item.name?.toLowerCase().includes("3d") || item.name?.toLowerCase().includes("limitless")) {
@@ -176,7 +181,9 @@ function ProductContent() {
             rating: item.rating || 4.9,
             reviewsCount: item.reviewsCount || 14,
             model3dUrl: modelUrl,
-            model_path: item.model_path
+            model_path: item.model_path,
+            stock: item.stock ?? item.inventoryCount ?? 10,
+            variants: item.variants || []
           });
           if (item.colour) setActiveColor(item.colour);
         }
@@ -192,7 +199,57 @@ function ProductContent() {
       setIsLoggedIn(true);
       setUserName(session.user.name);
     }
+    if (session?.user?.email && !notifyEmail) {
+      setNotifyEmail(session.user.email);
+    }
   }, [session]);
+
+  const [notifyEmail, setNotifyEmail] = useState("");
+  const [isSubscribingNotify, setIsSubscribingNotify] = useState(false);
+  const [isNotifySuccess, setIsNotifySuccess] = useState(false);
+
+  // Derive stock for current active size
+  const activeVariant = product.variants?.find(
+    (v: any) => v.size?.toUpperCase() === activeSize.toUpperCase()
+  );
+  const currentStock = activeVariant !== undefined
+    ? Number(activeVariant.stock_qty ?? 0)
+    : (product.stock ?? 10);
+  const isOutOfStock = currentStock <= 0;
+
+  const handleSubscribeNotify = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!notifyEmail || !notifyEmail.includes("@")) {
+      showToast({
+        title: "Invalid Email",
+        description: "Please enter a valid email to receive restock notifications.",
+        type: "error",
+        duration: 3000,
+      });
+      return;
+    }
+    setIsSubscribingNotify(true);
+    try {
+      await productsApi.subscribeStockNotification(product.id, notifyEmail, activeSize);
+      setIsNotifySuccess(true);
+      showToast({
+        title: "Waitlist Confirmed",
+        description: `We will email ${notifyEmail} the moment size ${activeSize} is back in stock!`,
+        type: "gold",
+        duration: 5000,
+      });
+    } catch (err: any) {
+      console.error("Failed to subscribe for restock:", err);
+      showToast({
+        title: "Subscription Failed",
+        description: err?.message || "Could not register for notifications. Please try again.",
+        type: "error",
+        duration: 4000,
+      });
+    } finally {
+      setIsSubscribingNotify(false);
+    }
+  };
 
   useEffect(() => {
     const saved = localStorage.getItem("vastrax_favorites");
@@ -233,6 +290,16 @@ function ProductContent() {
   }, []);
 
   const addToCart = (openDrawer = true) => {
+    if (isOutOfStock) {
+      showToast({
+        title: "Out of Stock",
+        description: `${product.name} (Size: ${activeSize}) is currently unavailable. Register below for instant restock alerts.`,
+        type: "error",
+        duration: 4000,
+      });
+      return;
+    }
+
     const priceNum = typeof product.price === 'string' 
       ? parseFloat(String(product.price).replace(/[^0-9.-]+/g, "")) || 0
       : Number(product.price) || 0;
@@ -263,11 +330,6 @@ function ProductContent() {
   };
 
   const handleOpenTryOn = () => {
-    if (!isLoggedIn && !session?.user) {
-      setAuthMode("signin");
-      setIsAuthOpen(true);
-      return;
-    }
     router.push(`/storefront/product/${product.id}/tryon`);
   };
 
@@ -483,37 +545,65 @@ function ProductContent() {
                 <div className="mb-8">
                   <div className="text-sm font-bold mb-3 text-foreground">Select Size</div>
                   <div className="flex items-center gap-2">
-                    {["S", "M", "L", "XL", "XXL"].map((sz) => (
-                      <button
-                        key={sz}
-                        onClick={() => setActiveSize(sz)}
-                        className={`w-11 h-11 rounded-full border text-sm font-medium transition-all ${activeSize === sz ? 'border-[#e07a3f] bg-[#e07a3f] text-white shadow-md' : 'border-border hover:border-foreground/40'}`}
-                      >
-                        {sz}
-                      </button>
-                    ))}
+                    {["S", "M", "L", "XL", "XXL"].map((sz) => {
+                      const szVar = product.variants?.find(
+                        (v: any) => v.size?.toUpperCase() === sz.toUpperCase()
+                      );
+                      const szOos = szVar !== undefined && Number(szVar.stock_qty ?? 0) <= 0;
+                      return (
+                        <button
+                          key={sz}
+                          onClick={() => {
+                            setActiveSize(sz);
+                            setIsNotifySuccess(false);
+                          }}
+                          className={`relative w-11 h-11 rounded-full border text-sm font-medium transition-all cursor-pointer ${
+                            activeSize === sz
+                              ? 'border-[#e07a3f] bg-[#e07a3f] text-white shadow-md'
+                              : szOos
+                              ? 'border-border/40 text-foreground/40 hover:border-foreground/30'
+                              : 'border-border hover:border-foreground/40'
+                          }`}
+                        >
+                          {sz}
+                          {szOos && (
+                            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-red-500 border-2 border-background" title="Out of stock" />
+                          )}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 
-                {/* Quantity & Add to Cart */}
-                <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-8 mb-8">
-                  <div className="flex items-center bg-[#f5f5f5] dark:bg-[#1c1c1c] border border-border/50 rounded-full h-12 w-fit transition-colors duration-300">
-                    <button 
-                      onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                      className="w-12 h-full flex items-center justify-center text-foreground/50 hover:text-foreground transition-colors"
-                    >
-                      <Minus className="w-4 h-4" />
-                    </button>
-                    <span className="w-8 text-center text-sm font-medium text-foreground">{quantity}</span>
-                    <button 
-                      onClick={() => setQuantity(quantity + 1)}
-                      className="w-12 h-full flex items-center justify-center text-foreground/50 hover:text-foreground transition-colors"
-                    >
-                      <Plus className="w-4 h-4" />
-                    </button>
+                {/* Quantity or Out of Stock Badge */}
+                {isOutOfStock ? (
+                  <div className="flex items-center gap-2.5 mb-8">
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-red-500/10 text-red-500 border border-red-500/20">
+                      <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                      Sold Out — Size {activeSize}
+                    </span>
+                    <span className="text-xs text-foreground/50">Restock notification available below</span>
                   </div>
-                  <span className="text-xs text-foreground/50 font-medium">In stock and ready to ship</span>
-                </div>
+                ) : (
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-8 mb-8">
+                    <div className="flex items-center bg-[#f5f5f5] dark:bg-[#1c1c1c] border border-border/50 rounded-full h-12 w-fit transition-colors duration-300">
+                      <button 
+                        onClick={() => setQuantity(Math.max(1, quantity - 1))}
+                        className="w-12 h-full flex items-center justify-center text-foreground/50 hover:text-foreground transition-colors cursor-pointer"
+                      >
+                        <Minus className="w-4 h-4" />
+                      </button>
+                      <span className="w-8 text-center text-sm font-medium text-foreground">{quantity}</span>
+                      <button 
+                        onClick={() => setQuantity(quantity + 1)}
+                        className="w-12 h-full flex items-center justify-center text-foreground/50 hover:text-foreground transition-colors cursor-pointer"
+                      >
+                        <Plus className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <span className="text-xs text-foreground/50 font-medium">In stock and ready to ship</span>
+                  </div>
+                )}
 
                 <div className="space-y-3 mb-8">
                   <button 
@@ -529,25 +619,67 @@ function ProductContent() {
                     )}
                   </button>
 
-                  <div className="flex flex-col sm:flex-row gap-4">
-                    <button 
-                      onClick={() => {
-                        addToCart(false);
-                        router.push("/storefront/checkout");
-                      }}
-                      className="flex-1 bg-[#e07a3f] hover:bg-[#d06a2f] text-white h-[52px] rounded-full font-medium text-sm transition-colors shadow-lg shadow-[#e07a3f]/20 flex items-center justify-center cursor-pointer"
-                    >
-                      Buy Now
-                    </button>
-                    <button 
-                      onClick={() => {
-                        addToCart(true);
-                      }}
-                      className="flex-1 bg-transparent border border-foreground/20 hover:border-foreground/50 hover:bg-foreground/5 text-foreground h-[52px] rounded-full font-medium text-sm transition-all flex items-center justify-center gap-2 cursor-pointer"
-                    >
-                      Add to Cart
-                    </button>
-                  </div>
+                  {isOutOfStock ? (
+                    /* Notify Later / Waitlist Panel */
+                    <div className="p-5 rounded-2xl bg-[#0A192F]/5 dark:bg-card/50 border border-[#D4AF37]/40 backdrop-blur-sm space-y-3">
+                      <div className="flex items-center gap-2 text-foreground font-semibold text-sm">
+                        <Bell className="w-4 h-4 text-[#D4AF37]" />
+                        <span>Notify Me When Available</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground leading-relaxed">
+                        This garment in Size {activeSize} is currently out of stock. Leave your email to receive an instant priority notification when restocked.
+                      </p>
+                      {isNotifySuccess ? (
+                        <div className="flex items-center gap-2 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-600 dark:text-emerald-400 text-xs font-medium">
+                          <Check className="w-4 h-4 shrink-0" />
+                          <span>You&apos;re on the waitlist! We will email you the moment size {activeSize} arrives.</span>
+                        </div>
+                      ) : (
+                        <form onSubmit={handleSubscribeNotify} className="flex flex-col sm:flex-row gap-2 pt-1">
+                          <input
+                            type="email"
+                            required
+                            placeholder="Enter your email"
+                            value={notifyEmail}
+                            onChange={(e) => setNotifyEmail(e.target.value)}
+                            className="flex-1 bg-background border border-border/80 focus:border-[#D4AF37] text-foreground text-xs rounded-full px-4 h-11 outline-none transition-colors"
+                          />
+                          <button
+                            type="submit"
+                            disabled={isSubscribingNotify}
+                            className="bg-[#D4AF37] hover:bg-[#c49f2f] text-black font-semibold text-xs h-11 px-6 rounded-full transition-colors flex items-center justify-center gap-2 disabled:opacity-50 shrink-0 cursor-pointer shadow-md shadow-[#D4AF37]/20"
+                          >
+                            {isSubscribingNotify ? (
+                              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <Bell className="w-3.5 h-3.5" />
+                            )}
+                            <span>{isSubscribingNotify ? "Joining..." : "Notify Me"}</span>
+                          </button>
+                        </form>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex flex-col sm:flex-row gap-4">
+                      <button 
+                        onClick={() => {
+                          addToCart(false);
+                          router.push("/storefront/checkout");
+                        }}
+                        className="flex-1 bg-[#e07a3f] hover:bg-[#d06a2f] text-white h-[52px] rounded-full font-medium text-sm transition-colors shadow-lg shadow-[#e07a3f]/20 flex items-center justify-center cursor-pointer"
+                      >
+                        Buy Now
+                      </button>
+                      <button 
+                        onClick={() => {
+                          addToCart(true);
+                        }}
+                        className="flex-1 bg-transparent border border-foreground/20 hover:border-foreground/50 hover:bg-foreground/5 text-foreground h-[52px] rounded-full font-medium text-sm transition-all flex items-center justify-center gap-2 cursor-pointer"
+                      >
+                        Add to Cart
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Trust Badges */}

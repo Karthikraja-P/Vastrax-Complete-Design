@@ -120,7 +120,7 @@ def _profile_tag(profile: dict) -> str:
 
 # ── Mock chat ─────────────────────────────────────────────────────────────────
 
-def mock_chat(messages: list, profile: dict) -> str:
+def mock_chat(messages: list, profile: dict, db=None, user_id: str = None, session_id: str = None) -> tuple[str, list]:
     extracted = _extract_profile(messages)
     merged = {**profile, **extracted}
 
@@ -132,18 +132,94 @@ def mock_chat(messages: list, profile: dict) -> str:
     o = merged.get("occasion")
 
     profile_tag = _profile_tag(merged) if merged != profile else ""
+    executed_tools = []
 
-    # Priority Action Checks
+    # Priority 1: Order Tracking Check
+    if any(w in last_user for w in ["order", "track", "tracking", "delivery status", "where is my order", "where is my package"]):
+        import re
+        from app.services.chat_tools import execute_tool
+        order_match = re.search(r"ORD-[\w-]+|[0-9a-f]{8}-[0-9a-f]{4}", last_user, re.I)
+        order_id = order_match.group(0) if order_match else None
+        
+        if not order_id and db is not None:
+            from app.models.order import Order
+            q = db.query(Order)
+            if user_id:
+                q = q.filter(Order.user_id == user_id)
+            latest = q.order_by(Order.placed_at.desc()).first()
+            if latest:
+                order_id = latest.id
+        
+        if order_id and db is not None:
+            res = execute_tool("get_order_status", {"order_id": order_id}, db=db, user_id=user_id, session_id=session_id)
+            executed_tools.append({"tool": "get_order_status", "result": res})
+            if res.get("authorized"):
+                reply = (
+                    f"I located your luxury order **#{res['order_id']}**! 📦\n\n"
+                    f"• **Status:** {res['status']}\n"
+                    f"• **Courier:** {res['courier']}\n"
+                    f"• **Tracking AWB:** `{res['tracking_awb']}`\n"
+                    f"• **Estimated Delivery:** {res['estimated_delivery']}\n"
+                    f"• **Order Total:** {res['total_amount']}\n\n"
+                    "Would you like to view item details or connect with our concierge? "
+                    "[CHIPS:Order details|Return policy|Talk to human advisor]"
+                )
+                return reply, executed_tools
+        return (
+            "I can track your order status in real time! Please provide your Order ID (e.g. #ORD-2026-1048) or the email address used during checkout. "
+            "[CHIPS:Check recent order|Return policy|Contact human concierge]",
+            executed_tools
+        )
+
+    # Priority 2: Order Cancellation Check
+    if any(w in last_user for w in ["cancel order", "cancel my order", "cancellation"]):
+        import re
+        from app.services.chat_tools import execute_tool
+        order_match = re.search(r"ORD-[\w-]+|[0-9a-f]{8}-[0-9a-f]{4}", last_user, re.I)
+        order_id = order_match.group(0) if order_match else None
+        if not order_id and db is not None and user_id:
+            from app.models.order import Order
+            latest = db.query(Order).filter(Order.user_id == user_id).order_by(Order.placed_at.desc()).first()
+            if latest:
+                order_id = latest.id
+        if order_id and db is not None:
+            res = execute_tool("cancel_order", {"order_id": order_id, "reason": "Customer chat cancellation"}, db=db, user_id=user_id, session_id=session_id)
+            executed_tools.append({"tool": "cancel_order", "result": res})
+            return res.get("message", "Order cancellation processed."), executed_tools
+        return "To cancel an order, please specify the Order ID you wish to cancel.", executed_tools
+
+    # Priority 3: Human Concierge Escalation Check
+    if any(w in last_user for w in ["human", "agent", "representative", "escalate", "support ticket", "complaint", "talk to someone"]):
+        from app.services.chat_tools import execute_tool
+        if db is not None:
+            res = execute_tool("connect_to_human", {"summary": f"Customer requested human advisor: {last_user}"}, db=db, user_id=user_id, session_id=session_id)
+            executed_tools.append({"tool": "connect_to_human", "result": res})
+            return f"🛎️ {res.get('message', 'Connecting you to our Human Atelier Team.')} [CHIPS:Check order status|Return policy|Continue styling]", executed_tools
+        return "I have alerted our Human Atelier Concierge. An advisor will connect with you shortly! [CHIPS:Start over|Current offers]", executed_tools
+
+    # Priority 4: Return Policy / Eligibility Check
+    if any(w in last_user for w in ["return policy", "returns", "exchange", "refund", "return item"]):
+        return (
+            "Our luxury policy offers **14-day complimentary returns and exchanges** on all unworn garments with original atelier tags intact. "
+            "Refunds are credited to your original payment method within 3-5 business days after inspection.\n\n"
+            "Would you like me to check eligibility for a specific order? "
+            "[CHIPS:Check return eligibility|Where is my order|Talk to human advisor]",
+            executed_tools
+        )
+
+    # Standard Actions
     if any(w in last_user for w in ["start over", "reset", "again", "new"]):
         return (
             "Of course! Let's start fresh. What brings you in today — are you shopping for a specific occasion, or would you like some general style advice? "
-            "[CHIPS:Wedding / Festive|Office / Work|Casual / Everyday|Party / Night out|Style advice]"
+            "[CHIPS:Wedding / Festive|Office / Work|Casual / Everyday|Party / Night out|Style advice]",
+            executed_tools
         )
 
     if any(w in last_user for w in ["try on", "tryon", "virtual"]):
         return (
             "Absolutely! Our AI Virtual Try-On lets you see exactly how any garment looks on *you* — just upload a photo and the AI drapes the outfit on your image. "
-            "Head to any product page and tap the ✨ Try On button, or click the Try On link on any product card above!"
+            "Head to any product page and tap the ✨ Try On button, or click the Try On link on any product card above!",
+            executed_tools
         )
 
     if any(w in last_user for w in ["sizing", "size", "what size", "fit"]):
@@ -152,20 +228,9 @@ def mock_chat(messages: list, profile: dict) -> str:
             "• S — Bust 34\", Waist 28\"\n• M — Bust 36\", Waist 30\"\n"
             "• L — Bust 38\", Waist 32\"\n• XL — Bust 40\", Waist 34\"\n\n"
             "When in doubt, size up — our fabrics are designed to drape beautifully with a little extra room. "
-            "The Virtual Try-On is also a great way to visualise fit before ordering!"
+            "The Virtual Try-On is also a great way to visualise fit before ordering!",
+            executed_tools
         )
-
-    if any(w in last_user for w in ["more", "other", "different", "show more", "options"]):
-        if s:
-            fallback = _FALLBACK_RECS.get(s)
-            if fallback:
-                ids, _ = fallback
-                return (
-                    "Here are a few more pieces I think you'll love based on your complexion — each one is a strong match for your skin tone: "
-                    + _product_tags(ids)
-                    + " [CHIPS:Tell me why these suit me|How to try on|Start over]"
-                    + _profile_tag(merged)
-                )
 
     if any(w in last_user for w in ["offer", "offers", "discount", "sale", "current offers"]):
         return (
@@ -175,7 +240,8 @@ def mock_chat(messages: list, profile: dict) -> str:
             "• 🚚 **Free Shipping** on orders over ₹2,999\n\n"
             "Would you like me to suggest some pieces to help you make the most of these offers?"
             " [CHIPS:Yes, show me|How to try on|Start over]"
-            + profile_tag
+            + profile_tag,
+            executed_tools
         )
 
     if any(w in last_user for w in ["why", "tell me why", "suit me", "explain"]):
@@ -434,18 +500,32 @@ def _build_system_prompt(profile: dict, db=None, context_url: str = None, cart_i
 
 # ── Public entry point ────────────────────────────────────────────────────────
 
-def chat(messages: list, profile: dict, db=None, context_url: str = None, cart_items: list = None) -> str:
+def chat(
+    messages: list,
+    profile: dict,
+    db=None,
+    context_url: str = None,
+    cart_items: list = None,
+    user_id: str = None,
+    session_id: str = None,
+) -> tuple[str, list]:
+    """
+    Executes conversational AI with multi-turn OpenAI tool calling.
+    Returns: (reply_text, executed_tools_list)
+    """
     openai_key = os.getenv("OPENAI_API_KEY", "").strip()
     anthropic_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
+    from app.services.chat_tools import CHAT_TOOLS, execute_tool
 
-    # 1. OpenAI GPT-4o-mini (Priority)
+    # 1. OpenAI with Secure Tool Execution (Priority)
     if openai_key and not openai_key.startswith("your_"):
         try:
             model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
             system_prompt = _build_system_prompt(profile, db=db, context_url=context_url, cart_items=cart_items)
             openai_messages = [{"role": "system", "content": system_prompt}] + messages
+            executed_tools = []
             
-            with httpx.Client(timeout=30.0) as client:
+            with httpx.Client(timeout=45.0) as client:
                 res = client.post(
                     "https://api.openai.com/v1/chat/completions",
                     headers={
@@ -455,13 +535,61 @@ def chat(messages: list, profile: dict, db=None, context_url: str = None, cart_i
                     json={
                         "model": model,
                         "messages": openai_messages,
+                        "tools": CHAT_TOOLS,
+                        "tool_choice": "auto",
                         "max_tokens": 512,
                         "temperature": 0.7,
                     }
                 )
                 if res.status_code == 200:
                     data = res.json()
-                    return data["choices"][0]["message"]["content"]
+                    response_msg = data["choices"][0]["message"]
+
+                    # Check for tool calls
+                    tool_calls = response_msg.get("tool_calls")
+                    if tool_calls and db is not None:
+                        openai_messages.append(response_msg)
+                        for tc in tool_calls:
+                            fn_name = tc["function"]["name"]
+                            fn_args = json.loads(tc["function"].get("arguments") or "{}")
+                            tool_result = execute_tool(
+                                fn_name,
+                                fn_args,
+                                db=db,
+                                user_id=user_id,
+                                session_id=session_id
+                            )
+                            executed_tools.append({
+                                "tool": fn_name,
+                                "arguments": fn_args,
+                                "result": tool_result
+                            })
+                            openai_messages.append({
+                                "role": "tool",
+                                "tool_call_id": tc["id"],
+                                "name": fn_name,
+                                "content": json.dumps(tool_result),
+                            })
+
+                        # Second completion turn incorporating verified tool results
+                        followup_res = client.post(
+                            "https://api.openai.com/v1/chat/completions",
+                            headers={
+                                "Authorization": f"Bearer {openai_key}",
+                                "Content-Type": "application/json",
+                            },
+                            json={
+                                "model": model,
+                                "messages": openai_messages,
+                                "max_tokens": 512,
+                                "temperature": 0.7,
+                            }
+                        )
+                        if followup_res.status_code == 200:
+                            follow_data = followup_res.json()
+                            return follow_data["choices"][0]["message"].get("content", ""), executed_tools
+
+                    return response_msg.get("content", ""), executed_tools
                 else:
                     logger.warning("OpenAI API returned %s: %s", res.status_code, res.text)
         except Exception as e:
@@ -476,9 +604,46 @@ def chat(messages: list, profile: dict, db=None, context_url: str = None, cart_i
                 system=_build_system_prompt(profile, db=db, context_url=context_url, cart_items=cart_items),
                 messages=messages,
             )
-            return response.content[0].text
+            return response.content[0].text, []
         except Exception as e:
             logger.error("Anthropic chat error: %s", e)
 
-    # 3. Smart Fashion Intelligence Mock Fallback
-    return mock_chat(messages, profile)
+    # 3. Smart Fashion Intelligence Mock Fallback with Real DB Tools
+    return mock_chat(messages, profile, db=db, user_id=user_id, session_id=session_id)
+
+
+def chat_stream(
+    messages: list,
+    profile: dict,
+    db=None,
+    context_url: str = None,
+    cart_items: list = None,
+    user_id: str = None,
+    session_id: str = None,
+):
+    """
+    Generator yielding Server-Sent Events (SSE) chunks for streaming responses.
+    """
+    reply_text, executed_tools = chat(
+        messages=messages,
+        profile=profile,
+        db=db,
+        context_url=context_url,
+        cart_items=cart_items,
+        user_id=user_id,
+        session_id=session_id,
+    )
+
+    # Emit tool events if any were executed
+    for tool_event in executed_tools:
+        yield f"data: {json.dumps({'type': 'tool_result', 'tool': tool_event['tool'], 'result': tool_event['result']})}\n\n"
+
+    # Emit words/tokens with subtle simulation for seamless UI typewriter effect
+    words = reply_text.split(" ")
+    for i, word in enumerate(words):
+        chunk = word + (" " if i < len(words) - 1 else "")
+        yield f"data: {json.dumps({'type': 'token', 'content': chunk})}\n\n"
+
+    # Emit done event
+    yield f"data: {json.dumps({'type': 'done', 'session_id': session_id, 'executed_tools': executed_tools})}\n\n"
+

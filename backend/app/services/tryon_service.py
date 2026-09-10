@@ -75,12 +75,17 @@ class TryonService:
             self.db.add(session)
             self.db.commit()
 
-            result_path = run_fashn(
-                person_image_path=person_path,
-                garment_image_path=garment_local,
-                garment_type=category,
-                results_dir=settings.results_dir,
-            )
+            from app.core.gpu_queue import gpu_queue
+            import asyncio
+
+            async with gpu_queue.acquire(f"tryon_start_{session_id}"):
+                result_path = await asyncio.to_thread(
+                    run_fashn,
+                    person_image_path=person_path,
+                    garment_image_path=garment_local,
+                    garment_type=category,
+                    results_dir=settings.results_dir,
+                )
             result_url = f"/results/{os.path.basename(result_path)}"
 
             session.status = "done"
@@ -189,12 +194,17 @@ class TryonService:
                 if garment_type in ("tops", "bottoms", "one-pieces")
                 else detect_category(garment_path)
             )
-            result_path = run_fashn(
-                person_image_path=person_path,
-                garment_image_path=garment_local,
-                garment_type=category,
-                results_dir=settings.results_dir,
-            )
+            from app.core.gpu_queue import gpu_queue
+            import asyncio
+
+            async with gpu_queue.acquire(f"tryon_direct_{uuid.uuid4().hex[:6]}"):
+                result_path = await asyncio.to_thread(
+                    run_fashn,
+                    person_image_path=person_path,
+                    garment_image_path=garment_local,
+                    garment_type=category,
+                    results_dir=settings.results_dir,
+                )
             result_url = f"/results/{os.path.basename(result_path)}"
             self._log_session(user, product_id, "done", result_url)
             return {
@@ -244,18 +254,24 @@ class TryonService:
             if not os.path.exists(bottom_local):
                 raise NotFoundError(f"Bottom garment not found: {bottom_path}")
 
-            intermediate = run_fashn(
-                person_image_path=person_path,
-                garment_image_path=top_local,
-                garment_type="tops",
-                results_dir=settings.upload_dir,
-            )
-            result_path = run_fashn(
-                person_image_path=intermediate,
-                garment_image_path=bottom_local,
-                garment_type="bottoms",
-                results_dir=settings.results_dir,
-            )
+            from app.core.gpu_queue import gpu_queue
+            import asyncio
+
+            async with gpu_queue.acquire(f"tryon_combo_{uuid.uuid4().hex[:6]}"):
+                intermediate = await asyncio.to_thread(
+                    run_fashn,
+                    person_image_path=person_path,
+                    garment_image_path=top_local,
+                    garment_type="tops",
+                    results_dir=settings.upload_dir,
+                )
+                result_path = await asyncio.to_thread(
+                    run_fashn,
+                    person_image_path=intermediate,
+                    garment_image_path=bottom_local,
+                    garment_type="bottoms",
+                    results_dir=settings.results_dir,
+                )
             result_url = f"/results/{os.path.basename(result_path)}"
             self._log_session(user, product_id, "done", result_url)
             return {

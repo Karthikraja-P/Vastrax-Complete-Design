@@ -66,9 +66,13 @@ export function NotchedCard({
       <div className="absolute top-0 right-0 flex gap-2 h-6 items-start justify-end w-[100px] z-30">
         {actionIcon1 && (
           <button 
-            onClick={() => setActiveModal(activeModal === "alert" ? null : "alert")}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setActiveModal(activeModal === "alert" ? null : "alert");
+            }}
             title="View Metric Alerts"
-            className="w-8 h-8 rounded-full bg-[#111] border border-border flex items-center justify-center text-muted-foreground hover:text-accent hover:border-accent transition-all -mt-2 shadow-lg relative focus:outline-none"
+            className="w-8 h-8 rounded-full bg-[#111] border border-border flex items-center justify-center text-muted-foreground hover:text-accent hover:border-accent transition-all -mt-2 shadow-lg relative focus:outline-none cursor-pointer"
           >
             {actionIcon1}
             <span className="absolute top-1 right-1.5 w-1.5 h-1.5 bg-accent rounded-full animate-pulse" />
@@ -76,9 +80,13 @@ export function NotchedCard({
         )}
         {actionIcon2 && (
           <button 
-            onClick={() => setActiveModal(activeModal === "insight" ? null : "insight")}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setActiveModal(activeModal === "insight" ? null : "insight");
+            }}
             title="View AI Insight"
-            className="w-8 h-8 rounded-full bg-[#111] border border-border flex items-center justify-center text-muted-foreground hover:text-foreground hover:border-foreground transition-all -mt-2 shadow-lg focus:outline-none"
+            className="w-8 h-8 rounded-full bg-[#111] border border-border flex items-center justify-center text-muted-foreground hover:text-foreground hover:border-foreground transition-all -mt-2 shadow-lg focus:outline-none cursor-pointer"
           >
             {actionIcon2}
           </button>

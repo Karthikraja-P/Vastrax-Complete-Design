@@ -4,10 +4,12 @@ from fastapi import APIRouter, Depends, File, Form, UploadFile, Query, status
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db
-from app.middleware.auth import require_admin
+from app.middleware.auth import require_admin, get_optional_user
 from app.models.user import User
 from app.schemas.products import ImageUploadIn, ModelUploadIn, ProductCreate, ProductUpdate, StockUpdateIn
+from app.schemas.stock_notifications import StockNotificationCreate, StockNotificationResponse
 from app.services.product_service import ProductService
+from app.services.stock_notification_service import StockNotificationService
 
 router = APIRouter(prefix="/products", tags=["products"])
 
@@ -82,6 +84,31 @@ def update_stock(
     db: Session = Depends(get_db),
 ):
     return ProductService(db).update_stock(product_id, body.variant_id, body.stock_qty)
+@router.post("/{product_id}/notify", response_model=StockNotificationResponse, status_code=status.HTTP_201_CREATED)
+def subscribe_stock_notification(
+    product_id: str,
+    body: StockNotificationCreate,
+    current_user: Optional[User] = Depends(get_optional_user),
+    db: Session = Depends(get_db),
+):
+    service = StockNotificationService(db)
+    notification = service.subscribe(
+        product_id=product_id,
+        email=body.email,
+        size=body.size,
+        variant_id=body.variant_id,
+        user_id=current_user.id if current_user else None,
+    )
+    return StockNotificationResponse(
+        id=notification.id,
+        product_id=notification.product_id,
+        email=notification.email,
+        size=notification.size,
+        is_notified=notification.is_notified,
+        created_at=notification.created_at,
+        message="You have been added to the waitlist. We will notify you as soon as this item is back in stock.",
+    )
+
 
 
 @router.post("/{product_id}/images")

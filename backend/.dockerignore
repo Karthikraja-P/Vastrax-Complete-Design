@@ -1,0 +1,12 @@
+.venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+*.log
+.git
+.gitignore
+user_uploads
+results
+lambda_package.zip

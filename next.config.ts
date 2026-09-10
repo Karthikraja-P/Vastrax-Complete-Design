@@ -3,6 +3,7 @@ import type { NextConfig } from "next";
 const BACKEND_INTERNAL = process.env.INTERNAL_BACKEND_URL || "http://127.0.0.1:8090";
 
 const nextConfig: NextConfig = {
+  output: "standalone",
   async rewrites() {
     return [
       {
@@ -16,5 +17,6 @@ const nextConfig: NextConfig = {
     ];
   },
 };
+
 
 export default nextConfig;

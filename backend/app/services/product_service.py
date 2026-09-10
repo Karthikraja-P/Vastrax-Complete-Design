@@ -229,9 +229,21 @@ class ProductService:
         ).first()
         if not variant:
             raise NotFoundError("Variant not found for this product")
+        old_qty = variant.stock_qty
         variant.stock_qty = stock_qty
         self.db.commit()
+
+        if old_qty <= 0 and stock_qty > 0:
+            try:
+                from app.services.stock_notification_service import StockNotificationService
+                StockNotificationService(self.db).notify_subscribers_for_product(
+                    product_id=product_id, variant_id=variant_id, new_qty=stock_qty
+                )
+            except Exception as e:
+                logger.error("Error triggering stock notifications: %s", e)
+
         return {"product_id": product_id, "variant_id": variant_id, "stock_qty": stock_qty}
+
 
     def reconstruct_model(self, product_id: str, front: UploadFile, side: UploadFile, back: UploadFile) -> dict:
         """Send three 2D images to Hunyuan 3D service, get GLB, upload to S3, and store path.
