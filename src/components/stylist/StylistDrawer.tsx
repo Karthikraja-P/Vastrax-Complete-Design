@@ -7,7 +7,7 @@ import {
   Shirt, RefreshCcw, Loader2, CheckCircle2, MessageSquare, Heart, ShoppingBag, Eye
 } from "lucide-react";
 import { chatApi, tryonApi } from "@/lib/api";
-import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useFavorites } from "@/hooks/useFavorites";
 import { addToCart as addCartItem } from "@/lib/cart";
@@ -85,7 +85,6 @@ export function StylistDrawer({ isOpen, onClose }: StylistDrawerProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   const { data: session } = useSession();
   
   const { isFavorite, toggleFavorite } = useFavorites();
@@ -182,7 +181,7 @@ export function StylistDrawer({ isOpen, onClose }: StylistDrawerProps) {
         content: m.text
       }));
 
-      const contextUrl = typeof window !== 'undefined' ? `${pathname}${searchParams.toString() ? `?${searchParams.toString()}` : ''}` : '';
+      const contextUrl = typeof window !== 'undefined' ? `${pathname}${window.location.search}` : '';
       const userId = (session?.user as any)?.id || session?.user?.email;
       
       const res = await chatApi.sendMessage(query, sessionId, historyPayload, {}, contextUrl, [], userId);

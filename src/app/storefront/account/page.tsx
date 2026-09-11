@@ -9,7 +9,8 @@ import {
 import { Header } from "@/components/layout/Header";
 import { CartDrawer } from "@/components/layout/CartDrawer";
 import { StylistDrawer } from "@/components/stylist/StylistDrawer";
-import jsPDF from "jspdf";
+
+export const dynamic = "force-dynamic";
 
 interface OrderItem {
   id: string;
@@ -30,6 +31,14 @@ interface OrderItem {
 const mockCustomerOrders: OrderItem[] = [];
 
 export default function CustomerAccountPage() {
+  return (
+    <React.Suspense fallback={<div className="min-h-screen bg-[#0c0d0e]" />}>
+      <CustomerAccountContent />
+    </React.Suspense>
+  );
+}
+
+function CustomerAccountContent() {
   const [activeTab, setActiveTab] = useState<"orders" | "favorites" | "profile">("orders");
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isStylistOpen, setIsStylistOpen] = useState(false);
@@ -71,7 +80,8 @@ export default function CustomerAccountPage() {
     setTimeout(() => setSavedSuccess(false), 3000);
   };
 
-  const handleDownloadInvoice = (order: OrderItem) => {
+  const handleDownloadInvoice = async (order: OrderItem) => {
+    const { default: jsPDF } = await import("jspdf");
     const doc = new jsPDF();
     
     // Add company logo/header

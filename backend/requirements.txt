@@ -13,3 +13,4 @@ requests
 anthropic
 httpx
 resend
+boto3

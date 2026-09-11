@@ -1,8 +1,6 @@
 from decimal import Decimal
 from typing import Optional
 
-import boto3
-from botocore.exceptions import ClientError
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -284,7 +282,12 @@ class ProductService:
 
         if not self.db.query(Product).filter(Product.id == product_id).first():
             raise NotFoundError("Product not found")
-        s3 = boto3.client("s3", region_name=settings.aws_default_region)
+        try:
+            import boto3
+            from botocore.exceptions import ClientError
+            s3 = boto3.client("s3", region_name=settings.aws_default_region)
+        except ImportError:
+            raise InternalError("boto3 is not installed for S3 operations")
         safe_filename = "".join(c for c in filename if c.isalnum() or c in "._-")
         key = f"catalog/{product_id}_{safe_filename}"
         bucket = settings.aws_s3_bucket
