@@ -71,6 +71,14 @@ export default function VirtualTryOnPage() {
     loadData();
   }, [id]);
 
+  // Auth guard — redirect to product page if not logged in (direct URL access)
+  useEffect(() => {
+    if (session === null) {
+      // session===null means NextAuth has resolved and user is NOT authenticated
+      router.replace(`/storefront/product?id=${id}&requireAuth=1`);
+    }
+  }, [session, id, router]);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const triggerFileInput = () => fileInputRef.current?.click();
 

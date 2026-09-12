@@ -336,7 +336,7 @@ export default function CheckoutPage() {
         </Link>
 
         {/* Center Brand */}
-        <Link href="/storefront/home" className="text-2xl md:text-3xl font-black tracking-[0.3em] uppercase">
+        <Link href="/storefront/home" className="text-base sm:text-2xl md:text-3xl font-black tracking-[0.12em] sm:tracking-[0.3em] uppercase hover:text-accent transition-colors">
           VASTRAX
         </Link>
 

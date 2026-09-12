@@ -330,11 +330,11 @@ export default function CollectionsPage() {
   return (
     <div className="min-h-screen bg-surface dark:bg-[#111111] text-foreground dark:text-white font-sans flex flex-col">
       {/* Reused Header Style */}
-      <header className="h-20 flex items-center justify-between relative px-6 md:px-12 sticky top-2 md:top-4 bg-surface dark:bg-[#1a1a1a] z-50 rounded-[2rem] shadow-md border border-border dark:border-white/10 mx-2 md:mx-4 mt-2 md:mt-4">
+      <header className="h-16 md:h-20 flex items-center justify-between relative px-3 sm:px-6 md:px-12 sticky top-2 md:top-4 bg-surface dark:bg-[#1a1a1a] z-50 rounded-[1.5rem] sm:rounded-[2rem] shadow-md border border-border dark:border-white/10 mx-2 md:mx-4 mt-2 md:mt-4">
         {/* Left Side: Navigation */}
-        <div className="flex items-center gap-6">
-          <button className="md:hidden text-muted-foreground hover:text-foreground dark:text-white transition-colors">
-            <Menu className="w-6 h-6" />
+        <div className="flex items-center gap-2 sm:gap-6 z-10">
+          <button className="md:hidden text-muted-foreground hover:text-foreground dark:text-white transition-colors p-1">
+            <Menu className="w-5 h-5 sm:w-6 sm:h-6" />
           </button>
           <nav className="hidden md:flex items-center gap-8">
             <a href="#" className="text-lg font-medium hover:text-[#e07a3f] transition-colors">New Arrivals</a>
@@ -345,16 +345,16 @@ export default function CollectionsPage() {
         </div>
 
         {/* Center: Logo */}
-        <div className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center pointer-events-none">
-          <div className="text-3xl md:text-4xl font-bold tracking-[0.25em] uppercase pointer-events-auto">
+        <div className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center pointer-events-none z-0">
+          <Link href="/storefront/home" className="text-base sm:text-2xl md:text-4xl font-bold tracking-[0.12em] sm:tracking-[0.25em] uppercase pointer-events-auto hover:text-accent transition-colors">
             VASTRAX
-          </div>
+          </Link>
         </div>
 
         {/* Right Side: Actions */}
-        <div className="flex items-center gap-4 md:gap-6">
+        <div className="flex items-center gap-1.5 sm:gap-4 md:gap-6 z-10">
           <ThemeToggle />
-          <a href="/storefront/favorites" className="relative text-muted-foreground hover:text-[#e07a3f] transition-colors">
+          <a href="/storefront/favorites" className="relative p-1 text-muted-foreground hover:text-[#e07a3f] transition-colors">
             <Heart className="w-5 h-5" />
           </a>
           <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-surface dark:bg-[#222] border border-border dark:border-white/10 rounded-full transition-all text-sm w-48 lg:w-64 focus-within:border-[#e07a3f] focus-within:ring-1 focus-within:ring-[#e07a3f]">
@@ -365,7 +365,7 @@ export default function CollectionsPage() {
               className="flex-1 bg-transparent border-none outline-none text-foreground dark:text-white placeholder:text-muted-foreground"
             />
           </div>
-          <button className="md:hidden text-muted-foreground hover:text-[#e07a3f] transition-colors">
+          <button className="md:hidden p-1 text-muted-foreground hover:text-[#e07a3f] transition-colors">
             <Search className="w-5 h-5" />
           </button>
 

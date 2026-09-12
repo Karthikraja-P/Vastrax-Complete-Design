@@ -24,6 +24,7 @@ async def send_email(to_email: str, subject: str, html_content: str) -> dict:
         logger.warning("RESEND_API_KEY is not set. Email will not be sent.")
         return {"error": "API key not configured", "status": "skipped"}
 
+    resend.api_key = settings.resend_api_key
     params = {
         "from": settings.resend_from_email,
         "to": [to_email],

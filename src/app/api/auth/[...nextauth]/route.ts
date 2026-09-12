@@ -15,7 +15,8 @@ const handler = NextAuth({
         name: { label: "Name", type: "text" },
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
-        accessToken: { label: "Token", type: "text" }
+        accessToken: { label: "Token", type: "text" },
+        role: { label: "Role", type: "text" }
       },
       async authorize(credentials) {
         if (!credentials?.email) return null;
@@ -28,6 +29,7 @@ const handler = NextAuth({
             id: credentials.id || `usr_${Date.now()}`,
             name: credentials.name || email.split("@")[0] || "User",
             email: email,
+            role: (credentials as any).role || "CUSTOMER",
             accessToken: credentials.accessToken,
           };
         }
@@ -68,6 +70,7 @@ const handler = NextAuth({
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id;
+        token.role = (user as any).role || "CUSTOMER";
         token.accessToken = (user as any).accessToken;
       }
       return token;
@@ -75,6 +78,7 @@ const handler = NextAuth({
     async session({ session, token }) {
       if (token) {
         (session as any).user.id = token.id;
+        (session as any).user.role = token.role;
         (session as any).accessToken = token.accessToken;
       }
       return session;

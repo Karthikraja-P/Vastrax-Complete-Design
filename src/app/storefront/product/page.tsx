@@ -35,6 +35,7 @@ function ProductContent() {
 
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
+  const [pendingAction, setPendingAction] = useState<'tryon' | 'cart' | 'favorites' | 'buynow' | null>(null);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isStylistOpen, setIsStylistOpen] = useState(false);
   const [bagItems, setBagItems] = useState<any[]>([]);
@@ -118,6 +119,14 @@ function ProductContent() {
       window.removeEventListener("storage", syncCart);
     };
   }, []);
+
+  // Auto-open auth modal when redirected from try-on without login
+  useEffect(() => {
+    if (searchParams.get("requireAuth") === "1" && !session) {
+      setAuthMode('signin');
+      setIsAuthOpen(true);
+    }
+  }, [searchParams, session]);
 
   useEffect(() => {
     async function loadProduct() {
@@ -264,6 +273,13 @@ function ProductContent() {
   const toggleFavorite = (p: any, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+
+    if (!session) {
+      setPendingAction('favorites');
+      setAuthMode('signin');
+      setIsAuthOpen(true);
+      return;
+    }
     
     const savedStr = localStorage.getItem("vastrax_favorites");
     let currentFavs = savedStr ? JSON.parse(savedStr) : [];
@@ -290,6 +306,13 @@ function ProductContent() {
   }, []);
 
   const addToCart = (openDrawer = true) => {
+    if (!session) {
+      setPendingAction(openDrawer ? 'cart' : 'buynow');
+      setAuthMode('signin');
+      setIsAuthOpen(true);
+      return;
+    }
+
     if (isOutOfStock) {
       showToast({
         title: "Out of Stock",
@@ -330,16 +353,22 @@ function ProductContent() {
   };
 
   const handleOpenTryOn = () => {
+    if (!session) {
+      setPendingAction('tryon');
+      setAuthMode('signin');
+      setIsAuthOpen(true);
+      return;
+    }
     router.push(`/storefront/product/${product.id}/tryon`);
   };
 
   return (
     <div className="min-h-screen bg-background text-foreground font-sans flex flex-col transition-colors duration-300">
       {/* Header */}
-      <header className="h-20 flex items-center justify-between relative px-6 md:px-12 sticky top-2 md:top-4 bg-surface z-50 rounded-[2rem] shadow-md border border-border/50 mx-2 md:mx-4 mt-2 md:mt-4 transition-colors duration-300">
-        <div className="flex items-center gap-6">
-          <button className="md:hidden text-foreground/70 hover:text-foreground transition-colors">
-            <Menu className="w-6 h-6" />
+      <header className="h-16 md:h-20 flex items-center justify-between relative px-3 sm:px-6 md:px-12 sticky top-2 md:top-4 bg-surface z-50 rounded-[1.5rem] sm:rounded-[2rem] shadow-md border border-border/50 mx-2 md:mx-4 mt-2 md:mt-4 transition-colors duration-300">
+        <div className="flex items-center gap-2 sm:gap-6 z-10">
+          <button className="md:hidden text-foreground/70 hover:text-foreground transition-colors p-1">
+            <Menu className="w-5 h-5 sm:w-6 sm:h-6" />
           </button>
           <nav className="hidden md:flex items-center gap-8">
             <a href="#" className="text-lg font-medium hover:text-[#e07a3f] transition-colors">New Arrivals</a>
@@ -349,15 +378,15 @@ function ProductContent() {
           </nav>
         </div>
         
-        <div className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center pointer-events-none">
-          <Link href="/storefront/home" className="text-3xl md:text-4xl font-bold tracking-[0.25em] uppercase pointer-events-auto">
+        <div className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center pointer-events-none z-0">
+          <Link href="/storefront/home" className="text-base sm:text-2xl md:text-4xl font-bold tracking-[0.12em] sm:tracking-[0.25em] uppercase pointer-events-auto hover:text-[#e07a3f] transition-colors">
             VASTRAX
           </Link>
         </div>
 
-        <div className="flex items-center gap-4 md:gap-6">
+        <div className="flex items-center gap-1.5 sm:gap-4 md:gap-6 z-10">
           <ThemeToggle />
-          <Link href="/storefront/favorites" className="relative text-foreground/70 hover:text-[#e07a3f] transition-colors">
+          <Link href="/storefront/favorites" className="relative p-1 text-foreground/70 hover:text-[#e07a3f] transition-colors">
             <Heart className="w-5 h-5" />
           </Link>
           <button 
@@ -663,6 +692,7 @@ function ProductContent() {
                     <div className="flex flex-col sm:flex-row gap-4">
                       <button 
                         onClick={() => {
+                          if (!session) { setAuthMode('signin'); setIsAuthOpen(true); return; }
                           addToCart(false);
                           router.push("/storefront/checkout");
                         }}
@@ -671,9 +701,7 @@ function ProductContent() {
                         Buy Now
                       </button>
                       <button 
-                        onClick={() => {
-                          addToCart(true);
-                        }}
+                        onClick={() => addToCart(true)}
                         className="flex-1 bg-transparent border border-foreground/20 hover:border-foreground/50 hover:bg-foreground/5 text-foreground h-[52px] rounded-full font-medium text-sm transition-all flex items-center justify-center gap-2 cursor-pointer"
                       >
                         Add to Cart
@@ -745,13 +773,22 @@ function ProductContent() {
 
       <AuthModal 
         isOpen={isAuthOpen} 
-        onClose={() => setIsAuthOpen(false)} 
+        onClose={() => { setIsAuthOpen(false); setPendingAction(null); }} 
         initialMode={authMode}
         onSuccess={(name) => {
           setIsLoggedIn(true);
           setUserName(name);
           setIsAuthOpen(false);
-          router.push(`/storefront/product/${product.id}/tryon`);
+          if (pendingAction === 'tryon') {
+            router.push(`/storefront/product/${product.id}/tryon`);
+          } else if (pendingAction === 'buynow') {
+            addToCart(false);
+            router.push("/storefront/checkout");
+          } else if (pendingAction === 'cart') {
+            addToCart(true);
+          }
+          // 'favorites' — user can re-click the heart; no auto-action needed
+          setPendingAction(null);
         }}
       />
       <CartDrawer isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} />

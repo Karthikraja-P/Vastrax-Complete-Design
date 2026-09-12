@@ -16,6 +16,7 @@ COPY . .
 # Set production env for build
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
+ENV INTERNAL_BACKEND_URL=http://backend:8090
 
 RUN npm run build
 
@@ -25,6 +26,7 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV INTERNAL_BACKEND_URL=http://backend:8090
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 

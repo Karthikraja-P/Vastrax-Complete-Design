@@ -73,7 +73,8 @@ export function AuthModal({ isOpen, onClose, initialMode = "signin", onSuccess }
           name: data.user?.full_name || email.split("@")[0],
           email: email,
           password: "AUTHENTICATED",
-          accessToken: data.access_token
+          accessToken: data.access_token,
+          role: data.user?.role || "customer"
         });
         
         setIsLoading(false);
@@ -171,7 +172,8 @@ export function AuthModal({ isOpen, onClose, initialMode = "signin", onSuccess }
                 name: data.user?.full_name || fullName,
                 email: cleanEmail,
                 password: "AUTHENTICATED",
-                accessToken: data.access_token
+                accessToken: data.access_token,
+                role: data.user?.role || "customer"
               });
               regSuccess = true;
               break;
@@ -238,7 +240,8 @@ export function AuthModal({ isOpen, onClose, initialMode = "signin", onSuccess }
               name: data.user?.full_name || cleanEmail.split("@")[0],
               email: cleanEmail,
               password: "AUTHENTICATED",
-              accessToken: data.access_token
+              accessToken: data.access_token,
+              role: data.user?.role || "customer"
             });
             loginSuccess = true;
             break;

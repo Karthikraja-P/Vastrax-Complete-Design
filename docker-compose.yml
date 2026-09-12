@@ -12,6 +12,8 @@ services:
       - DATABASE_URL=sqlite:////app/vastrax.db
       - ALLOWED_ORIGINS=*
       - FRONTEND_URL=http://localhost:3000
+      - RESEND_API_KEY=${RESEND_API_KEY:-}
+      - RESEND_FROM_EMAIL=${RESEND_FROM_EMAIL:-noreply@vastrax.ai}
     volumes:
       - ./backend/vastrax.db:/app/vastrax.db
       - ./backend/user_uploads:/app/user_uploads

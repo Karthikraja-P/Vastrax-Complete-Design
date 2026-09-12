@@ -26,6 +26,8 @@ For complete end-to-end architecture documentation, system flow diagrams, and AP
   - `/product/[id]/tryon/page.tsx` - Dedicated AI Fitting Room & Virtual Try-On page with combo & photo guidelines.
   - `/checkout/page.tsx` - Luxury Multi-step Checkout & Order Confirmation.
   - `/account/page.tsx` - Customer Account Portal (Order timeline tracker, saved addresses, wishlist, profile).
+- `/src/app/health/route.ts` - Edge runtime health route handler forwarding to container backend `http://backend:8090/health`.
+- `/src/middleware.ts` - Edge route-guard protecting root `/` and admin consoles (`/products`, `/categories`, `/orders`, `/users`, `/admin`, `/settings`, `/ai-assistant`) strictly for `role: admin`; automatically redirects unauthenticated & customer visitors to `/storefront/home`.
 - `/src/components/layout/` - Global layout wrappers.
   - `Header.tsx` - Top navigation bar (storefront/dashboard routing, theme toggle, interactive notifications drawer, customer account link).
   - `Sidebar.tsx` - Collapsible admin sidebar.
@@ -90,14 +92,26 @@ docker compose up --build -d
 - [x] Global "server down" fallback: the app no longer renders mock/zeroed data when the backend is unreachable — it shows a dedicated reconnect screen and recovers automatically.
 - [x] Logistics & shipping endpoints exposed (`/shipping/serviceability`, `/shipping/manifest`, `/shipping/track/{awb}`).
 - [x] File and asset upload pickers added across Admin Products, Categories, and Users modals.
-- [x] Storefront header dead links fixed and wired to dynamic catalog category filters.
+- [x] Storefront header dead links fixed, wired to dynamic catalog category filters, and fully optimized for responsive mobile layout (eliminating icon/logo overlap).
 - [x] Admin header search and profile settings navigation wired.
 - [x] Dashboard sidebar direct navigation, overview KPI card links, settings tabs, and storefront interactive buttons wired.
 - [x] Production AI Support & Stylist agent with OpenAI tool calling, security authorization guards, order tracking, cancellation, and human escalation.
+- [x] Next.js Route Guard Middleware protecting admin consoles exclusively for `role: admin`, with automatic customer redirection to `/storefront/home`.
 
 ## Known Gaps / Pending Work
 1. **Cart → order variant mapping**: the storefront cart sends a hardcoded `variant_id: "var_dummy"` for every line item regardless of which product/size was actually added, instead of tracking the real `ProductVariant.id` per cart entry. Works today only because a matching dummy variant exists in seed data; needs a real fix before multiple distinct products can be ordered correctly.
 2. **Auth surface duplication**: `AuthModal`, `checkout/page.tsx`, and NextAuth's `authorize()` each independently hardcode a list of candidate backend ports (`8090`/`8088`/`8000`) instead of sharing one source of truth; `fetchApi` separately defaults to `8090`. Should be consolidated behind a single `NEXT_PUBLIC_API_URL`.
 3. **OAuth2 social sign-in** (Google/Apple) is wired into NextAuth's config but not exercised end-to-end against the backend.
 4. **AI Stylist chat streaming** (SSE/WebSocket) — current `/chat` endpoint is request/response only.
-5. **Discount/coupon validation** (`promosApi.validate` in `src/lib/api.ts`) is pure client-side logic against a hardcoded code list — never touches the backend.
+5. **Discount/coupon validation** (`promosApi.validate` in `src/lib/api.ts`) is pure client-side logic against a hardcoded code list (`VASTRAX10` 10%, `VIP20` 20%, `FREESHIP`) — never touches the backend. Confirmed working in browser tests.
+
+## Verified Behaviors (browser-tested on vastrax.ai)
+- [x] **Virtual Try-On auth gate**: Clicking "Virtual Try-On" without login shows sign-in modal. Direct URL access to `/product/{id}/tryon` redirects to product page with auth modal auto-opened (`requireAuth=1`).
+- [x] **Add to Cart auth gate**: Clicking "Add to Cart" without login shows sign-in modal; resumes cart action after login.
+- [x] **Buy Now auth gate**: Clicking "Buy Now" without login shows sign-in modal; proceeds to checkout after login.
+- [x] **Favorites auth gate**: Clicking the heart/wishlist button without login shows sign-in modal.
+- [x] **Promo codes**: `VASTRAX10` (10%), `VIP20` (20%), `FREESHIP` (free ship), invalid codes all respond correctly in cart drawer.
+- [x] **Header buttons**: All links wired and functional.
+- [x] **Theme toggle**: Defaults to system preference (light ☀️ / dark 🌙), switches correctly on click.
+- [x] **AI Stylist chatbot**: Functional without login (anonymous session via localStorage `session_id`); full OpenAI/Anthropic response when API keys configured.
+

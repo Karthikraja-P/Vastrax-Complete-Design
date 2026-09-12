@@ -5,6 +5,7 @@ import { Search, Heart, Star, ShoppingBag, Menu, User, Box } from "lucide-react"
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { AuthModal } from "@/components/auth/AuthModal";
 import { useSession, signOut } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { CartDrawer } from "@/components/layout/CartDrawer";
 import { StylistDrawer } from "@/components/stylist/StylistDrawer";
@@ -15,12 +16,20 @@ import { addToCart as addCartItem, getCart } from "@/lib/cart";
 import { showToast } from "@/lib/toast";
 
 export default function FavoritesPage() {
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
+  const router = useRouter();
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userName, setUserName] = useState("");
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+
+  // Auth guard — redirect unauthenticated users back to home with modal
+  useEffect(() => {
+    if (status === 'unauthenticated') {
+      router.replace('/storefront/home?requireAuth=1');
+    }
+  }, [status, router]);
 
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -139,10 +148,10 @@ export default function FavoritesPage() {
   return (
     <div className="min-h-screen bg-surface dark:bg-[#111111] text-foreground dark:text-white font-sans flex flex-col">
       {/* Header */}
-      <header className="h-20 flex items-center justify-between relative px-6 md:px-12 sticky top-2 md:top-4 bg-surface dark:bg-[#1a1a1a] z-50 rounded-[2rem] shadow-md border border-border dark:border-white/10 mx-2 md:mx-4 mt-2 md:mt-4">
-        <div className="flex items-center gap-6">
-          <button className="md:hidden text-muted-foreground hover:text-foreground dark:text-white transition-colors">
-            <Menu className="w-6 h-6" />
+      <header className="h-16 md:h-20 flex items-center justify-between relative px-3 sm:px-6 md:px-12 sticky top-2 md:top-4 bg-surface dark:bg-[#1a1a1a] z-50 rounded-[1.5rem] sm:rounded-[2rem] shadow-md border border-border dark:border-white/10 mx-2 md:mx-4 mt-2 md:mt-4">
+        <div className="flex items-center gap-2 sm:gap-6 z-10">
+          <button className="md:hidden text-muted-foreground hover:text-foreground dark:text-white transition-colors p-1">
+            <Menu className="w-5 h-5 sm:w-6 sm:h-6" />
           </button>
           <nav className="hidden md:flex items-center gap-8">
             <a href="#" className="text-lg font-medium hover:text-[#e07a3f] transition-colors">New Arrivals</a>
@@ -152,15 +161,15 @@ export default function FavoritesPage() {
           </nav>
         </div>
 
-        <div className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center pointer-events-none">
-          <Link href="/storefront/home" className="text-3xl md:text-4xl font-bold tracking-[0.25em] uppercase pointer-events-auto">
+        <div className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center pointer-events-none z-0">
+          <Link href="/storefront/home" className="text-base sm:text-2xl md:text-4xl font-bold tracking-[0.12em] sm:tracking-[0.25em] uppercase pointer-events-auto hover:text-accent transition-colors">
             VASTRAX
           </Link>
         </div>
 
-        <div className="flex items-center gap-4 md:gap-6">
+        <div className="flex items-center gap-1.5 sm:gap-4 md:gap-6 z-10">
           <ThemeToggle />
-          <Link href="/storefront/favorites" className="relative text-[#e07a3f] transition-colors">
+          <Link href="/storefront/favorites" className="relative p-1 text-[#e07a3f] transition-colors">
             <Heart className="w-5 h-5 fill-[#e07a3f]" />
           </Link>
           <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-surface dark:bg-[#222] border border-border dark:border-white/10 rounded-full transition-all text-sm w-48 lg:w-64 focus-within:border-[#e07a3f] focus-within:ring-1 focus-within:ring-[#e07a3f]">
@@ -171,7 +180,7 @@ export default function FavoritesPage() {
               className="flex-1 bg-transparent border-none outline-none text-foreground dark:text-white placeholder:text-muted-foreground"
             />
           </div>
-          <button className="md:hidden text-muted-foreground hover:text-[#e07a3f] transition-colors">
+          <button className="md:hidden p-1 text-muted-foreground hover:text-[#e07a3f] transition-colors">
             <Search className="w-5 h-5" />
           </button>
 

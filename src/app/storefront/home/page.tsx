@@ -11,6 +11,7 @@ import Link from "next/link";
 import { productsApi, categoriesApi } from "@/lib/api";
 import { useFavorites } from "@/hooks/useFavorites";
 import { getCart } from "@/lib/cart";
+import { showToast } from "@/lib/toast";
 
 const defaultCategories = [
   { name: "Dresses", slug: "dresses", image: "https://images.unsplash.com/photo-1572804013309-59a88b7e92f1?q=80&w=600&auto=format&fit=crop" },
@@ -52,6 +53,26 @@ export default function StorefrontHome() {
     if (session?.user?.name) {
       setIsLoggedIn(true);
       setUserName(session.user.name);
+    }
+  }, [session]);
+
+  // Alert if redirected from protected admin routes
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("error") === "admin_required") {
+        showToast({
+          title: "Admin Access Required",
+          description: "Please sign in with administrator credentials to access the management portal.",
+          type: "error"
+        });
+        window.history.replaceState({}, "", "/storefront/home");
+      }
+      // Auto-open auth modal when redirected from protected pages (favorites, etc.)
+      if (params.get("requireAuth") === "1" && !session) {
+        setIsAuthOpen(true);
+        window.history.replaceState({}, "", "/storefront/home");
+      }
     }
   }, [session]);
   
@@ -140,11 +161,11 @@ export default function StorefrontHome() {
   return (
     <div className="min-h-screen bg-surface text-foreground font-sans flex flex-col">
       {/* Storefront Header */}
-      <header className="h-20 flex items-center justify-between relative px-6 md:px-12 sticky top-2 md:top-4 bg-background z-40 rounded-[2rem] shadow-sm border border-border/50 mx-2 md:mx-4 mt-2 md:mt-4">
+      <header className="h-16 md:h-20 flex items-center justify-between relative px-3 sm:px-6 md:px-12 sticky top-2 md:top-4 bg-background z-40 rounded-[1.5rem] sm:rounded-[2rem] shadow-sm border border-border/50 mx-2 md:mx-4 mt-2 md:mt-4">
         {/* Left Side: Navigation */}
-        <div className="flex items-center gap-6">
-          <button className="md:hidden text-muted-foreground hover:text-foreground transition-colors">
-            <Menu className="w-6 h-6" />
+        <div className="flex items-center gap-2 sm:gap-6 z-10">
+          <button className="md:hidden text-muted-foreground hover:text-foreground transition-colors p-1">
+            <Menu className="w-5 h-5 sm:w-6 sm:h-6" />
           </button>
           <nav className="hidden md:flex items-center gap-8">
             <Link href="/storefront/collections?sort=newest" className="text-lg font-medium hover:text-accent transition-colors">New Arrivals</Link>
@@ -155,18 +176,28 @@ export default function StorefrontHome() {
         </div>
         
         {/* Center: Logo */}
-        <div className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center pointer-events-none">
-          <Link href="/storefront/home" className="text-3xl md:text-4xl font-bold tracking-[0.25em] uppercase pointer-events-auto hover:text-accent transition-colors">
+        <div className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center pointer-events-none z-0">
+          <Link href="/storefront/home" className="text-base sm:text-2xl md:text-4xl font-bold tracking-[0.12em] sm:tracking-[0.25em] uppercase pointer-events-auto hover:text-accent transition-colors">
             VASTRAX
           </Link>
         </div>
 
         {/* Right Side: Actions */}
-        <div className="flex items-center gap-4 md:gap-6">
+        <div className="flex items-center gap-1.5 sm:gap-4 md:gap-6 z-10">
           <ThemeToggle />
-          <Link href="/storefront/favorites" className="relative text-muted-foreground hover:text-accent transition-colors">
+          <button 
+            onClick={() => {
+              if (!session) { setAuthMode('signin'); setIsAuthOpen(true); }
+              else window.location.href = '/storefront/favorites';
+            }}
+            className="relative p-1 text-muted-foreground hover:text-accent transition-colors"
+            aria-label="Favorites"
+          >
             <Heart className="w-5 h-5" />
-          </Link>
+            {favorites.length > 0 && (
+              <span className="absolute -top-1 -right-1 bg-[#e07a3f] text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center font-bold shadow-sm">{favorites.length}</span>
+            )}
+          </button>
           <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-surface border border-border rounded-full transition-all text-sm w-48 lg:w-64 focus-within:border-accent focus-within:ring-1 focus-within:ring-accent">
             <Search className="w-4 h-4 text-muted-foreground" />
             <input 
@@ -180,7 +211,7 @@ export default function StorefrontHome() {
               className="flex-1 bg-transparent border-none outline-none text-foreground placeholder:text-muted-foreground text-sm"
             />
           </div>
-          <button className="md:hidden text-muted-foreground hover:text-accent transition-colors">
+          <button className="md:hidden p-1 text-muted-foreground hover:text-accent transition-colors">
             <Search className="w-5 h-5" />
           </button>
           <div className="relative">
