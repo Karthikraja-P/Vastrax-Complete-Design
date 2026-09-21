@@ -117,10 +117,10 @@ export default function VirtualTryOnPage() {
 
   const getGarmentImage = (p: any) => {
     if (!p) return "https://images.unsplash.com/photo-1572804013309-59a88b7e92f1?q=80&w=800&auto=format&fit=crop";
-    if (p.image) return p.image;
+    if (p.image && !p.image.includes("photo-1515347619362")) return p.image;
     if (Array.isArray(p.images) && p.images.length > 0) {
-      if (typeof p.images[0] === "string") return p.images[0];
-      if (p.images[0]?.s3_url) return p.images[0].s3_url;
+      const url = typeof p.images[0] === "string" ? p.images[0] : p.images[0]?.s3_url;
+      if (url && !url.includes("photo-1515347619362")) return url;
     }
     const name = (p.name || p.title || "").toLowerCase();
     if (/frock|dress|gown/i.test(name)) return "https://images.unsplash.com/photo-1572804013309-59a88b7e92f1?q=80&w=800&auto=format&fit=crop";
@@ -132,14 +132,17 @@ export default function VirtualTryOnPage() {
 
   const getFashnCategory = (cat: string, name: string = "") => {
     const combined = (cat + " " + name).toLowerCase();
-    if (combined.includes("pant") || combined.includes("bottom") || combined.includes("denim") || combined.includes("skirt") || combined.includes("trouser")) return "bottoms";
-    if (combined.includes("dress") || combined.includes("frock") || combined.includes("gown") || combined.includes("bodycon") || combined.includes("kurti")) return "dresses";
+    if (combined.includes("dress") || combined.includes("frock") || combined.includes("gown") || combined.includes("bodycon") || combined.includes("kurti") || combined.includes("one-piece") || combined.includes("cat-dresses")) return "one-pieces";
+    if (combined.includes("pant") || combined.includes("bottom") || combined.includes("denim") || combined.includes("skirt") || combined.includes("trouser") || combined.includes("cat-bottoms")) return "bottoms";
     return "tops";
   };
 
-  const fashnType = getFashnCategory(product.category?.name || product.category || "", product.name || product.title || "");
+  const fashnType = getFashnCategory(
+    product.category?.name || product.category || product.category_id || "",
+    product.name || product.title || ""
+  );
   const isBottoms = fashnType === "bottoms";
-  const availableTops = products.filter(p => getFashnCategory(p.category?.name || p.category || "", p.name || "") === "tops" && String(p.id) !== String(product.id));
+  const availableTops = products.filter(p => getFashnCategory(p.category?.name || p.category || p.category_id || "", p.name || "") === "tops" && String(p.id) !== String(product.id));
 
   const startTryOnPipeline = async () => {
     if (!personFile || !product) return;
@@ -293,6 +296,8 @@ export default function VirtualTryOnPage() {
                     <button
                       key={p.id}
                       onClick={() => {
+                        setProduct(p);
+                        setSelectedTop(null);
                         router.push(`/storefront/product/${p.id}/tryon`);
                         resetAll();
                         setShowGarmentList(false);
@@ -445,7 +450,20 @@ export default function VirtualTryOnPage() {
           </span>
           <div className="w-full aspect-[3/4] max-w-[500px] mx-auto rounded-3xl overflow-hidden border border-slate-700 bg-black relative flex items-center justify-center shadow-2xl">
             {tryOnComplete && tryOnResultUrl ? (
-              <img src={tryOnResultUrl} alt="Try On Result" className="w-full h-full object-contain" />
+              <img 
+                src={tryOnResultUrl} 
+                alt="Try On Result" 
+                className="w-full h-full object-contain"
+                onError={(e) => {
+                  const img = e.currentTarget;
+                  if (!img.dataset.retried) {
+                    img.dataset.retried = "true";
+                    img.src = tryOnResultUrl.startsWith("http") 
+                      ? tryOnResultUrl 
+                      : `http://localhost:8090${tryOnResultUrl.startsWith("/") ? "" : "/"}${tryOnResultUrl}`;
+                  }
+                }}
+              />
             ) : isProcessing ? (
               <>
                 <img src={productImgUrl} alt={product.name} className="w-full h-full object-cover opacity-20 blur-sm" />

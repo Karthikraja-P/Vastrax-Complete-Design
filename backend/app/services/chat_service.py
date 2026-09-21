@@ -40,16 +40,20 @@ def _extract_profile(messages: list) -> dict:
     elif any(w in text for w in ["dusky", "dark", "deep skin", "brown skin", "dark complexion"]):
         profile["skinTone"] = "dusky"
 
-    if any(w in text for w in ["wedding", "ceremony", "bride", "shaadi"]):
+    if any(w in text for w in ["wedding", "ceremony", "bride", "shaadi", "wedding / festive"]):
         profile["occasion"] = "wedding"
-    elif any(w in text for w in ["office", "work", "professional", "corporate", "meeting"]):
+    elif any(w in text for w in ["office", "work", "professional", "corporate", "meeting", "office wear"]):
         profile["occasion"] = "office"
-    elif any(w in text for w in ["party", "night out", "club", "celebration", "birthday"]):
+    elif any(w in text for w in ["party", "night out", "club", "celebration", "birthday", "party / night out", "cocktail", "gala"]):
         profile["occasion"] = "party"
     elif any(w in text for w in ["festive", "festival", "diwali", "puja", "navratri"]):
         profile["occasion"] = "festive"
-    elif any(w in text for w in ["casual", "everyday", "daily", "weekend", "relaxed", "comfortable"]):
+    elif any(w in text for w in ["casual", "everyday", "daily", "weekend", "relaxed", "comfortable", "casual / everyday", "normal wear"]):
         profile["occasion"] = "casual"
+    elif any(w in text for w in ["trending", "trending looks", "runway", "latest"]):
+        profile["occasion"] = "trending"
+    elif any(w in text for w in ["resort", "vacation", "holiday", "beach", "resort / vacation"]):
+        profile["occasion"] = "resort"
 
     if any(w in text for w in ["hourglass", "curvy", "balanced"]):
         profile["bodyShape"] = "hourglass"
@@ -207,39 +211,117 @@ def mock_chat(messages: list, profile: dict, db=None, user_id: str = None, sessi
             executed_tools
         )
 
+    import re
+    def _has_word(words):
+        return any(re.search(rf"\b{re.escape(w)}\b", last_user) for w in words)
+
     # Standard Actions
-    if any(w in last_user for w in ["start over", "reset", "again", "new"]):
+    if _has_word(["start over", "reset", "again"]):
         return (
             "Of course! Let's start fresh. What brings you in today — are you shopping for a specific occasion, or would you like some general style advice? "
             "[CHIPS:Wedding / Festive|Office / Work|Casual / Everyday|Party / Night out|Style advice]",
             executed_tools
         )
 
-    if any(w in last_user for w in ["try on", "tryon", "virtual"]):
+    if _has_word(["try on", "tryon", "virtual try on"]):
         return (
             "Absolutely! Our AI Virtual Try-On lets you see exactly how any garment looks on *you* — just upload a photo and the AI drapes the outfit on your image. "
             "Head to any product page and tap the ✨ Try On button, or click the Try On link on any product card above!",
             executed_tools
         )
 
-    if any(w in last_user for w in ["sizing", "size", "what size", "fit"]):
+    # Multi-Occasion Handlers with Product Recommendations (Priority)
+    if _has_word(["wedding", "wedding / festive", "festive", "wedding guest", "shaadi", "wedding guest outfit ideas"]):
+        ids = ["vtx-frock-floral", "vtx-frock-textured"]
         return (
-            "All our garments come in S, M, L, and XL. Here's a quick guide:\n"
-            "• S — Bust 34\", Waist 28\"\n• M — Bust 36\", Waist 30\"\n"
-            "• L — Bust 38\", Waist 32\"\n• XL — Bust 40\", Waist 34\"\n\n"
-            "When in doubt, size up — our fabrics are designed to drape beautifully with a little extra room. "
-            "The Virtual Try-On is also a great way to visualise fit before ordering!",
+            "For weddings and festive celebrations, ethereal chiffon and embossed jacquard midi cuts create an enchanting, regal silhouette. "
+            "Our French Blue Aditi Floral Frock and Powder Blue Textured Jacquard are our most celebrated pieces for ceremonies. "
+            "Which of these speaks to your taste? Tap Try On to see how they look on you! "
+            + _product_tags(ids)
+            + " [CHIPS:Tell me about sizing|How to try on|Office Wear|Trending Looks]"
+            + profile_tag,
             executed_tools
         )
 
-    if any(w in last_user for w in ["offer", "offers", "discount", "sale", "current offers"]):
+    if _has_word(["sizing", "size chart", "what size", "size guide", "which size", "measurement", "measurements", "fit guide"]):
         return (
-            "We have some amazing offers running right now! 🎊\n\n"
-            "• ✨ **WELCOME10** for 10% off your first purchase\n"
-            "• 🛍️ **Buy 2, Get 15% Off** on all tops\n"
-            "• 🚚 **Free Shipping** on orders over ₹2,999\n\n"
-            "Would you like me to suggest some pieces to help you make the most of these offers?"
-            " [CHIPS:Yes, show me|How to try on|Start over]"
+            "Our garments follow precision atelier sizing across XS to XXL:\n"
+            "• XS — Chest 32-34\", Waist 25-26\"\n"
+            "• S — Chest 34-36\", Waist 27-28\"\n"
+            "• M — Chest 36-38\", Waist 29-30\"\n"
+            "• L — Chest 39-41\", Waist 31-33\"\n"
+            "• XL — Chest 42-44\", Waist 34-36\"\n"
+            "• XXL — Chest 45-47\", Waist 37-39\"\n\n"
+            "For full measurements in inches and cm, tap the Size Chart tab on any product page. You can also tap 'Try On' to test fit directly in our AI Fitting Room! "
+            "[CHIPS:How to try on|Wedding / Festive|Casual / Everyday|Trending Looks]",
+            executed_tools
+        )
+
+    if any(w in last_user for w in ["offer", "offers", "discount", "sale", "current offers", "promo", "coupon"]):
+        return (
+            "Enjoy our exclusive boutique promotions! ✨\n\n"
+            "• 🎟️ **VASTRAX10** — 10% off your VIP order\n"
+            "• 👑 **VIP20** — 20% off for boutique patrons\n"
+            "• ✈️ **FREESHIP** — Complimentary Global Express Delivery\n\n"
+            "Enter any code at checkout or let me curate pieces to pair with your savings! "
+            "[CHIPS:Wedding / Festive|Office Wear|Casual / Everyday|Trending Looks]"
+            + profile_tag,
+            executed_tools
+        )
+
+
+    if _has_word(["office", "office wear", "office chic", "office capsule", "curate an office capsule look", "corporate"]):
+        ids = ["vtx-top-vneck", "vtx-pants-flared"]
+        return (
+            "For a sharp, authoritative office capsule, combining a structured V-neck knit with tailored high-waisted flared trousers creates an impeccably polished silhouette. "
+            "Here are two of our premier workwear staples: "
+            + _product_tags(ids)
+            + " [CHIPS:Tell me about sizing|How to try on|Casual / Everyday|Trending Looks]"
+            + profile_tag,
+            executed_tools
+        )
+
+    if _has_word(["casual", "casual wear", "casual / everyday", "relaxed", "normal wear", "relaxed weekend casual styling"]):
+        ids = ["vtx-top-slimfit", "vtx-pants-beige"]
+        return (
+            "For relaxed casual elegance, breathable linen wide-leg trousers paired with a soft ribbed poplin top deliver all-day comfort with high-fashion ease. "
+            "Here is our signature casual combination: "
+            + _product_tags(ids)
+            + " [CHIPS:Tell me about sizing|How to try on|Trending Looks|Resort / Vacation]"
+            + profile_tag,
+            executed_tools
+        )
+
+    if _has_word(["trending", "trending looks", "runway", "trending pieces this week"]):
+        ids = ["vtx-frock-textured", "vtx-top-tieup"]
+        return (
+            "Here are the top trending pieces turning heads at the atelier this week! "
+            "Our Puff-Sleeve Textured Midi Frock and Lime Olive Tie-Up Neck Top are leading contemporary luxury style edits. "
+            "Tap Try On to see them in our AI Fitting Room! "
+            + _product_tags(ids)
+            + " [CHIPS:How to try on|Tell me about sizing|Wedding / Festive|Office Wear]"
+            + profile_tag,
+            executed_tools
+        )
+
+    if _has_word(["party", "party / night out", "cocktail", "night out", "evening gala", "curate an evening gala look"]):
+        ids = ["vtx-frock-textured", "vtx-top-wrap"]
+        return (
+            "For an evening gala or cocktail night, dramatic textures and flowing satin drape command attention effortlessly. "
+            "Our Puff-Sleeve Jacquard Midi and Sky Blue Wrap Top are immaculate choices for evening events: "
+            + _product_tags(ids)
+            + " [CHIPS:Tell me about sizing|How to try on|Wedding / Festive|Trending Looks]"
+            + profile_tag,
+            executed_tools
+        )
+
+    if _has_word(["resort", "resort / vacation", "vacation", "holiday", "beach"]):
+        ids = ["vtx-top-wrap", "vtx-pants-beige"]
+        return (
+            "For resort getaways and summer travels, effortless movement and light-catching fabrics are paramount. "
+            "Our Sky Blue Wrap Top paired with Oatmeal Linen Striped Trousers makes an iconic vacation ensemble: "
+            + _product_tags(ids)
+            + " [CHIPS:How to try on|Tell me about sizing|Casual / Everyday]"
             + profile_tag,
             executed_tools
         )
@@ -416,33 +498,47 @@ PRODUCT CATALOG (9 items — always recommend from this list only):
 """
 
 _STYLING_RULES = """
-STYLING RULES:
-- Fair skin: cool pastels — blush pink, powder blue, French blue, sky blue, lavender
-- Wheatish skin: earth tones — caramel, olive green, mustard, coral, teal
-- Dusky skin: jewel tones & brights — navy, French blue, olive, sky blue, white; AVOID muted/grey tones
-- Petite: A-line, high-waist, vertical patterns elongate; avoid wide-leg alone
-- Regular: most styles work; balanced proportions
-- Tall: wide-leg, flared, horizontal stripes, bold prints — all look great
-- Hourglass: wrap styles, fitted tops show the waist
-- Pear: A-line, structured shoulders, draw eye upward
-- Apple: V-neck, flowy, empire waist
-- Rectangle: peplum, ruffles, wrap styles create curves
+STYLING, PALETTE & FIT ENGINE:
+- Complexion Palettes:
+  * Fair: cool pastels (blush pink, sky blue, lavender, mint).
+  * Wheatish: warm earth tones (caramel brown, olive, mustard, coral, terracotta).
+  * Dusky: jewel tones & radiant contrast (emerald, royal navy, cobalt, wine, crisp ivory; avoid muted ash/grey).
+- Silhouette & Body Proportions:
+  * Petite: A-line skirts, high-waisted cuts, vertical accents; avoid unbelted heavy volume.
+  * Hourglass: wrap dresses, belted waists, tailored silhouettes.
+  * Pear: structured/accented shoulders, statement necklines, fluid A-line bottoms.
+  * Athletic/Rectangle: defined waistlines, ruffles, asymmetric drapes, peplums.
+- Garment Sizing & Fit Consultation:
+  * Size Chart standards: XS (Chest 32-34", Waist 25-26"), S (Chest 34-36", Waist 27-28"), M (Chest 36-38", Waist 29-30"), L (Chest 39-41", Waist 31-33"), XL (Chest 42-44", Waist 34-36"), XXL (Chest 45-47", Waist 37-39"). Metric equivalents: 1 inch ≈ 2.54 cm.
+  * Suggest shoppers reference the interactive Size Chart tab on each product page for precision fit.
+- AI Fitting Room (Virtual Try-On):
+  * Invite shoppers to test recommended pieces virtually: "Tap 'Try On' to see how this drapes on your photo in our AI Fitting Room."
+- Active Promotions:
+  * VASTRAX10: 10% off VIP invitation.
+  * VIP20: 20% off for boutique patrons.
+  * FREESHIP: Complimentary express shipping.
 """
 
 _SYSTEM_PROMPT_TEMPLATE = """{admin_instructions}
 
-ACTIVE STORE OFFERS & PROMOTIONS (Mention these when relevant or when suggesting outfits):
+ACTIVE STORE PROMOTIONS:
 {active_offers}
 
 {catalog}
 {styling}
 
-TAGS YOU MUST USE:
-- Multiple choice question → end with [CHIPS:Option1|Option2|Option3]
-- Product recommendation → inline [PRODUCT:product-id]
-- Profile fact learned → append [PROFILE:{{"key":"value"}}] silently at end
+CONVERSATIONAL & CARD RENDERING DIRECTIVES:
+1. STRICT CATALOG GROUNDING: Recommend ONLY garments listed in the live catalog above with valid IDs. Never invent or hallucinate products or brands.
+2. MANDATORY INTERACTIVE CARDS: When recommending any catalog item, ALWAYS include [PRODUCT:product-id] inline (e.g. [PRODUCT:vtx-top-wrap]). The UI uses this tag to render an interactive card with photo, price, 'Try On', and 'Add to Bag'.
+3. CURATION & PACING: Recommend 1-3 tailored pieces per query. Keep responses concise (2-4 sentences). Ask at most ONE focused follow-up question.
+4. ACTIVITY-AWARE SUGGESTION CHIPS: Format quick-reply buttons at the very end of your response as [CHIPS:Opt1|Opt2|Opt3].
+   - If user asks about styling, sizing, or outfits: suggest styling options (e.g. [CHIPS:Show festive looks|Size guidance|Try in fitting room|Casual picks]).
+   - If user asks about an order/shipping: suggest order options (e.g. [CHIPS:Track order|Return policy|Contact support]).
+   - NEVER suggest order tracking chips during styling or outfit browsing.
+5. PROFILE MEMORY: Silently append learned customer attributes at the end as [PROFILE:{{"skin_tone":"wheatish"}}] when detected.
 
-CUSTOMER PROFILE: {profile_context}
+CUSTOMER CONTEXT:
+{profile_context}
 """
 
 
@@ -609,7 +705,10 @@ def chat(
             logger.error("Anthropic chat error: %s", e)
 
     # 3. Smart Fashion Intelligence Mock Fallback with Real DB Tools
-    return mock_chat(messages, profile, db=db, user_id=user_id, session_id=session_id)
+    res = mock_chat(messages, profile, db=db, user_id=user_id, session_id=session_id)
+    if isinstance(res, tuple) and len(res) == 2:
+        return res
+    return str(res), []
 
 
 def chat_stream(

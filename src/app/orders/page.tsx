@@ -46,7 +46,7 @@ export default function OrdersPage() {
             email: o.customerEmail || "—",
             itemsCount: o.items ? o.items.length : (o.itemsCount || 1),
             rawTotal: Number(o.totalAmount || o.total_amount || 0),
-            total: `$${typeof o.totalAmount === 'number' ? o.totalAmount.toFixed(2) : (typeof o.total_amount === 'number' ? o.total_amount.toFixed(2) : (o.totalAmount || o.total_amount || '0.00'))}`,
+            total: `₹${typeof o.totalAmount === 'number' ? o.totalAmount.toFixed(2) : (typeof o.total_amount === 'number' ? o.total_amount.toFixed(2) : (o.totalAmount || o.total_amount || '0.00'))}`,
             progress,
             rawStatus,
             status: statusDisplay,

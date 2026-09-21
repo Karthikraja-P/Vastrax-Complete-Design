@@ -34,6 +34,18 @@ products = [
     ('vtx-top-slimfit', 'cat-tops', 'Blush Pink Slim-Fit Ribbed Top', 'Cotton Elastane', 'Blush Pink', 1299, 1299, 'Casual / Everyday')
 ]
 
+product_images_map = {
+    'vtx-frock-floral': 'https://images.unsplash.com/photo-1572804013309-59a88b7e92f1?q=80&w=800&auto=format&fit=crop',
+    'vtx-frock-textured': 'https://images.unsplash.com/photo-1515372039744-b8f02a3ae446?q=80&w=800&auto=format&fit=crop',
+    'vtx-pants-beige': 'https://images.unsplash.com/photo-1542272604-787c3835535d?q=80&w=800&auto=format&fit=crop',
+    'vtx-pants-flared': 'https://images.unsplash.com/photo-1509551388413-e18d0ac5d495?q=80&w=800&auto=format&fit=crop',
+    'vtx-top-vneck': 'https://images.unsplash.com/photo-1503342217505-b0a15ec3261c?q=80&w=800&auto=format&fit=crop',
+    'vtx-top-checked': 'https://images.unsplash.com/photo-1596755094514-f87e34085b2c?q=80&w=800&auto=format&fit=crop',
+    'vtx-top-wrap': 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=800&auto=format&fit=crop',
+    'vtx-top-tieup': 'https://images.unsplash.com/photo-1556821840-3a63f95609a7?q=80&w=800&auto=format&fit=crop',
+    'vtx-top-slimfit': 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?q=80&w=800&auto=format&fit=crop',
+}
+
 for p in products:
     existing = db.query(Product).filter(Product.id == p[0]).first()
     if not existing:
@@ -44,12 +56,17 @@ for p in products:
         db.add(prod)
         db.commit()
         
+    img_url = product_images_map.get(p[0], "https://images.unsplash.com/photo-1572804013309-59a88b7e92f1?q=80&w=800&auto=format&fit=crop")
+    existing_img = db.query(ProductImage).filter(ProductImage.product_id == p[0]).first()
+    if existing_img:
+        existing_img.s3_url = img_url
+    else:
         img = ProductImage(
             id=uuid.uuid4().hex, product_id=p[0], 
-            s3_url="https://images.unsplash.com/photo-1515347619362-67fd13c6e4db?w=400&q=80", 
+            s3_url=img_url, 
             display_order=0
         )
         db.add(img)
-        db.commit()
+    db.commit()
 
 print("Mock products seeded using ORM!")

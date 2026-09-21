@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { Search, Heart, Star, ShoppingBag, Menu, User, ChevronRight, SlidersHorizontal, Box, Bell } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { AuthModal } from "@/components/auth/AuthModal";
-import { useSession, signOut } from "next-auth/react";
+import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { CartDrawer } from "@/components/layout/CartDrawer";
 import { StylistDrawer } from "@/components/stylist/StylistDrawer";
@@ -13,6 +13,7 @@ import { productsApi, categoriesApi } from "@/lib/api";
 import { reportBackendReachable, reportBackendUnreachable } from "@/lib/backendStatus";
 import { addToCart as addCartItem, getCart } from "@/lib/cart";
 import { showToast } from "@/lib/toast";
+import { performSignOut } from "@/lib/auth-utils";
 
 // --- Mock Data ---
 
@@ -69,10 +70,28 @@ export default function CollectionsPage() {
     { name: "All Categories", icon: "❖" }
   ]);
   const [selectedCategory, setSelectedCategory] = useState("All Categories");
+  const [selectedDepartment, setSelectedDepartment] = useState<string>("All");
   const [searchQuery, setSearchQuery] = useState("");
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
   const [loading, setLoading] = useState(true);
+
+  // Sync department filter from URL query param (?gender=Women, ?gender=Men, ?gender=Kids)
+  // Sync department and category filter from URL query params
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const g = params.get("gender");
+      if (g) {
+        const formatted = g.charAt(0).toUpperCase() + g.slice(1).toLowerCase();
+        setSelectedDepartment(formatted);
+      }
+      const catParam = params.get("category");
+      if (catParam) {
+        setSelectedCategory(catParam);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     async function fetchData() {
@@ -83,12 +102,15 @@ export default function CollectionsPage() {
           categoriesApi.list()
         ]);
 
+        const catMap = new Map((cats || []).map((c: any) => [String(c.id), c.name]));
+
         if (cats && Array.isArray(cats)) {
           setCategoriesList([
             { name: "All Categories", icon: "❖" },
             ...cats.map((c: any) => ({
+              id: String(c.id),
               name: c.name,
-              icon: /frock|dress|gown/i.test(c.name) ? "👗" : /shirt|top/i.test(c.name) ? "👔" : "❖",
+              icon: /frock|dress|gown/i.test(c.name) ? "👗" : /shirt|top/i.test(c.name) ? "👔" : /pant|trouser|denim|jean/i.test(c.name) ? "👖" : "❖",
               count: c.count
             }))
           ]);
@@ -103,17 +125,22 @@ export default function CollectionsPage() {
             else img = fallbackImg;
           }
 
+          const rawCatId = String(p.categoryId || p.category_id || "");
+          const resolvedCatName = catMap.get(rawCatId) || p.category?.name || p.category || "Apparel";
+
           return {
             id: p.id,
             name: p.name || p.title,
             price: Number(p.price || p.price_selling || 0),
             originalPrice: p.originalPrice || p.price_mrp || p.compareAtPrice ? Number(p.originalPrice || p.price_mrp || p.compareAtPrice) : undefined,
-            rating: p.rating || 4.8,
+            rating: Number(p.rating_average || p.rating || 4.8),
+            ratingCount: Number(p.rating_count || 15),
             image: img,
+            gender: p.gender || "Women",
             isNew: p.isNew || p.is_featured,
-            categoryId: p.categoryId || p.category_id,
-            categoryName: p.category?.name || p.category || "Apparel",
-            model3dUrl: p.model3dUrl || (/frock|dress|gown/i.test(p.name || "") ? "/models/3d/garment3_multiview.glb" : /pant|trouser/i.test(p.name || "") ? "/models/3d/garment_photo_textured.glb" : "/models/3d/garment2_textured.glb")
+            categoryId: rawCatId,
+            categoryName: resolvedCatName,
+            model3dUrl: p.model_path || p.model3dUrl || (/frock|dress|gown/i.test(p.name || "") ? "/models/3d/garment3_multiview.glb" : /pant|trouser/i.test(p.name || "") ? "/models/3d/garment_photo_textured.glb" : "/models/3d/garment2_textured.glb")
           };
         });
         setProducts(mapped);
@@ -211,6 +238,12 @@ export default function CollectionsPage() {
   const sortOptions = ["Recommended", "Newest Arrivals", "Price: Low to High", "Price: High to Low", "Top Rated"];
 
   useEffect(() => {
+    const handleOpenStylist = () => setIsStylistOpen(true);
+    window.addEventListener("open-stylist", handleOpenStylist);
+    return () => window.removeEventListener("open-stylist", handleOpenStylist);
+  }, []);
+
+  useEffect(() => {
     const timer = setInterval(() => {
       setActiveBanner((prev) => (prev + 1) % banners.length);
     }, 5000);
@@ -277,45 +310,58 @@ export default function CollectionsPage() {
   const filteredProducts = products.filter((p) => {
     // 1. Category Filter
     if (selectedCategory !== "All Categories") {
-      const pCat = (p.categoryName || "").toLowerCase();
-      const pName = (p.name || "").toLowerCase();
+      const pCatName = (p.categoryName || "").toLowerCase();
       const pCatId = (p.categoryId || "").toLowerCase();
+      const selCat = selectedCategory.toLowerCase();
+      const pName = (p.name || "").toLowerCase();
 
-      if (selectedCategory.includes("Dress") || selectedCategory.includes("Frock")) {
-        const isDress = pCat.includes("dress") || pCat.includes("frock") || /dress|frock|gown|skirt/i.test(pName) || pCatId.includes("dress") || pCatId.includes("frock");
-        if (!isDress) return false;
-      } else if (selectedCategory.includes("Jackets")) {
-        const isJacket = pCat.includes("jacket") || pCat.includes("outerwear") || /jacket|coat|outerwear|puffer|trench/i.test(pName) || pCatId.includes("jacket");
-        if (!isJacket) return false;
-      } else if (selectedCategory.includes("Hoodies")) {
-        const isHoodie = pCat.includes("hoodie") || pCat.includes("sweatshirt") || /hoodie|sweatshirt/i.test(pName) || pCatId.includes("hoodie");
-        if (!isHoodie) return false;
-      } else if (selectedCategory.includes("Pants")) {
-        const isPant = pCat.includes("pant") || pCat.includes("trouser") || /pant|trouser|cargo|denim|jean/i.test(pName) || pCatId.includes("pant");
-        if (!isPant) return false;
-      } else if (selectedCategory.includes("Shirts") && !selectedCategory.includes("T-")) {
-        const isShirt = (pCat.includes("shirt") && !pCat.includes("t-shirt")) || (/shirt/i.test(pName) && !/t-shirt/i.test(pName));
-        if (!isShirt) return false;
-      } else if (selectedCategory.includes("T-Shirts")) {
-        const isTee = pCat.includes("t-shirt") || /t-shirt|tee/i.test(pName);
-        if (!isTee) return false;
-      } else if (selectedCategory.includes("Shoes")) {
-        const isShoe = pCat.includes("shoe") || pCat.includes("sneaker") || /shoe|sneaker|loafer/i.test(pName);
-        if (!isShoe) return false;
-      } else if (selectedCategory.includes("Hats")) {
-        const isHat = pCat.includes("hat") || pCat.includes("cap") || /hat|cap|bucket|beanie/i.test(pName);
-        if (!isHat) return false;
+      // Check direct exact match first
+      let isMatch = pCatName === selCat || pCatId === selCat;
+
+      if (!isMatch) {
+        if (selCat.includes("dress") || selCat.includes("frock")) {
+          isMatch = pCatName.includes("dress") || pCatName.includes("frock") || pCatId.includes("dress") || pCatId.includes("frock") || /dress|frock|gown/i.test(pName);
+        } else if (selCat.includes("denim")) {
+          isMatch = pCatName.includes("denim") || pCatId.includes("denim") || /denim|jean/i.test(pName);
+        } else if (selCat.includes("pant")) {
+          isMatch = (pCatName.includes("pant") || pCatName.includes("trouser") || pCatId.includes("pant")) && !selCat.includes("denim");
+        } else if (selCat.includes("shirt") && !selCat.includes("t-")) {
+          isMatch = (pCatName.includes("shirt") && !pCatName.includes("t-shirt")) || (pCatId.includes("shirt") && !pCatId.includes("t-shirt"));
+        } else if (selCat.includes("t-shirt")) {
+          isMatch = pCatName.includes("t-shirt") || pCatId.includes("t-shirt") || /t-shirt|tee/i.test(pName);
+        } else if (selCat.includes("skirt")) {
+          isMatch = pCatName.includes("skirt") || pCatId.includes("skirt") || /skirt/i.test(pName);
+        } else if (selCat.includes("top")) {
+          isMatch = pCatName.includes("top") || pCatId.includes("top");
+        } else if (selCat.includes("jacket")) {
+          isMatch = pCatName.includes("jacket") || pCatId.includes("jacket") || /jacket|coat|outerwear/i.test(pName);
+        } else if (selCat.includes("hoodie")) {
+          isMatch = pCatName.includes("hoodie") || pCatId.includes("hoodie") || /hoodie|sweatshirt/i.test(pName);
+        } else if (selCat.includes("shoe")) {
+          isMatch = pCatName.includes("shoe") || pCatId.includes("shoe") || /shoe|sneaker|loafer/i.test(pName);
+        } else if (selCat.includes("hat")) {
+          isMatch = pCatName.includes("hat") || pCatId.includes("hat") || /hat|cap|beanie/i.test(pName);
+        }
       }
+
+      if (!isMatch) return false;
     }
 
-    // 2. Search Query
+    // 2. Department Filter
+    if (selectedDepartment !== "All") {
+      const pG = (p.gender || "Women").toLowerCase();
+      const sG = selectedDepartment.toLowerCase();
+      if (pG !== sG && pG !== "unisex") return false;
+    }
+
+    // 3. Search Query
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       const matchSearch = p.name.toLowerCase().includes(q) || (p.categoryName && p.categoryName.toLowerCase().includes(q));
       if (!matchSearch) return false;
     }
 
-    // 3. Price Filter
+    // 4. Price Filter
     if (minPrice && p.price < Number(minPrice)) return false;
     if (maxPrice && p.price > Number(maxPrice)) return false;
 
@@ -337,10 +383,11 @@ export default function CollectionsPage() {
             <Menu className="w-5 h-5 sm:w-6 sm:h-6" />
           </button>
           <nav className="hidden md:flex items-center gap-8">
-            <a href="#" className="text-lg font-medium hover:text-[#e07a3f] transition-colors">New Arrivals</a>
-            <a href="#" className="text-lg font-medium hover:text-[#e07a3f] transition-colors">Women</a>
-            <a href="#" className="text-lg font-medium hover:text-[#e07a3f] transition-colors">Men</a>
-            <a href="/storefront/collections" className="text-lg font-medium text-[#e07a3f] transition-colors">Collections</a>
+            <Link href="/storefront/collections?sort=newest" className="text-lg font-medium hover:text-[#e07a3f] transition-colors">New Arrivals</Link>
+            <Link href="/storefront/collections?gender=Women" onClick={() => setSelectedDepartment("Women")} className={`text-lg font-medium hover:text-[#e07a3f] transition-colors ${selectedDepartment === "Women" ? "text-[#e07a3f] font-bold" : ""}`}>Women</Link>
+            <Link href="/storefront/collections?gender=Men" onClick={() => setSelectedDepartment("Men")} className={`text-lg font-medium hover:text-[#e07a3f] transition-colors ${selectedDepartment === "Men" ? "text-[#e07a3f] font-bold" : ""}`}>Men</Link>
+            <Link href="/storefront/collections?gender=Kids" onClick={() => setSelectedDepartment("Kids")} className={`text-lg font-medium hover:text-[#e07a3f] transition-colors ${selectedDepartment === "Kids" ? "text-[#e07a3f] font-bold" : ""}`}>Kids</Link>
+            <Link href="/storefront/collections" onClick={() => setSelectedDepartment("All")} className={`text-lg font-medium hover:text-[#e07a3f] transition-colors ${selectedDepartment === "All" ? "text-[#e07a3f] font-bold" : ""}`}>Collections</Link>
           </nav>
         </div>
 
@@ -403,13 +450,10 @@ export default function CollectionsPage() {
                       </Link>
                       <button
                         onClick={() => {
-                          if (session) {
-                            signOut();
-                          } else {
-                            setIsLoggedIn(false);
-                            setUserName("");
-                          }
+                          setIsLoggedIn(false);
+                          setUserName("");
                           setIsUserMenuOpen(false);
+                          performSignOut("/storefront/collections");
                         }}
                         className="w-full text-left px-4 py-3 text-sm font-medium text-red-500 hover:bg-surface transition-colors"
                       >
@@ -509,14 +553,14 @@ export default function CollectionsPage() {
                   <div className="flex items-center justify-between mb-6">
                     <h3 className="font-bold text-lg">Filters</h3>
                     <button
-                      onClick={() => { setSelectedCategory("All Categories"); setSearchQuery(""); setMinPrice(""); setMaxPrice(""); }}
+                      onClick={() => { setSelectedCategory("All Categories"); setSelectedDepartment("All"); setSearchQuery(""); setMinPrice(""); setMaxPrice(""); }}
                       className="text-[#e07a3f] text-xs font-bold tracking-wider uppercase flex items-center gap-1 hover:underline">
                       Reset Filters
                     </button>
                   </div>
 
                   {/* Search */}
-                  <div className="relative mb-8">
+                  <div className="relative mb-6">
                     <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                     <input
                       type="text"
@@ -525,6 +569,27 @@ export default function CollectionsPage() {
                       placeholder="Search products..."
                       className="w-full bg-surface dark:bg-[#111111] border border-border dark:border-white/10 rounded-full py-3 pl-11 pr-4 text-sm text-foreground dark:text-white placeholder:text-muted-foreground focus:outline-none focus:border-[#e07a3f] transition-colors"
                     />
+                  </div>
+
+                  {/* Department */}
+                  <div className="mb-8">
+                    <h4 className="text-[10px] font-bold text-muted-foreground tracking-[0.2em] uppercase mb-3">Department</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {["All", "Women", "Men", "Kids", "Unisex"].map((dept) => (
+                        <button
+                          key={dept}
+                          type="button"
+                          onClick={() => setSelectedDepartment(dept)}
+                          className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all ${
+                            selectedDepartment === dept
+                              ? "bg-[#e07a3f] text-white shadow-md shadow-[#e07a3f]/20"
+                              : "bg-surface dark:bg-[#111] border border-border dark:border-white/10 text-muted-foreground hover:text-foreground"
+                          }`}
+                        >
+                          {dept}
+                        </button>
+                      ))}
+                    </div>
                   </div>
 
                   {/* Category */}
@@ -549,12 +614,12 @@ export default function CollectionsPage() {
                     <h4 className="text-[10px] font-bold text-muted-foreground tracking-[0.2em] uppercase mb-4">Price Range</h4>
                     <div className="flex items-center gap-3">
                       <div className="flex-1 bg-surface dark:bg-[#111111] border border-border dark:border-white/10 rounded-xl px-3 py-2 flex items-center justify-between focus-within:border-[#e07a3f] transition-colors">
-                        <span className="text-muted-foreground text-sm font-medium">$</span>
+                        <span className="text-muted-foreground text-sm font-medium">₹</span>
                         <input type="text" value={minPrice} onChange={(e) => setMinPrice(e.target.value)} className="w-full bg-transparent text-foreground dark:text-white text-sm text-right outline-none font-medium" />
                       </div>
                       <span className="text-muted-foreground">-</span>
                       <div className="flex-1 bg-surface dark:bg-[#111111] border border-border dark:border-white/10 rounded-xl px-3 py-2 flex items-center justify-between focus-within:border-[#e07a3f] transition-colors">
-                        <span className="text-muted-foreground text-sm font-medium">$</span>
+                        <span className="text-muted-foreground text-sm font-medium">₹</span>
                         <input type="text" value={maxPrice} onChange={(e) => setMaxPrice(e.target.value)} className="w-full bg-transparent text-foreground dark:text-white text-sm text-right outline-none font-medium" />
                       </div>
                     </div>
@@ -567,7 +632,10 @@ export default function CollectionsPage() {
               <div className="flex-1">
                 <div className="hidden lg:flex items-end justify-between mb-8">
                   <div>
-                    <h1 className="text-3xl font-bold">{selectedCategory} <span className="text-sm font-normal text-muted-foreground ml-2">{filteredProducts.length} products</span></h1>
+                    <h1 className="text-3xl font-bold">
+                      {selectedDepartment !== "All" ? `${selectedDepartment}'s ${selectedCategory === "All Categories" ? "Collection" : selectedCategory}` : selectedCategory} 
+                      <span className="text-sm font-normal text-muted-foreground ml-2">{filteredProducts.length} products</span>
+                    </h1>
                   </div>
                   <div className="relative">
                     <button
@@ -627,6 +695,7 @@ export default function CollectionsPage() {
                           <div className="bg-background dark:bg-[#2a2a2a] px-2.5 py-1 rounded-full flex items-center gap-1.5">
                             <Star className="w-3 h-3 fill-[#e07a3f] text-[#e07a3f]" />
                             <span className="text-[10px] font-bold text-foreground dark:text-white">{product.rating}</span>
+                            <span className="text-[9px] text-muted-foreground">({product.ratingCount || 15})</span>
                           </div>
                         </div>
 

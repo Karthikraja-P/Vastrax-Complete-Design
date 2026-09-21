@@ -4,7 +4,8 @@ import { useState } from "react";
 import { Bell, Search, Menu } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import Link from "next/link";
-import { useSession, signOut } from "next-auth/react";
+import { useSession } from "next-auth/react";
+import { performSignOut } from "@/lib/auth-utils";
 
 interface HeaderProps {
   isSidebarCollapsed?: boolean;
@@ -32,7 +33,7 @@ export function Header({ isSidebarCollapsed, toggleSidebar, onOpenCart }: Header
     {
       id: "notif-1",
       title: "New High-Value Order #ORD-2026-1048",
-      description: "Confirmed luxury order for $1,280.00 via Express Shipping.",
+      description: "Confirmed luxury order for ₹12,800.00 via Express Shipping.",
       time: "10m ago",
       type: "order",
       read: false,
@@ -263,7 +264,7 @@ export function Header({ isSidebarCollapsed, toggleSidebar, onOpenCart }: Header
                 <div className="border-t border-border my-1" />
                 <button 
                   onClick={() => { 
-                    if (session) signOut();
+                    performSignOut();
                     setIsUserMenuOpen(false); 
                   }}
                   className="w-full text-left px-4 py-2.5 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-500/10 transition-colors"

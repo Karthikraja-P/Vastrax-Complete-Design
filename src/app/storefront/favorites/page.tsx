@@ -4,9 +4,10 @@ import { useState, useEffect } from "react";
 import { Search, Heart, Star, ShoppingBag, Menu, User, Box } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { AuthModal } from "@/components/auth/AuthModal";
-import { useSession, signOut } from "next-auth/react";
+import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { performSignOut } from "@/lib/auth-utils";
 import { CartDrawer } from "@/components/layout/CartDrawer";
 import { StylistDrawer } from "@/components/stylist/StylistDrawer";
 import { Product3DModal } from "@/components/3d/Product3DModal";
@@ -38,6 +39,12 @@ export default function FavoritesPage() {
 
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isStylistOpen, setIsStylistOpen] = useState(false);
+
+  useEffect(() => {
+    const handleOpenStylist = () => setIsStylistOpen(true);
+    window.addEventListener("open-stylist", handleOpenStylist);
+    return () => window.removeEventListener("open-stylist", handleOpenStylist);
+  }, []);
 
   const [selectedProductForSize, setSelectedProductForSize] = useState<any | null>(null);
   const [selected3DProduct, setSelected3DProduct] = useState<any | null>(null);
@@ -154,10 +161,11 @@ export default function FavoritesPage() {
             <Menu className="w-5 h-5 sm:w-6 sm:h-6" />
           </button>
           <nav className="hidden md:flex items-center gap-8">
-            <a href="#" className="text-lg font-medium hover:text-[#e07a3f] transition-colors">New Arrivals</a>
-            <a href="#" className="text-lg font-medium hover:text-[#e07a3f] transition-colors">Women</a>
-            <a href="#" className="text-lg font-medium hover:text-[#e07a3f] transition-colors">Men</a>
-            <a href="/storefront/collections" className="text-lg font-medium hover:text-[#e07a3f] transition-colors">Collections</a>
+            <Link href="/storefront/collections?sort=newest" className="text-lg font-medium hover:text-[#e07a3f] transition-colors">New Arrivals</Link>
+            <Link href="/storefront/collections?gender=Women" className="text-lg font-medium hover:text-[#e07a3f] transition-colors">Women</Link>
+            <Link href="/storefront/collections?gender=Men" className="text-lg font-medium hover:text-[#e07a3f] transition-colors">Men</Link>
+            <Link href="/storefront/collections?gender=Kids" className="text-lg font-medium hover:text-[#e07a3f] transition-colors">Kids</Link>
+            <Link href="/storefront/collections" className="text-lg font-medium hover:text-[#e07a3f] transition-colors">Collections</Link>
           </nav>
         </div>
 
@@ -212,9 +220,10 @@ export default function FavoritesPage() {
                       </Link>
                       <button
                         onClick={() => {
-                          if (session) signOut();
-                          else { setIsLoggedIn(false); setUserName(""); }
+                          setIsLoggedIn(false);
+                          setUserName("");
                           setIsUserMenuOpen(false);
+                          performSignOut("/storefront/favorites");
                         }}
                         className="w-full text-left px-4 py-3 text-sm font-medium text-red-500 hover:bg-surface transition-colors"
                       >

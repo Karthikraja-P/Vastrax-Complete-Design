@@ -5,6 +5,7 @@
  */
 
 import { reportBackendReachable, reportBackendUnreachable } from "./backendStatus";
+import { getSession } from "next-auth/react";
 
 const CANDIDATE_API_BASES = [
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:8090/api/v1",
@@ -13,7 +14,19 @@ const CANDIDATE_API_BASES = [
 // Helper fetch wrapper
 export async function fetchApi<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const isBrowser = typeof window !== "undefined";
-  const token = isBrowser ? localStorage.getItem("vastrax_token") : null;
+  let token = isBrowser ? localStorage.getItem("vastrax_token") : null;
+
+  // Fallback: If localStorage token is missing in browser, fetch from active NextAuth session
+  if (isBrowser && (!token || token === "null" || token === "undefined")) {
+    try {
+      const session = await getSession();
+      if ((session as any)?.accessToken) {
+        token = (session as any).accessToken as string;
+        localStorage.setItem("vastrax_token", token);
+      }
+    } catch {}
+  }
+
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     "Cache-Control": "no-cache, no-store, must-revalidate",
@@ -57,16 +70,33 @@ export async function fetchApi<T>(endpoint: string, options: RequestInit = {}): 
         return (text ? JSON.parse(text) : ({ success: true })) as T;
       }
 
-      // If token is invalid or expired, clear it from localStorage
-      if (res.status === 401 && typeof window !== "undefined" && token) {
-        localStorage.removeItem("vastrax_token");
-        // Retry once without invalid token
-        const retryHeaders = { ...headers };
-        delete retryHeaders["Authorization"];
-        const retryRes = await fetch(url, { ...options, headers: retryHeaders });
-        if (retryRes.ok) {
-          const retryText = await retryRes.text();
-          return (retryText ? JSON.parse(retryText) : ({ success: true })) as T;
+      // If 401 occurs, try refreshing token from active NextAuth session
+      if (res.status === 401 && isBrowser) {
+        try {
+          const session = await getSession();
+          const sessionToken = (session as any)?.accessToken;
+          if (sessionToken && sessionToken !== token) {
+            token = sessionToken;
+            localStorage.setItem("vastrax_token", sessionToken);
+            const retryHeaders = { ...headers, Authorization: `Bearer ${sessionToken}` };
+            const retryRes = await fetch(url, { ...options, headers: retryHeaders });
+            if (retryRes.ok) {
+              const retryText = await retryRes.text();
+              return (retryText ? JSON.parse(retryText) : ({ success: true })) as T;
+            }
+          }
+        } catch {}
+
+        // For public GET requests, retry without Authorization header
+        const method = (options.method || "GET").toUpperCase();
+        if (method === "GET") {
+          const retryHeaders = { ...headers };
+          delete retryHeaders["Authorization"];
+          const retryRes = await fetch(url, { ...options, headers: retryHeaders });
+          if (retryRes.ok) {
+            const retryText = await retryRes.text();
+            return (retryText ? JSON.parse(retryText) : ({ success: true })) as T;
+          }
         }
       }
 
@@ -100,6 +130,16 @@ export async function fetchApi<T>(endpoint: string, options: RequestInit = {}): 
 // -------------------------------------------------------------
 // 1. PRODUCTS API
 // -------------------------------------------------------------
+export interface ProductReview {
+  id: string;
+  product_id: string;
+  user_id: string;
+  user_name: string;
+  rating: number;
+  comment?: string;
+  created_at: string;
+}
+
 export interface ProductItem {
   id: string | number;
   name?: string;
@@ -124,7 +164,11 @@ export interface ProductItem {
   image?: string;
   images?: (string | any)[];
   rating?: number;
+  rating_average?: number;
+  rating_count?: number;
   sku?: string;
+  gender?: string;
+  size_chart?: any;
   isNew?: boolean;
   isSale?: boolean;
   is_published?: boolean;
@@ -133,10 +177,11 @@ export interface ProductItem {
 }
 
 export const productsApi = {
-  async list(params?: { category_id?: string; skip?: number; limit?: number; published_only?: boolean }): Promise<ProductItem[]> {
+  async list(params?: { category_id?: string; gender?: string; skip?: number; limit?: number; published_only?: boolean }): Promise<ProductItem[]> {
     try {
       const query = new URLSearchParams();
       if (params?.category_id) query.append("category_id", params.category_id);
+      if (params?.gender) query.append("gender", params.gender);
       if (params?.skip !== undefined) query.append("skip", String(params.skip));
       if (params?.limit !== undefined) query.append("limit", String(params.limit));
       if (params?.published_only !== undefined) query.append("published_only", String(params.published_only));
@@ -181,6 +226,23 @@ export const productsApi = {
     return await fetchApi<{ success: boolean; message: string }>(`/products/${productId}/notify`, {
       method: "POST",
       body: JSON.stringify({ email, size }),
+    });
+  },
+
+  async getReviews(productId: string | number): Promise<ProductReview[]> {
+    try {
+      const res = await fetchApi<ProductReview[]>(`/products/${productId}/reviews`);
+      return Array.isArray(res) ? res : [];
+    } catch (err) {
+      console.error(`Failed to fetch reviews for product ${productId}:`, err);
+      return [];
+    }
+  },
+
+  async createReview(productId: string | number, data: { rating: number; comment?: string }): Promise<ProductReview> {
+    return await fetchApi<ProductReview>(`/products/${productId}/reviews`, {
+      method: "POST",
+      body: JSON.stringify(data),
     });
   },
 };
@@ -249,6 +311,15 @@ export const ordersApi = {
     }
   },
 
+  async myOrders(): Promise<OrderItemRecord[]> {
+    try {
+      const res = await fetchApi<OrderItemRecord[]>("/orders/me");
+      return Array.isArray(res) ? res : [];
+    } catch {
+      return [];
+    }
+  },
+
   async updateStatus(id: string | number, status: string): Promise<{ success: boolean }> {
     return await fetchApi<{ success: boolean }>(`/orders/admin/${id}/status`, {
       method: "PUT",
@@ -294,12 +365,10 @@ export const tryonApi = {
     const authHeaders: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
 
     const endpoints = [
-      "http://localhost:8090/api/v1/tryon/",
+      "/api/v1/try-on/",
       "http://localhost:8090/api/v1/try-on/",
-      "http://localhost:8088/api/v1/tryon/",
       "http://localhost:8088/api/v1/try-on/",
       "http://localhost:8000/api/v1/try-on/",
-      "/api/v1/try-on/",
     ];
 
     let lastError: any = null;
@@ -320,12 +389,39 @@ export const tryonApi = {
           if (url.includes("8088")) baseUrl = "http://localhost:8088";
           else if (url.includes("8000")) baseUrl = "http://localhost:8000";
 
-          const imgUrl = data.result_url?.startsWith("http") ? data.result_url : `${baseUrl}${data.result_url || ""}`;
+          const imgUrl = data.result_url?.startsWith("http")
+            ? data.result_url
+            : data.result_url?.startsWith("/")
+            ? data.result_url
+            : `/results/${data.result_url || ""}`;
           return {
             session_id: `ses_${Date.now()}`,
             status: "COMPLETED",
             result_image_url: imgUrl,
           };
+        } else if (res.status === 401 && typeof window !== "undefined" && token) {
+          localStorage.removeItem("vastrax_token");
+          delete authHeaders["Authorization"];
+          const retryRes = await fetch(url, {
+            method: "POST",
+            headers: authHeaders,
+            body: formData,
+          });
+          if (retryRes.ok) {
+            const data = await retryRes.json();
+            const imgUrl = data.result_url?.startsWith("http")
+              ? data.result_url
+              : data.result_url?.startsWith("/")
+              ? data.result_url
+              : `/results/${data.result_url || ""}`;
+            return {
+              session_id: `ses_${Date.now()}`,
+              status: "COMPLETED",
+              result_image_url: imgUrl,
+            };
+          }
+          const errorBody = await retryRes.json().catch(() => ({}));
+          lastError = new Error(errorBody.detail || `Server returned ${retryRes.status}`);
         } else {
           const errorBody = await res.json().catch(() => ({}));
           lastError = new Error(errorBody.detail || `Server returned ${res.status}`);
@@ -350,11 +446,10 @@ export const tryonApi = {
     const authHeaders: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
 
     const endpoints = [
-      "http://localhost:8090/api/v1/try-on/combo",
-      "http://localhost:8090/api/v1/tryon/combo",
-      "http://localhost:8000/api/v1/try-on/combo",
-      "http://localhost:8088/api/v1/tryon/combo",
       "/api/v1/try-on/combo",
+      "http://localhost:8090/api/v1/try-on/combo",
+      "http://localhost:8088/api/v1/try-on/combo",
+      "http://localhost:8000/api/v1/try-on/combo",
     ];
 
     let lastError: any = null;
@@ -371,16 +466,39 @@ export const tryonApi = {
 
         if (res.ok) {
           const data = await res.json();
-          let baseUrl = "http://localhost:8090";
-          if (url.includes("8088")) baseUrl = "http://localhost:8088";
-          else if (url.includes("8000")) baseUrl = "http://localhost:8000";
-
-          const imgUrl = data.result_url?.startsWith("http") ? data.result_url : `${baseUrl}${data.result_url || ""}`;
+          const imgUrl = data.result_url?.startsWith("http")
+            ? data.result_url
+            : data.result_url?.startsWith("/")
+            ? data.result_url
+            : `/results/${data.result_url || ""}`;
           return {
             session_id: `ses_${Date.now()}`,
             status: "COMPLETED",
             result_image_url: imgUrl,
           };
+        } else if (res.status === 401 && typeof window !== "undefined" && token) {
+          localStorage.removeItem("vastrax_token");
+          delete authHeaders["Authorization"];
+          const retryRes = await fetch(url, {
+            method: "POST",
+            headers: authHeaders,
+            body: formData,
+          });
+          if (retryRes.ok) {
+            const data = await retryRes.json();
+            const imgUrl = data.result_url?.startsWith("http")
+              ? data.result_url
+              : data.result_url?.startsWith("/")
+              ? data.result_url
+              : `/results/${data.result_url || ""}`;
+            return {
+              session_id: `ses_${Date.now()}`,
+              status: "COMPLETED",
+              result_image_url: imgUrl,
+            };
+          }
+          const errorBody = await retryRes.json().catch(() => ({}));
+          lastError = new Error(errorBody.detail || `Server returned ${retryRes.status}`);
         } else {
           const errorBody = await res.json().catch(() => ({}));
           lastError = new Error(errorBody.detail || `Server returned ${res.status}`);
@@ -465,9 +583,9 @@ export const settingsApi = {
         storeName: "VASTRAX Luxury Apparel",
         supportEmail: "concierge@vastrax.luxury",
         supportPhone: "+1 (800) 827-8729",
-        currency: "USD ($)",
-        timezone: "UTC-05:00 (Eastern Time)",
-        announcementText: "Complimentary Global Express Delivery on Orders Over $250",
+        currency: "INR (₹)",
+        timezone: "UTC+05:30 (India Standard Time)",
+        announcementText: "Complimentary Global Express Delivery on Orders Over ₹1,999",
         enableGuestCheckout: true,
         enableLowStockAlerts: true,
         lowStockThreshold: 5,

@@ -106,15 +106,22 @@ export default function CheckoutPage() {
   }, []);
 
   const subtotal = items.reduce((acc, item) => acc + item.price * item.quantity, 0);
-  const shippingCost = deliveryMethod === "standard" ? 0 : deliveryMethod === "express" ? 15 : 35;
+  const shippingCost = deliveryMethod === "standard" ? 0 : deliveryMethod === "express" ? 150 : 350;
   const tax = subtotal * 0.08;
   const total = subtotal + shippingCost + tax;
 
   const completeOrder = (orderId: string) => {
     setIsProcessing(false);
     setSimPayment(null);
-    setOrderNumber(orderId.split('-')[0].toUpperCase()); // Short mock order ID
+    const shortId = orderId.split('-')[0].toUpperCase();
+    setOrderNumber(shortId); // Short mock order ID
     setOrderComplete(true);
+
+    // Save order activity flag and ID for AI Stylist & Account
+    try {
+      localStorage.setItem("vastrax_has_placed_order", "true");
+      localStorage.setItem("vastrax_last_order_id", orderId);
+    } catch {}
 
     // Clear cart across application
     clearCart();
@@ -122,7 +129,7 @@ export default function CheckoutPage() {
 
     showToast({
       title: "Order Placed Successfully",
-      description: `Order #${orderId.split('-')[0].toUpperCase()} confirmed. Thank you!`,
+      description: `Order #${shortId} confirmed. Thank you!`,
       type: "success",
       duration: 5000
     });
@@ -380,7 +387,7 @@ export default function CheckoutPage() {
               </div>
               <div className="flex justify-between items-center text-xs">
                 <span className="text-muted-foreground">Total Paid</span>
-                <span className="font-bold text-foreground text-sm">${total.toFixed(2)}</span>
+                <span className="font-bold text-foreground text-sm">₹{total.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
               </div>
             </div>
 
@@ -605,7 +612,7 @@ export default function CheckoutPage() {
                         <p className="text-xs text-muted-foreground">1-2 Business Days · Priority Air Freight</p>
                       </div>
                     </div>
-                    <span className="text-sm font-bold text-foreground">$15.00</span>
+                    <span className="text-sm font-bold text-foreground">₹150.00</span>
                   </label>
 
                   <label 
@@ -630,7 +637,7 @@ export default function CheckoutPage() {
                         <p className="text-xs text-muted-foreground">Same-Day Dedicated Courier with Garment Steaming</p>
                       </div>
                     </div>
-                    <span className="text-sm font-bold text-foreground">$35.00</span>
+                    <span className="text-sm font-bold text-foreground">₹350.00</span>
                   </label>
                 </div>
               </div>
@@ -797,7 +804,7 @@ export default function CheckoutPage() {
                         <h4 className="text-xs font-semibold text-foreground">{item.name}</h4>
                         <p className="text-[11px] text-muted-foreground mt-0.5">{item.color} · {item.size}</p>
                       </div>
-                      <span className="text-xs font-bold text-foreground">${item.price * item.quantity}</span>
+                      <span className="text-xs font-bold text-foreground">₹{(item.price * item.quantity).toLocaleString('en-IN')}</span>
                     </div>
                   ))}
                 </div>
@@ -806,19 +813,19 @@ export default function CheckoutPage() {
                 <div className="space-y-2.5 pt-4 border-t border-border text-xs">
                   <div className="flex justify-between text-muted-foreground">
                     <span>Subtotal</span>
-                    <span className="text-foreground font-medium">${subtotal.toFixed(2)}</span>
+                    <span className="text-foreground font-medium">₹{subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                   </div>
                   <div className="flex justify-between text-muted-foreground">
                     <span>Shipping ({deliveryMethod.toUpperCase()})</span>
-                    <span className="text-foreground font-medium">{shippingCost === 0 ? "Free" : `$${shippingCost.toFixed(2)}`}</span>
+                    <span className="text-foreground font-medium">{shippingCost === 0 ? "Free" : `₹${shippingCost.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}</span>
                   </div>
                   <div className="flex justify-between text-muted-foreground">
                     <span>Estimated Sales Tax (8%)</span>
-                    <span className="text-foreground font-medium">${tax.toFixed(2)}</span>
+                    <span className="text-foreground font-medium">₹{tax.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                   </div>
                   <div className="flex justify-between text-base font-extrabold text-foreground pt-3 border-t border-border">
                     <span>Total Amount</span>
-                    <span className="text-accent">${total.toFixed(2)}</span>
+                    <span className="text-accent">₹{total.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                   </div>
                 </div>
 

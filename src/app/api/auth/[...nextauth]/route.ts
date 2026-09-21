@@ -35,7 +35,13 @@ const handler = NextAuth({
         }
 
         // Direct authentication against FastAPI backend
+        const internalUrl = process.env.INTERNAL_BACKEND_URL
+          ? `${process.env.INTERNAL_BACKEND_URL}/api/v1/auth/login`
+          : "http://backend:8090/api/v1/auth/login";
+
         const backendUrls = [
+          internalUrl,
+          "http://backend:8090/api/v1/auth/login",
           "http://localhost:8090/api/v1/auth/login",
           "http://localhost:8088/api/v1/auth/login",
           "http://localhost:8000/api/v1/auth/login"
@@ -83,6 +89,10 @@ const handler = NextAuth({
       }
       return session;
     }
+  },
+  session: {
+    strategy: "jwt",
+    maxAge: 60 * 60, // 1 hour session expiration
   },
   secret: process.env.NEXTAUTH_SECRET || "placeholder-nextauth-secret",
 });

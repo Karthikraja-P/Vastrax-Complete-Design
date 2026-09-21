@@ -14,10 +14,15 @@ services:
       - FRONTEND_URL=http://localhost:3000
       - RESEND_API_KEY=${RESEND_API_KEY:-}
       - RESEND_FROM_EMAIL=${RESEND_FROM_EMAIL:-noreply@vastrax.ai}
+      - FASHN_TRYON_URL=http://172.17.0.1:8001
+      - SHIPROCKET_EMAIL=${SHIPROCKET_EMAIL:-vastrax.shop@gmail.com}
+      - SHIPROCKET_PASSWORD=${SHIPROCKET_PASSWORD:-Doggie#89}
+      - PICKUP_PINCODE=${PICKUP_PINCODE:-625706}
     volumes:
       - ./backend/vastrax.db:/app/vastrax.db
       - ./backend/user_uploads:/app/user_uploads
       - ./backend/results:/app/results
+      - /home/pkr/fashn-tryon:/home/pkr/fashn-tryon
     healthcheck:
       test: [ "CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health')\" || exit 1" ]
       interval: 10s

@@ -208,7 +208,7 @@ export default function Dashboard() {
                   <div className="h-14 w-44 bg-surface-hover/80 rounded-xl animate-pulse mb-2" />
                 ) : (
                   <div className="flex items-baseline gap-1">
-                    <span className="text-2xl font-medium text-muted-foreground/70">$</span>
+                    <span className="text-2xl font-medium text-muted-foreground/70">₹</span>
                     <span className="text-6xl font-bold tracking-tight">
                       {totalRevenue >= 1000 ? `${(totalRevenue / 1000).toFixed(1)}K` : totalRevenue.toFixed(2)}
                     </span>
@@ -229,7 +229,7 @@ export default function Dashboard() {
                     {loading ? (
                       <div className="h-4 w-12 bg-surface-hover/60 rounded animate-pulse" />
                     ) : (
-                      <p className="text-sm font-bold">${avgOrderValue}</p>
+                      <p className="text-sm font-bold">₹{avgOrderValue}</p>
                     )}
                   </div>
                 </div>
@@ -365,14 +365,14 @@ export default function Dashboard() {
             actionIcon1={<Bell className="w-3.5 h-3.5" />}
             actionIcon2={<Sparkles className="w-3.5 h-3.5" />}
             alertTitle="Weekly Overview"
-            alertContent={`Week-to-date sales total $${totalWeeklySales.toFixed(2)}.`}
+            alertContent={`Week-to-date sales total ₹${totalWeeklySales.toFixed(2)}.`}
             insightTitle="Real-time Tracking"
             insightContent="Daily volume reflects actual sales transactions recorded in PostgreSQL."
             className="h-[200px]"
           >
             <div className="flex items-center justify-between h-full px-4">
               <div className="flex flex-col">
-                <span className="text-3xl font-bold">${totalWeeklySales.toFixed(2)}</span>
+                <span className="text-3xl font-bold">₹{totalWeeklySales.toFixed(2)}</span>
                 <span className="text-xs text-muted-foreground mt-1">Confirmed weekly volume</span>
               </div>
               

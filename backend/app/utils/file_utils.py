@@ -106,9 +106,21 @@ def resolve_garment(garment_path: str) -> tuple[str, bool]:
                 headers={"User-Agent": "VastraX-VTON/1.0"}
             )
             with _pinned_dns(hostname, pinned_ip):
-                with urllib.request.urlopen(req, timeout=10) as response, open(tmp, "wb") as out_file:
-                    out_file.write(response.read(10 * 1024 * 1024))  # 10MB limit
+                with urllib.request.urlopen(req, timeout=10) as response:
+                    status_code = getattr(response, "status", 200)
+                    content_type = response.headers.get("Content-Type", "").lower()
+                    if status_code != 200 or ("image" not in content_type and "octet-stream" not in content_type):
+                        raise BadRequestError(f"URL returned non-image response ({status_code}, {content_type})")
+                    
+                    data = response.read(10 * 1024 * 1024)
+                    # Check magic bytes for JPEG, PNG, or WebP
+                    if not (data.startswith(b"\xff\xd8\xff") or data.startswith(b"\x89PNG") or (data.startswith(b"RIFF") and b"WEBP" in data[:16])):
+                        raise BadRequestError("Downloaded garment file is not a valid image (JPEG/PNG/WebP)")
+
+                    with open(tmp, "wb") as out_file:
+                        out_file.write(data)
         except Exception as exc:
+            try_remove(tmp)
             raise BadRequestError(f"Could not download garment image: {exc}")
         return tmp, True
 

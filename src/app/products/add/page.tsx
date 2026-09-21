@@ -2,15 +2,16 @@
 
 import { useState, useRef, useEffect } from "react";
 import {
-  ArrowLeft, Save, Sparkles, Image as ImageIcon, Box, Shirt, Video, Plus,
+  ArrowLeft, Save, Sparkles, Image as ImageIcon, Box, Plus,
   X as XIcon, Upload, Loader2, Check, RotateCw, Camera, Eye
 } from "lucide-react";
 import Link from "next/link";
 import { clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
-import { AiVideoGenerator } from "@/components/products/AiVideoGenerator";
 import { productsApi, categoriesApi } from "@/lib/api";
 import { useRouter } from "next/navigation";
+import { getSession } from "next-auth/react";
+import { Product3DModal } from "@/components/3d/Product3DModal";
 
 function cn(...inputs: (string | undefined | null | false)[]) {
   return twMerge(clsx(inputs));
@@ -20,8 +21,6 @@ const tabs = [
   { id: "basic", label: "Basic Info" },
   { id: "pricing", label: "Pricing & Inventory" },
   { id: "images", label: "Product Images", icon: ImageIcon },
-  { id: "vto", label: "Virtual Try-On", icon: Shirt, highlight: true },
-  { id: "ai-video", label: "AI Video", icon: Video, highlight: true },
   { id: "3d", label: "3D Product", icon: Box, highlight: true },
 ];
 
@@ -48,6 +47,19 @@ export default function AddProductPage() {
   const [description, setDescription] = useState("");
   const [sku, setSku] = useState("");
   const [categoryId, setCategoryId] = useState("");
+  const [gender, setGender] = useState("Women");
+  const [sizeChart, setSizeChart] = useState<any>({
+    unit: "in",
+    headers: ["Size", "Chest (in)", "Waist (in)", "Hips (in)", "Length (in)"],
+    rows: [
+      { size: "XS", chest: "32-34", waist: "25-26", hips: "35-36", length: "38" },
+      { size: "S", chest: "34-36", waist: "27-28", hips: "37-38", length: "39" },
+      { size: "M", chest: "36-38", waist: "29-30", hips: "39-40", length: "40" },
+      { size: "L", chest: "39-41", waist: "31-33", hips: "41-43", length: "41" },
+      { size: "XL", chest: "42-44", waist: "34-36", hips: "44-46", length: "42" },
+      { size: "XXL", chest: "45-47", waist: "37-39", hips: "47-49", length: "43" }
+    ]
+  });
   const [categories, setCategories] = useState<any[]>([]);
   const [fabric, setFabric] = useState("");
   const [colour, setColour] = useState("");
@@ -73,6 +85,7 @@ export default function AddProductPage() {
   const [backPhoto, setBackPhoto] = useState<ReconstructPhoto>({ file: null, preview: null });
   const [reconstructing, setReconstructing] = useState(false);
   const [reconstructResult, setReconstructResult] = useState<string | null>(null);
+  const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
   const frontRef = useRef<HTMLInputElement>(null);
   const sideRef = useRef<HTMLInputElement>(null);
   const backRef = useRef<HTMLInputElement>(null);
@@ -141,18 +154,42 @@ export default function AddProductPage() {
     setReconstructing(true);
     setReconstructResult(null);
     try {
-      // We need a product ID first — create a draft product if not yet created
-      showToast("Sending photos to Hunyuan 3D reconstruction service…");
+      showToast("Sending photos to 3D garment generator service…");
 
-      // Simulate a delay for the reconstruction process
-      // In production this calls: POST /api/v1/products/{id}/reconstruct
-      await new Promise((r) => setTimeout(r, 3000));
+      const formData = new FormData();
+      formData.append("front_image", frontPhoto.file);
+      if (sidePhoto.file) formData.append("side_image", sidePhoto.file);
+      if (backPhoto.file) formData.append("back_image", backPhoto.file);
 
-      setReconstructResult("reconstruction_complete");
-      showToast("3D model reconstructed successfully! The GLB model is ready.");
+      let token = typeof window !== "undefined" ? localStorage.getItem("vastrax_token") : null;
+      if (!token || token === "null") {
+        try {
+          const session = await getSession();
+          if ((session as any)?.accessToken) {
+            token = (session as any).accessToken;
+          }
+        } catch {}
+      }
+
+      const res = await fetch("/api/v1/3d/generate", {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.detail || errJson.message || "Failed to generate 3D model");
+      }
+
+      const data = await res.json();
+      const generatedModelUrl = data.model_url || "/models/3d/garment_perfect.glb";
+      setModelPath(generatedModelUrl);
+      setReconstructResult(generatedModelUrl);
+      showToast("3D garment model generated successfully!");
     } catch (err: any) {
       console.error(err);
-      showToast("Reconstruction failed.");
+      showToast(`Reconstruction failed: ${err.message || "Server error"}`);
     } finally {
       setReconstructing(false);
     }
@@ -205,6 +242,24 @@ export default function AddProductPage() {
 
     setSaving(true);
     try {
+      // Ensure valid auth token from localStorage or active NextAuth session
+      let token = typeof window !== "undefined" ? localStorage.getItem("vastrax_token") : null;
+      if (!token || token === "null" || token === "undefined") {
+        try {
+          const session = await getSession();
+          if ((session as any)?.accessToken) {
+            token = (session as any).accessToken;
+            localStorage.setItem("vastrax_token", token!);
+          }
+        } catch {}
+      }
+
+      if (!token) {
+        showToast("Authentication required. Please log in with your admin account (admin@vastrax.com).");
+        setSaving(false);
+        return;
+      }
+
       const imageDataUrls: string[] = [];
       for (const img of images) {
         const dataUrl = await new Promise<string>((resolve) => {
@@ -219,6 +274,8 @@ export default function AddProductPage() {
         name: name.trim(),
         description: description.trim(),
         category_id: categoryId || (categories.length > 0 ? String(categories[0].id) : ""),
+        gender: gender || "Women",
+        size_chart: sizeChart,
         fabric: fabric.trim() || undefined,
         colour: colour.trim() || undefined,
         occasion: occasion.trim() || undefined,
@@ -430,7 +487,7 @@ export default function AddProductPage() {
                     className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent focus:ring-1 focus:ring-accent outline-none transition-all text-foreground"
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-3 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-1.5">
                       SKU
@@ -460,6 +517,21 @@ export default function AddProductPage() {
                       {categories.length === 0 && (
                         <option value="">No categories</option>
                       )}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-1.5">
+                      Department / Gender <span className="text-accent">*</span>
+                    </label>
+                    <select
+                      value={gender}
+                      onChange={(e) => setGender(e.target.value)}
+                      className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent focus:ring-1 focus:ring-accent outline-none transition-all appearance-none text-foreground"
+                    >
+                      <option value="Women">Women</option>
+                      <option value="Men">Men</option>
+                      <option value="Kids">Kids</option>
+                      <option value="Unisex">Unisex</option>
                     </select>
                   </div>
                 </div>
@@ -531,25 +603,25 @@ export default function AddProductPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-1.5">
-                      Selling Price ($) <span className="text-accent">*</span>
+                      Selling Price (₹) <span className="text-accent">*</span>
                     </label>
                     <input
                       type="number"
                       value={priceSelling}
                       onChange={(e) => setPriceSelling(e.target.value)}
-                      placeholder="199.00"
+                      placeholder="2499.00"
                       className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent focus:ring-1 focus:ring-accent outline-none transition-all text-foreground"
                     />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-1.5">
-                      MRP / Compare Price ($)
+                      MRP / Compare Price (₹)
                     </label>
                     <input
                       type="number"
                       value={priceMrp}
                       onChange={(e) => setPriceMrp(e.target.value)}
-                      placeholder="299.00"
+                      placeholder="3499.00"
                       className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent focus:ring-1 focus:ring-accent outline-none transition-all text-foreground"
                     />
                   </div>
@@ -812,25 +884,6 @@ export default function AddProductPage() {
             </div>
           )}
 
-          {/* VIRTUAL TRY-ON */}
-          {activeTab === "vto" && (
-            <div className="space-y-6 animate-in fade-in text-center py-20">
-              <Shirt className="w-16 h-16 text-accent/50 mx-auto mb-4" />
-              <h2 className="text-xl font-semibold text-foreground">
-                Virtual Try-On Setup
-              </h2>
-              <p className="text-muted-foreground max-w-md mx-auto">
-                Upload product reference images to enable the Virtual Try-On
-                feature for customers.
-              </p>
-              <button className="mt-6 px-6 py-2 bg-accent text-white rounded-md font-medium hover:bg-accent/90 transition-colors">
-                Enable Feature
-              </button>
-            </div>
-          )}
-
-          {/* AI VIDEO */}
-          {activeTab === "ai-video" && <AiVideoGenerator />}
 
           {/* 3D PRODUCT */}
           {activeTab === "3d" && (
@@ -977,7 +1030,8 @@ export default function AddProductPage() {
                   </p>
                   <button
                     type="button"
-                    className="flex items-center gap-2 px-4 py-2 bg-surface border border-border rounded-lg text-xs font-medium text-foreground hover:bg-surface-hover transition-colors mx-auto"
+                    onClick={() => setIsPreviewModalOpen(true)}
+                    className="flex items-center gap-2 px-5 py-2.5 bg-accent hover:bg-accent/90 text-white rounded-lg text-xs font-semibold transition-all shadow-md mx-auto cursor-pointer"
                   >
                     <Eye className="w-4 h-4" />
                     Preview 3D Model
@@ -988,6 +1042,17 @@ export default function AddProductPage() {
           )}
         </div>
       </div>
+
+      <Product3DModal
+        isOpen={isPreviewModalOpen}
+        onClose={() => setIsPreviewModalOpen(false)}
+        product={{
+          id: "preview",
+          name: name || "Garment 3D Model",
+          price: parseFloat(priceSelling) || 0,
+          model3dUrl: modelPath || "/models/3d/garment_perfect.glb",
+        }}
+      />
     </div>
   );
 }

@@ -6,12 +6,13 @@ import { AuthModal } from "@/components/auth/AuthModal";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { CartDrawer } from "@/components/layout/CartDrawer";
 import { StylistDrawer } from "@/components/stylist/StylistDrawer";
-import { useSession, signOut } from "next-auth/react";
+import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { productsApi, categoriesApi } from "@/lib/api";
 import { useFavorites } from "@/hooks/useFavorites";
 import { getCart } from "@/lib/cart";
 import { showToast } from "@/lib/toast";
+import { performSignOut } from "@/lib/auth-utils";
 
 const defaultCategories = [
   { name: "Dresses", slug: "dresses", image: "https://images.unsplash.com/photo-1572804013309-59a88b7e92f1?q=80&w=600&auto=format&fit=crop" },
@@ -76,34 +77,79 @@ export default function StorefrontHome() {
     }
   }, [session]);
   
-  // Fetch real categories from unified API
+  // Fetch real categories and uploaded products from unified API
   useEffect(() => {
     async function fetchData() {
       try {
-        const cats = await categoriesApi.list();
+        const [cats, prods] = await Promise.all([
+          categoriesApi.list().catch(() => []),
+          productsApi.list().catch(() => [])
+        ]);
+
+        // Helper to extract a valid image url from a product
+        const getProductImage = (p: any) => {
+          if (!p) return null;
+          if (p.image && typeof p.image === 'string' && p.image.trim()) return p.image;
+          if (Array.isArray(p.images) && p.images.length > 0) {
+            const first = p.images[0];
+            if (typeof first === 'string' && first.trim()) return first;
+            if (first && typeof first === 'object' && first.s3_url) return first.s3_url;
+          }
+          return null;
+        };
+
+        // Create category -> latest uploaded product image mapping
+        const catLatestImageMap = new Map<string, string>();
+        if (Array.isArray(prods)) {
+          for (const p of prods) {
+            const img = getProductImage(p);
+            if (img) {
+              const catId = String(p.category_id || p.categoryId || "").toLowerCase();
+              const catName = String((p as any).category?.name || p.category || "").toLowerCase();
+              if (catId && !catLatestImageMap.has(catId)) catLatestImageMap.set(catId, img);
+              if (catName && !catLatestImageMap.has(catName)) catLatestImageMap.set(catName, img);
+            }
+          }
+        }
+
         if (cats && Array.isArray(cats) && cats.length > 0) {
-          const mapped = cats.map((c: any, idx: number) => ({
-            id: String(idx + 1).padStart(2, '0'),
-            name: c.name,
-            title: c.name,
-            slug: c.slug || c.name.toLowerCase().replace(/\s+/g, '-'),
-            image: c.image_url || defaultCategories.find(dc => dc.name.toLowerCase() === c.name.toLowerCase() || dc.slug === c.slug)?.image || "https://images.unsplash.com/photo-1572804013309-59a88b7e92f1?q=80&w=600&auto=format&fit=crop"
-          }));
+          const mapped = cats.map((c: any, idx: number) => {
+            const catId = String(c.id || "").toLowerCase();
+            const catName = String(c.name || "").toLowerCase();
+            const catSlug = String(c.slug || "").toLowerCase();
+
+            // Prioritize explicit category image, then real uploaded product image, then default fallback
+            const realProductImg = catLatestImageMap.get(catId) || catLatestImageMap.get(catName) || catLatestImageMap.get(catSlug);
+            const defaultFallback = defaultCategories.find(dc => dc.name.toLowerCase() === catName || dc.slug === catSlug)?.image || "https://images.unsplash.com/photo-1572804013309-59a88b7e92f1?q=80&w=600&auto=format&fit=crop";
+
+            return {
+              id: String(idx + 1).padStart(2, '0'),
+              name: c.name,
+              title: c.name,
+              slug: c.slug || c.name.toLowerCase().replace(/\s+/g, '-'),
+              image: c.image_url || realProductImg || defaultFallback
+            };
+          });
           setCategories(mapped);
           setCollections(mapped);
         } else {
-          const defaultMapped = defaultCategories.map((c, idx) => ({
-            id: String(idx + 1).padStart(2, '0'),
-            name: c.name,
-            title: c.name,
-            slug: c.slug,
-            image: c.image
-          }));
+          const defaultMapped = defaultCategories.map((c, idx) => {
+            const catSlug = c.slug.toLowerCase();
+            const catName = c.name.toLowerCase();
+            const realProductImg = catLatestImageMap.get(catName) || catLatestImageMap.get(catSlug);
+            return {
+              id: String(idx + 1).padStart(2, '0'),
+              name: c.name,
+              title: c.name,
+              slug: c.slug,
+              image: realProductImg || c.image
+            };
+          });
           setCategories(defaultMapped);
           setCollections(defaultMapped);
         }
       } catch (err) {
-        console.error("Failed to fetch categories:", err);
+        console.error("Failed to fetch categories and products:", err);
       }
     }
     fetchData();
@@ -169,8 +215,9 @@ export default function StorefrontHome() {
           </button>
           <nav className="hidden md:flex items-center gap-8">
             <Link href="/storefront/collections?sort=newest" className="text-lg font-medium hover:text-accent transition-colors">New Arrivals</Link>
-            <Link href="/storefront/collections?category=cat-dresses" className="text-lg font-medium hover:text-accent transition-colors">Women</Link>
-            <Link href="/storefront/collections?category=cat-tops" className="text-lg font-medium hover:text-accent transition-colors">Men</Link>
+            <Link href="/storefront/collections?gender=Women" className="text-lg font-medium hover:text-accent transition-colors">Women</Link>
+            <Link href="/storefront/collections?gender=Men" className="text-lg font-medium hover:text-accent transition-colors">Men</Link>
+            <Link href="/storefront/collections?gender=Kids" className="text-lg font-medium hover:text-accent transition-colors">Kids</Link>
             <Link href="/storefront/collections" className="text-lg font-medium hover:text-accent transition-colors">Collections</Link>
           </nav>
         </div>
@@ -248,13 +295,10 @@ export default function StorefrontHome() {
                       </Link>
                       <button 
                         onClick={() => { 
-                          if (session) {
-                            signOut();
-                          } else {
-                            setIsLoggedIn(false); 
-                            setUserName(""); 
-                          }
+                          setIsLoggedIn(false); 
+                          setUserName(""); 
                           setIsUserMenuOpen(false); 
+                          performSignOut("/storefront/home");
                         }}
                         className="w-full text-left px-4 py-3 text-sm font-medium text-red-500 hover:bg-surface transition-colors"
                       >
@@ -359,7 +403,7 @@ export default function StorefrontHome() {
               className="flex gap-4 md:gap-8 overflow-x-auto pb-6 snap-x snap-mandatory [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
             >
               {categories.map((cat, idx) => (
-                <a key={idx} href="/storefront/collections" className="flex-shrink-0 w-52 md:w-[280px] snap-start group">
+                <Link key={idx} href={`/storefront/collections?category=${encodeURIComponent(cat.name)}`} className="flex-shrink-0 w-52 md:w-[280px] snap-start group">
                   <div className="bg-background rounded-2xl md:rounded-3xl p-5 md:p-8 shadow-sm border border-border/30 h-72 md:h-[360px] flex flex-col items-center justify-between transition-transform duration-300 group-hover:-translate-y-2 group-hover:shadow-md">
                     <div className="flex-1 w-full relative flex items-center justify-center overflow-hidden rounded-xl mb-4 md:mb-6">
                       <img 
@@ -370,7 +414,7 @@ export default function StorefrontHome() {
                     </div>
                     <h3 className="text-sm md:text-base font-semibold text-foreground text-center">{cat.name}</h3>
                   </div>
-                </a>
+                </Link>
               ))}
             </div>
 

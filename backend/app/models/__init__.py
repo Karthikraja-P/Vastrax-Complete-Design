@@ -14,6 +14,7 @@ from .chat_message import ChatMessage
 from .support_ticket import SupportTicket
 
 from .stock_notification import StockNotification
+from .review import ProductReview
 
 __all__ = [
     "User",
@@ -31,5 +32,6 @@ __all__ = [
     "ChatMessage",
     "SupportTicket",
     "StockNotification",
+    "ProductReview",
 ]
 

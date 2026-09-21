@@ -1,16 +1,17 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
   Sparkles, X, Send, Bot, User, ArrowRight, 
-  Shirt, RefreshCcw, Loader2, CheckCircle2, MessageSquare, Heart, ShoppingBag, Eye
+  Shirt, RefreshCcw, Loader2, CheckCircle2, MessageSquare, Heart, ShoppingBag, Eye,
+  ChevronDown, ChevronRight
 } from "lucide-react";
-import { chatApi, tryonApi } from "@/lib/api";
+import { chatApi, tryonApi, ordersApi } from "@/lib/api";
 import { useRouter, usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useFavorites } from "@/hooks/useFavorites";
-import { addToCart as addCartItem } from "@/lib/cart";
+import { addToCart as addCartItem, getCart } from "@/lib/cart";
 import { showToast } from "@/lib/toast";
 
 interface Message {
@@ -34,22 +35,82 @@ interface Message {
   isEscalated?: boolean;
 }
 
-const initialMessages: Message[] = [
-  {
-    id: "m-1",
-    sender: "stylist",
-    text: "Hi there! I'm your VASTRAX AI Concierge & Stylist. How can I help you find the perfect outfit or assist with your orders today?",
-    timestamp: "Just now",
-    chips: ["Where is my order?", "Wedding / Festive", "Current Offers", "Return Policy"]
-  }
-];
+interface ActivitySuggestions {
+  greeting: string;
+  chips: string[];
+  prompts: string[];
+}
 
-const samplePrompts = [
-  "Where is my order?",
-  "What active discounts do you have?",
-  "What is your return & exchange policy?",
-  "Curate a minimalist evening gala outfit"
-];
+function getSuggestionsForActivity(
+  pathname: string,
+  hasOrders: boolean,
+  hasCartItems: boolean,
+  favoritesCount: number
+): ActivitySuggestions {
+  const isProductPage = pathname === "/storefront/product" || (pathname?.startsWith("/storefront/product") && !pathname?.includes("/tryon"));
+  const isTryonPage = pathname?.includes("/tryon");
+  const isCartPage = pathname?.includes("/cart") || pathname?.includes("/checkout");
+
+  let greeting = "Hi there! I'm your VASTRAX AI Stylist. How can I assist your styling journey today?";
+  const chips: string[] = [];
+  const prompts: string[] = [];
+
+  // 1. Order Activity: ONLY show order tracking if user has actually placed an order!
+  if (hasOrders) {
+    chips.push("Track my order");
+    prompts.push("Where is my order?");
+  }
+
+  // 2. Page / Browsing Activity
+  if (isProductPage) {
+    greeting = "Admiring this piece? I can suggest matching pairings, help with sizing, or prepare it for your AI Fitting Room.";
+    chips.push("How to style this piece", "What size fits me?", "Try this on");
+    prompts.push("What accessories or bottoms pair with this?", "Is this true to size?");
+  } else if (isTryonPage) {
+    greeting = "Welcome to the AI Fitting Room! Would you like tips for the best try-on fit or alternative pieces to style?";
+    chips.push("Virtual Try-On Tips", "Find matching pieces", "Size & fit guide");
+    prompts.push("Recommend another outfit to try on", "How do I get the best fitting result?");
+  } else if (isCartPage) {
+    greeting = "Reviewing your shopping bag? I can verify active promotions or suggest finishing touches.";
+    chips.push("Current offers", "Pair with accessories");
+    prompts.push("What active discount codes are available?", "Recommend matching pieces for my bag");
+  } else {
+    // Collections or Home page: Multi-Occasion Carousel
+    chips.push(
+      "Wedding / Festive",
+      "Office Wear",
+      "Casual / Everyday",
+      "Trending Looks",
+      "Party / Night Out",
+      "Resort / Vacation"
+    );
+    prompts.push(
+      "Curate an office capsule look",
+      "Wedding guest outfit ideas",
+      "Trending pieces this week",
+      "Relaxed weekend casual styling"
+    );
+  }
+
+  // 3. Cart Activity
+  if (hasCartItems && !isCartPage) {
+    if (!chips.includes("Complete my look")) {
+      chips.unshift("Complete my look");
+    }
+    prompts.push("Suggest accessories to complete my cart items");
+  }
+
+  // 4. Favorites Activity
+  if (favoritesCount > 0) {
+    prompts.push("How should I style my saved favorites?");
+  }
+
+  return {
+    greeting,
+    chips: Array.from(new Set(chips)).slice(0, 8),
+    prompts: Array.from(new Set(prompts)).slice(0, 6)
+  };
+}
 
 function parseTagsFromReply(rawText: string) {
   let cleanText = rawText;
@@ -72,22 +133,49 @@ function parseTagsFromReply(rawText: string) {
 }
 
 interface StylistDrawerProps {
-  isOpen: boolean;
-  onClose: () => void;
+  isOpen?: boolean;
+  onClose?: () => void;
 }
 
-export function StylistDrawer({ isOpen, onClose }: StylistDrawerProps) {
-  const [messages, setMessages] = useState<Message[]>(initialMessages);
+export function StylistDrawer({ isOpen: externalIsOpen, onClose: externalOnClose }: StylistDrawerProps) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isOpen = externalIsOpen !== undefined ? (externalIsOpen || internalOpen) : internalOpen;
+
+  const handleClose = () => {
+    setInternalOpen(false);
+    externalOnClose?.();
+  };
+
+  useEffect(() => {
+    const handleOpen = () => setInternalOpen(true);
+    window.addEventListener("open-stylist", handleOpen);
+    return () => window.removeEventListener("open-stylist", handleOpen);
+  }, []);
+
+  const router = useRouter();
+  const pathname = usePathname();
+  const { data: session } = useSession();
+  const { isFavorite, toggleFavorite, favorites } = useFavorites();
+
+  const [hasOrders, setHasOrders] = useState(false);
+  const [activePrompts, setActivePrompts] = useState<string[]>([]);
+  const [showInspiration, setShowInspiration] = useState(false);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [sessionId, setSessionId] = useState<string>("");
   const [addedToCart, setAddedToCart] = useState<string[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const router = useRouter();
-  const pathname = usePathname();
-  const { data: session } = useSession();
-  
-  const { isFavorite, toggleFavorite } = useFavorites();
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      const timer = setTimeout(() => {
+        inputRef.current?.focus();
+      }, 250);
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen]);
 
   const handleAddToCart = (product: any) => {
     const pId = product.id || product.name;
@@ -118,6 +206,32 @@ export function StylistDrawer({ isOpen, onClose }: StylistDrawerProps) {
       duration: 3000
     });
   };
+
+  // Activity-based context computation
+  useEffect(() => {
+    let orderPlaced = false;
+    if (typeof window !== "undefined") {
+      orderPlaced = localStorage.getItem("vastrax_has_placed_order") === "true" || !!localStorage.getItem("vastrax_last_order_id");
+    }
+
+    if (!orderPlaced && session?.user) {
+      ordersApi.myOrders().then(ords => {
+        if (ords && ords.length > 0) {
+          setHasOrders(true);
+        }
+      }).catch(() => {});
+    } else {
+      setHasOrders(orderPlaced);
+    }
+  }, [isOpen, session]);
+
+  // Update active prompts based on activity or route changes
+  useEffect(() => {
+    const cartHasItems = getCart().length > 0;
+    const favsCount = favorites?.length || 0;
+    const suggestions = getSuggestionsForActivity(pathname, hasOrders, cartHasItems, favsCount);
+    setActivePrompts(suggestions.prompts);
+  }, [isOpen, pathname, hasOrders, favorites]);
 
   // Initialize or load session & history
   useEffect(() => {
@@ -219,7 +333,8 @@ export function StylistDrawer({ isOpen, onClose }: StylistDrawerProps) {
       const newSid = `ses_${Math.random().toString(36).substring(2, 11)}_${Date.now()}`;
       localStorage.setItem("vastrax_stylist_session_id", newSid);
       setSessionId(newSid);
-      setMessages(initialMessages);
+      setMessages([]);
+      setShowInspiration(false);
     }
   };
 
@@ -233,7 +348,7 @@ export function StylistDrawer({ isOpen, onClose }: StylistDrawerProps) {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              onClick={onClose}
+              onClick={handleClose}
               className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 transition-opacity"
             />
 
@@ -256,7 +371,6 @@ export function StylistDrawer({ isOpen, onClose }: StylistDrawerProps) {
                       VASTRAX AI Stylist
                       <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                     </h3>
-                    <p className="text-[11px] text-muted-foreground">GPT-4o mini Haute Couture Concierge</p>
                   </div>
                 </div>
 
@@ -269,7 +383,7 @@ export function StylistDrawer({ isOpen, onClose }: StylistDrawerProps) {
                     <RefreshCcw className="w-4 h-4" />
                   </button>
                   <button 
-                    onClick={onClose}
+                    onClick={handleClose}
                     className="p-2 rounded-full hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
                   >
                     <X className="w-4 h-4" />
@@ -278,7 +392,51 @@ export function StylistDrawer({ isOpen, onClose }: StylistDrawerProps) {
               </div>
 
               {/* Message Flow */}
-              <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              <div className="flex-1 overflow-y-auto p-6 space-y-6 flex flex-col">
+                {/* Warm Luxury Welcome Canvas (Customer First) */}
+                {messages.length === 0 && (
+                  <div className="flex flex-col items-center justify-center text-center py-10 px-3 my-auto animate-in fade-in duration-300">
+                    <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-accent/20 to-[#e2733d]/20 border border-accent/30 flex items-center justify-center mb-4 shadow-[0_0_20px_rgba(224,122,63,0.2)]">
+                      <Sparkles className="w-7 h-7 text-accent" />
+                    </div>
+                    <h4 className="text-base md:text-lg font-bold text-foreground tracking-tight mb-2">
+                      Meet Vastra, Your AI Stylist
+                    </h4>
+                    <p className="text-xs text-muted-foreground max-w-sm leading-relaxed mb-6">
+                      Tell me what look, celebration, or styling advice you have in mind. I tailor recommendations to your complexion, silhouette, and live boutique inventory.
+                    </p>
+
+                    {/* Collapsible Inspiration Quick-Starters (Option 2 & 3 Hybrid) */}
+                    <div className="w-full max-w-sm">
+                      <button
+                        type="button"
+                        onClick={() => setShowInspiration(prev => !prev)}
+                        className="w-full py-2.5 px-4 rounded-xl border border-border bg-surface/80 hover:bg-surface text-xs text-foreground/90 flex items-center justify-between transition-colors cursor-pointer shadow-sm"
+                      >
+                        <span className="flex items-center gap-2 font-medium text-accent">
+                          <Sparkles className="w-3.5 h-3.5" /> Need inspiration?
+                        </span>
+                        <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform duration-200 ${showInspiration ? "rotate-180" : ""}`} />
+                      </button>
+
+                      {showInspiration && (
+                        <div className="grid grid-cols-1 gap-1.5 pt-2 pb-1 animate-in fade-in slide-in-from-top-1 duration-200">
+                          {activePrompts.map((prompt, i) => (
+                            <button
+                              key={i}
+                              onClick={() => handleSend(prompt)}
+                              className="text-left px-3.5 py-2 rounded-xl bg-surface border border-border/80 hover:border-accent/40 text-xs text-foreground hover:text-accent transition-all cursor-pointer shadow-sm hover:scale-[1.01] flex items-center justify-between group"
+                            >
+                              <span>{prompt}</span>
+                              <ChevronRight className="w-3 h-3 text-muted-foreground group-hover:text-accent group-hover:translate-x-0.5 transition-all" />
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 {messages.map((msg) => (
                   <div 
                     key={msg.id}
@@ -343,8 +501,8 @@ export function StylistDrawer({ isOpen, onClose }: StylistDrawerProps) {
                                   <div 
                                     className="aspect-square rounded-lg overflow-hidden bg-muted mb-2 relative cursor-pointer"
                                     onClick={() => {
-                                      router.push(`/storefront/product/${p.id || 1}`);
-                                      onClose();
+                                      router.push(`/storefront/product?id=${p.id || 1}`);
+                                      handleClose();
                                     }}
                                     title="View Details"
                                   >
@@ -353,13 +511,13 @@ export function StylistDrawer({ isOpen, onClose }: StylistDrawerProps) {
                                   <h5 
                                     className="text-xs font-semibold text-foreground truncate cursor-pointer hover:text-accent transition-colors"
                                     onClick={() => {
-                                      router.push(`/storefront/product/${p.id || 1}`);
-                                      onClose();
+                                      router.push(`/storefront/product?id=${p.id || 1}`);
+                                      handleClose();
                                     }}
                                   >
                                     {p.name}
                                   </h5>
-                                  <p className="text-[11px] text-accent font-bold mt-0.5">{p.price}</p>
+                                  <p className="text-[11px] text-accent font-bold mt-0.5">{String(p.price).startsWith('₹') ? p.price : `₹${String(p.price).replace(/^\$/, '')}`}</p>
                                   <div className="mt-2 flex items-center justify-between gap-1.5">
                                     <button 
                                       onClick={() => toggleFavorite(p.id || p.name)}
@@ -384,7 +542,7 @@ export function StylistDrawer({ isOpen, onClose }: StylistDrawerProps) {
                                     <button 
                                       onClick={() => {
                                         router.push(`/storefront/product/${p.id || 1}/tryon`);
-                                        onClose();
+                                        handleClose();
                                       }}
                                       className="flex-1 py-1.5 rounded bg-accent/15 hover:bg-accent text-accent hover:text-accent-foreground transition-colors flex items-center justify-center cursor-pointer"
                                       title="Try On"
@@ -393,8 +551,8 @@ export function StylistDrawer({ isOpen, onClose }: StylistDrawerProps) {
                                     </button>
                                     <button 
                                       onClick={() => {
-                                        router.push(`/storefront/product/${p.id || 1}`);
-                                        onClose();
+                                        router.push(`/storefront/product?id=${p.id || 1}`);
+                                        handleClose();
                                       }}
                                       className="flex-1 py-1.5 rounded bg-surface-hover hover:bg-muted text-muted-foreground hover:text-foreground transition-colors flex items-center justify-center cursor-pointer"
                                       title="View Details"
@@ -421,19 +579,6 @@ export function StylistDrawer({ isOpen, onClose }: StylistDrawerProps) {
                 <div ref={messagesEndRef} />
               </div>
 
-              {/* Sample Prompts */}
-              <div className="px-6 py-2 border-t border-border bg-surface overflow-x-auto whitespace-nowrap scrollbar-none flex gap-2">
-                {samplePrompts.map((prompt, i) => (
-                  <button
-                    key={i}
-                    onClick={() => handleSend(prompt)}
-                    className="px-3 py-1 rounded-full bg-muted hover:bg-surface-hover text-[11px] text-muted-foreground transition-colors border border-border shrink-0"
-                  >
-                    {prompt}
-                  </button>
-                ))}
-              </div>
-
               {/* Input Bar */}
               <div className="p-4 border-t border-border bg-surface">
                 <form 
@@ -444,6 +589,7 @@ export function StylistDrawer({ isOpen, onClose }: StylistDrawerProps) {
                   className="flex items-center gap-2 bg-background border border-border rounded-full px-4 py-2 focus-within:border-accent transition-colors"
                 >
                   <input 
+                    ref={inputRef}
                     type="text"
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
@@ -470,13 +616,14 @@ export function StylistDrawer({ isOpen, onClose }: StylistDrawerProps) {
           initial={{ scale: 0 }}
           animate={{ scale: 1 }}
           onClick={() => {
+            setInternalOpen(true);
             const ev = new CustomEvent("open-stylist");
             window.dispatchEvent(ev);
           }}
-          className="fixed bottom-6 right-6 z-40 px-4 py-3 rounded-full bg-gradient-to-r from-accent to-[#e2733d] text-accent-foreground font-medium text-xs uppercase tracking-wider flex items-center gap-2 shadow-[0_0_25px_rgba(224,122,63,0.5)] hover:scale-105 transition-all"
+          className="fixed bottom-6 right-6 z-40 px-4 py-3 rounded-full bg-gradient-to-r from-accent to-[#e2733d] text-accent-foreground font-medium text-xs uppercase tracking-wider flex items-center gap-2 shadow-[0_0_25px_rgba(224,122,63,0.5)] hover:scale-105 transition-all cursor-pointer"
         >
           <Sparkles className="w-4 h-4" />
-          <span>Stylist Concierge</span>
+          <span>AI Stylist</span>
         </motion.button>
       )}
 

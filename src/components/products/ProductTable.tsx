@@ -78,7 +78,7 @@ export function ProductTable() {
                     </div>
                   </td>
                   <td className="px-6 py-4 text-muted-foreground">{product.category || "Apparel"}</td>
-                  <td className="px-6 py-4 text-foreground font-medium">${typeof product.price === 'number' ? product.price.toFixed(2) : product.price}</td>
+                  <td className="px-6 py-4 text-foreground font-medium">{typeof product.price === 'number' ? `₹${product.price.toFixed(2)}` : (String(product.price).startsWith('₹') ? product.price : `₹${String(product.price).replace(/^\$/, '')}`)}</td>
                   <td className="px-6 py-4">
                     <span className={(product.stock || product.inventoryCount || 0) < 20 ? "text-amber-500 font-medium" : "text-foreground"}>
                       {product.stock || product.inventoryCount || 0} in stock

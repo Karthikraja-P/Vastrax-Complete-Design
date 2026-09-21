@@ -17,7 +17,7 @@ import { StylistDrawer } from "@/components/stylist/StylistDrawer";
 import { GarmentViewer3D } from "@/components/3d/GarmentViewer3D";
 import { Product3DModal } from "@/components/3d/Product3DModal";
 
-import { productsApi } from "@/lib/api";
+import { productsApi, ProductReview } from "@/lib/api";
 import { addToCart as addCartItem, getCart } from "@/lib/cart";
 import { showToast } from "@/lib/toast";
 
@@ -67,10 +67,12 @@ function ProductContent() {
     image: string;
     images: string[];
     rating: number;
+    ratingCount?: number;
     reviewsCount: number;
     model3dUrl?: string;
     model_path?: string;
     stock?: number;
+    size_chart?: any;
     variants?: any[];
   }>({
     id: "vtx-default",
@@ -87,6 +89,8 @@ function ProductContent() {
     reviewsCount: 12,
     model3dUrl: "/models/3d/garment2_textured.glb"
   });
+
+  const [sizeChartUnit, setSizeChartUnit] = useState<"in" | "cm">("in");
 
   const getFallbackImage = (name: string, catName: string) => {
     const p = (name + " " + catName).toLowerCase();
@@ -156,6 +160,7 @@ function ProductContent() {
               reviewsCount: item.reviewsCount || 9,
               model3dUrl: modelUrl,
               stock: item.stock ?? item.inventoryCount ?? 10,
+              size_chart: item.size_chart,
               variants: item.variants || []
             });
             if (item.colour) setActiveColor(item.colour);
@@ -187,11 +192,13 @@ function ProductContent() {
             colour: item.colour || "Onyx Black",
             image: img,
             images: allImgs,
-            rating: item.rating || 4.9,
-            reviewsCount: item.reviewsCount || 14,
+            rating: Number(item.rating_average || item.rating || 4.9),
+            ratingCount: Number(item.rating_count || item.reviewsCount || 14),
+            reviewsCount: Number(item.rating_count || item.reviewsCount || 14),
             model3dUrl: modelUrl,
             model_path: item.model_path,
             stock: item.stock ?? item.inventoryCount ?? 10,
+            size_chart: item.size_chart,
             variants: item.variants || []
           });
           if (item.colour) setActiveColor(item.colour);
@@ -202,6 +209,64 @@ function ProductContent() {
     }
     loadProduct();
   }, [productId]);
+
+  const [reviewsList, setReviewsList] = useState<ProductReview[]>([]);
+  const [newRating, setNewRating] = useState(5);
+  const [newComment, setNewComment] = useState("");
+  const [isSubmittingReview, setIsSubmittingReview] = useState(false);
+
+  const loadReviews = async () => {
+    if (!productId) return;
+    const revs = await productsApi.getReviews(productId);
+    setReviewsList(revs);
+  };
+
+  useEffect(() => {
+    loadReviews();
+  }, [productId]);
+
+  const handleReviewSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!session) {
+      setAuthMode("signin");
+      setIsAuthOpen(true);
+      return;
+    }
+    if (isSubmittingReview) return;
+    setIsSubmittingReview(true);
+    try {
+      await productsApi.createReview(product.id, { rating: newRating, comment: newComment });
+      showToast({
+        title: "Review Submitted",
+        description: "Thank you for your rating! Your review is now live.",
+        type: "gold",
+      });
+      setNewComment("");
+      
+      // Refresh product details & reviews list to update dynamic rating average
+      const [item, revs] = await Promise.all([
+        productsApi.getById(product.id),
+        productsApi.getReviews(product.id)
+      ]);
+      if (item) {
+        setProduct((prev) => ({
+          ...prev,
+          rating: Number(item.rating_average || item.rating || prev.rating),
+          ratingCount: Number(item.rating_count || revs.length),
+          reviewsCount: Number(item.rating_count || revs.length),
+        }));
+      }
+      setReviewsList(revs);
+    } catch (err: any) {
+      showToast({
+        title: "Submission Failed",
+        description: err?.message || "Could not submit review. Please try again.",
+        type: "error",
+      });
+    } finally {
+      setIsSubmittingReview(false);
+    }
+  };
 
   useEffect(() => {
     if (session?.user?.name) {
@@ -371,10 +436,11 @@ function ProductContent() {
             <Menu className="w-5 h-5 sm:w-6 sm:h-6" />
           </button>
           <nav className="hidden md:flex items-center gap-8">
-            <a href="#" className="text-lg font-medium hover:text-[#e07a3f] transition-colors">New Arrivals</a>
-            <a href="#" className="text-lg font-medium hover:text-[#e07a3f] transition-colors">Women</a>
-            <a href="#" className="text-lg font-medium hover:text-[#e07a3f] transition-colors">Men</a>
-            <a href="/storefront/collections" className="text-lg font-medium hover:text-[#e07a3f] transition-colors">Collections</a>
+            <Link href="/storefront/collections?sort=newest" className="text-lg font-medium hover:text-[#e07a3f] transition-colors">New Arrivals</Link>
+            <Link href="/storefront/collections?gender=Women" className="text-lg font-medium hover:text-[#e07a3f] transition-colors">Women</Link>
+            <Link href="/storefront/collections?gender=Men" className="text-lg font-medium hover:text-[#e07a3f] transition-colors">Men</Link>
+            <Link href="/storefront/collections?gender=Kids" className="text-lg font-medium hover:text-[#e07a3f] transition-colors">Kids</Link>
+            <Link href="/storefront/collections" className="text-lg font-medium hover:text-[#e07a3f] transition-colors">Collections</Link>
           </nav>
         </div>
         
@@ -553,7 +619,8 @@ function ProductContent() {
                     <Star className="w-4 h-4 fill-current" />
                     <Star className="w-4 h-4 fill-current" />
                   </div>
-                  <span className="text-xs text-foreground/50">({product.reviewsCount} Reviews)</span>
+                  <span className="text-xs font-bold text-foreground">{product.rating} / 5.0</span>
+                  <span className="text-xs text-foreground/50">({product.ratingCount || product.reviewsCount} Reviews)</span>
                 </div>
 
                 <div className="w-full h-[1px] bg-border/50 mb-6" />
@@ -572,7 +639,22 @@ function ProductContent() {
 
                 {/* Size Selector */}
                 <div className="mb-8">
-                  <div className="text-sm font-bold mb-3 text-foreground">Select Size</div>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="text-sm font-bold text-foreground">Select Size</div>
+                    <button 
+                      type="button"
+                      onClick={() => {
+                        setActiveTab('Size Chart');
+                        setTimeout(() => {
+                          document.getElementById('size-chart-section')?.scrollIntoView({ behavior: 'smooth' });
+                        }, 50);
+                      }} 
+                      className="text-xs font-semibold text-[#e07a3f] hover:underline flex items-center gap-1.5 cursor-pointer bg-[#e07a3f]/10 px-3 py-1 rounded-full border border-[#e07a3f]/20 transition-all hover:bg-[#e07a3f]/20"
+                    >
+                      <Ruler className="w-3.5 h-3.5" />
+                      <span>Not sure about fit? Look into Size Chart</span>
+                    </button>
+                  </div>
                   <div className="flex items-center gap-2">
                     {["S", "M", "L", "XL", "XXL"].map((sz) => {
                       const szVar = product.variants?.find(
@@ -731,12 +813,12 @@ function ProductContent() {
 
             {/* Tabs Section */}
             <div className="mt-16 border-t border-border/50 pt-8">
-              <div className="flex items-center gap-8 border-b border-border/50 mb-8 px-2">
-                {['Description', 'Specifications', 'Reviews'].map(tab => (
+              <div className="flex items-center gap-8 border-b border-border/50 mb-8 px-2 overflow-x-auto">
+                {['Description', 'Size Chart', 'Specifications', 'Reviews'].map(tab => (
                   <button
                     key={tab}
                     onClick={() => setActiveTab(tab)}
-                    className={`pb-4 text-sm font-medium relative transition-colors ${activeTab === tab ? 'text-foreground' : 'text-foreground/40 hover:text-foreground/70'}`}
+                    className={`pb-4 text-sm font-medium relative transition-colors shrink-0 ${activeTab === tab ? 'text-foreground font-bold' : 'text-foreground/40 hover:text-foreground/70'}`}
                   >
                     {tab}
                     {activeTab === tab && (
@@ -753,6 +835,102 @@ function ProductContent() {
                 </div>
               )}
 
+              {activeTab === 'Size Chart' && (
+                <div id="size-chart-section" className="px-2 max-w-4xl space-y-6 pb-8 text-foreground animate-in fade-in">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/50 pb-4">
+                    <div>
+                      <h3 className="text-xl font-bold flex items-center gap-2">
+                        <Ruler className="w-5 h-5 text-[#e07a3f]" />
+                        <span>Garment Size Chart & Measurement Guide</span>
+                      </h3>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Displaying measurements in {sizeChartUnit === 'in' ? 'Inches (in)' : 'Centimeters (cm)'}. Match with your body measurements for optimum comfort.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1 bg-surface border border-border p-1 rounded-full">
+                      <button
+                        type="button"
+                        onClick={() => setSizeChartUnit('in')}
+                        className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${sizeChartUnit === 'in' ? 'bg-[#e07a3f] text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                      >
+                        Inches (in)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSizeChartUnit('cm')}
+                        className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${sizeChartUnit === 'cm' ? 'bg-[#e07a3f] text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                      >
+                        CM (cm)
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Size Chart Table */}
+                  <div className="overflow-x-auto border border-border rounded-2xl bg-surface/50 p-4 shadow-sm">
+                    {(() => {
+                      const activeSizeChart = product.size_chart || {
+                        unit: "in",
+                        headers: ["Size", "Chest (in)", "Waist (in)", "Hips (in)", "Length (in)"],
+                        rows: [
+                          { size: "XS", chest: "32 - 34", waist: "25 - 26", hips: "35 - 36", length: "38" },
+                          { size: "S", chest: "34 - 36", waist: "27 - 28", hips: "37 - 38", length: "39" },
+                          { size: "M", chest: "36 - 38", waist: "29 - 30", hips: "39 - 40", length: "40" },
+                          { size: "L", chest: "39 - 41", waist: "31 - 33", hips: "41 - 43", length: "41" },
+                          { size: "XL", chest: "42 - 44", waist: "34 - 36", hips: "44 - 46", length: "42" },
+                          { size: "XXL", chest: "45 - 47", waist: "37 - 39", hips: "47 - 49", length: "43" }
+                        ]
+                      };
+                      return (
+                        <table className="w-full text-sm text-left border-collapse">
+                          <thead>
+                            <tr className="border-b border-border text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                              {activeSizeChart.headers?.map((h: string, idx: number) => (
+                                <th key={idx} className="py-3 px-4">{sizeChartUnit === 'cm' ? h.replace('(in)', '(cm)') : h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-border/40">
+                            {activeSizeChart.rows?.map((row: any, rIdx: number) => (
+                              <tr key={rIdx} className={`hover:bg-[#e07a3f]/5 transition-colors ${activeSize === row.size ? 'bg-[#e07a3f]/15 font-bold' : ''}`}>
+                                <td className="py-3 px-4 text-[#e07a3f] font-bold">{row.size}</td>
+                                {Object.keys(row).filter(k => k !== 'size').map((k, cIdx) => {
+                                  let val = row[k];
+                                  if (sizeChartUnit === 'cm' && typeof val === 'string' && val.includes('-')) {
+                                    const parts = val.split('-').map(p => Math.round(parseFloat(p.trim()) * 2.54));
+                                    val = `${parts[0]} - ${parts[1]}`;
+                                  } else if (sizeChartUnit === 'cm' && !isNaN(parseFloat(val))) {
+                                    val = `${Math.round(parseFloat(val) * 2.54)}`;
+                                  }
+                                  return (
+                                    <td key={cIdx} className="py-3 px-4 text-foreground/90">{val}</td>
+                                  );
+                                })}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      );
+                    })()}
+                  </div>
+
+                  {/* Measurement Instructions */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+                    <div className="p-4 rounded-xl bg-surface border border-border space-y-1">
+                      <h4 className="text-xs font-bold text-[#e07a3f] uppercase tracking-wider">1. Bust / Chest</h4>
+                      <p className="text-xs text-muted-foreground">Measure under arms around the fullest part of your chest line.</p>
+                    </div>
+                    <div className="p-4 rounded-xl bg-surface border border-border space-y-1">
+                      <h4 className="text-xs font-bold text-[#e07a3f] uppercase tracking-wider">2. Waist</h4>
+                      <p className="text-xs text-muted-foreground">Measure around your natural waistline, keeping tape comfortably snug.</p>
+                    </div>
+                    <div className="p-4 rounded-xl bg-surface border border-border space-y-1">
+                      <h4 className="text-xs font-bold text-[#e07a3f] uppercase tracking-wider">3. Hips</h4>
+                      <p className="text-xs text-muted-foreground">Stand with feet together and measure around the fullest hip curve.</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {activeTab === 'Specifications' && (
                 <div className="px-2 max-w-4xl space-y-3 pb-8 text-sm">
                   <div className="grid grid-cols-2 max-w-md gap-2">
@@ -762,6 +940,112 @@ function ProductContent() {
                     <span className="font-semibold">{product.colour}</span>
                     <span className="text-muted-foreground">Category:</span>
                     <span className="font-semibold">{product.categoryName}</span>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'Reviews' && (
+                <div className="px-2 max-w-4xl space-y-8 pb-12">
+                  {/* Rating Summary Header */}
+                  <div className="bg-surface border border-border/50 rounded-2xl p-6 flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-sm">
+                    <div className="flex items-center gap-6">
+                      <div className="text-center bg-background/50 border border-border/50 rounded-xl px-6 py-4">
+                        <span className="text-4xl font-extrabold text-foreground">{product.rating}</span>
+                        <div className="flex text-[#e07a3f] justify-center mt-1">
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <Star
+                              key={star}
+                              className={`w-3.5 h-3.5 ${star <= Math.round(product.rating) ? 'fill-current text-[#e07a3f]' : 'text-muted-foreground/30'}`}
+                            />
+                          ))}
+                        </div>
+                        <span className="text-[10px] text-muted-foreground mt-1 block">out of 5.0</span>
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-bold text-foreground">Customer Reviews & Ratings</h3>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Calculated dynamically from {reviewsList.length || product.reviewsCount} verified customer ratings
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Write a Review Form */}
+                  <form onSubmit={handleReviewSubmit} className="bg-surface border border-border/50 rounded-2xl p-6 space-y-4 shadow-sm">
+                    <h4 className="text-sm font-bold uppercase tracking-wider text-foreground">Write a Customer Review</h4>
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs text-muted-foreground font-medium">Your Rating:</span>
+                      <div className="flex items-center gap-1">
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <button
+                            key={star}
+                            type="button"
+                            onClick={() => setNewRating(star)}
+                            className="p-1 focus:outline-none hover:scale-110 transition-transform"
+                          >
+                            <Star className={`w-5 h-5 ${star <= newRating ? 'fill-[#e07a3f] text-[#e07a3f]' : 'text-muted-foreground/40'}`} />
+                          </button>
+                        ))}
+                      </div>
+                      <span className="text-xs font-bold text-[#e07a3f] ml-1">{newRating} Stars</span>
+                    </div>
+
+                    <textarea
+                      rows={3}
+                      value={newComment}
+                      onChange={(e) => setNewComment(e.target.value)}
+                      placeholder="Share your experience with this luxury garment (fit, fabric quality, styling)..."
+                      className="w-full bg-background border border-border rounded-xl p-3 text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-[#e07a3f] transition-colors resize-none"
+                    />
+
+                    <div className="flex justify-end">
+                      <button
+                        type="submit"
+                        disabled={isSubmittingReview}
+                        className="px-5 py-2.5 rounded-full bg-[#e07a3f] hover:bg-[#c86830] text-white text-xs font-bold uppercase tracking-wider transition-all disabled:opacity-50 cursor-pointer shadow-md"
+                      >
+                        {isSubmittingReview ? "Publishing Review..." : "Submit Review"}
+                      </button>
+                    </div>
+                  </form>
+
+                  {/* Reviews List */}
+                  <div className="space-y-4">
+                    <h4 className="text-sm font-bold uppercase tracking-wider text-foreground">Verified Reviews ({reviewsList.length})</h4>
+                    {reviewsList.length === 0 ? (
+                      <div className="bg-surface border border-border/50 rounded-2xl p-8 text-center text-xs text-muted-foreground">
+                        No customer reviews yet. Be the first to share your rating above!
+                      </div>
+                    ) : (
+                      reviewsList.map((rev) => (
+                        <div key={rev.id} className="bg-surface border border-border/50 rounded-2xl p-5 space-y-2 shadow-sm">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <div className="w-7 h-7 rounded-full bg-[#e07a3f]/20 border border-[#e07a3f]/40 flex items-center justify-center text-[#e07a3f] text-xs font-bold uppercase">
+                                {rev.user_name.charAt(0)}
+                              </div>
+                              <span className="text-xs font-semibold text-foreground">{rev.user_name}</span>
+                            </div>
+                            <span className="text-[10px] text-muted-foreground/70">
+                              {new Date(rev.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
+                            </span>
+                          </div>
+
+                          <div className="flex text-[#e07a3f] gap-0.5">
+                            {[1, 2, 3, 4, 5].map((star) => (
+                              <Star
+                                key={star}
+                                className={`w-3 h-3 ${star <= rev.rating ? 'fill-current text-[#e07a3f]' : 'text-muted-foreground/30'}`}
+                              />
+                            ))}
+                          </div>
+
+                          {rev.comment && (
+                            <p className="text-xs text-foreground/80 leading-relaxed pt-1">{rev.comment}</p>
+                          )}
+                        </div>
+                      ))
+                    )}
                   </div>
                 </div>
               )}

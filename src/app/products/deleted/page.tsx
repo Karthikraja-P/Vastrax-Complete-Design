@@ -323,7 +323,7 @@ export default function DeletedProductsPage() {
                       </span>
                     </td>
                     <td className="px-6 py-4 font-semibold text-foreground">
-                      {prod.price || "$0.00"}
+                      {prod.price ? String(prod.price).replace(/^\$/, '₹') : "₹0.00"}
                     </td>
                     <td className="px-6 py-4 text-xs text-muted-foreground">
                       {prod.deletedAt || "Recently"}

@@ -61,6 +61,19 @@ function EditProductContent() {
   const [description, setDescription] = useState("");
   const [sku, setSku] = useState("");
   const [categoryId, setCategoryId] = useState("");
+  const [gender, setGender] = useState("Women");
+  const [sizeChart, setSizeChart] = useState<any>({
+    unit: "in",
+    headers: ["Size", "Chest (in)", "Waist (in)", "Hips (in)", "Length (in)"],
+    rows: [
+      { size: "XS", chest: "32-34", waist: "25-26", hips: "35-36", length: "38" },
+      { size: "S", chest: "34-36", waist: "27-28", hips: "37-38", length: "39" },
+      { size: "M", chest: "36-38", waist: "29-30", hips: "39-40", length: "40" },
+      { size: "L", chest: "39-41", waist: "31-33", hips: "41-43", length: "41" },
+      { size: "XL", chest: "42-44", waist: "34-36", hips: "44-46", length: "42" },
+      { size: "XXL", chest: "45-47", waist: "37-39", hips: "47-49", length: "43" }
+    ]
+  });
   const [categories, setCategories] = useState<any[]>([]);
   const [fabric, setFabric] = useState("");
   const [colour, setColour] = useState("");
@@ -108,6 +121,8 @@ function EditProductContent() {
             setPriceMrp(String(mrp));
             setOccasion(prod.occasion || "");
             setModelPath(prod.model_path || "");
+            setGender(prod.gender || "Women");
+            if (prod.size_chart) setSizeChart(prod.size_chart);
             
             const targetCat = String(prod.category_id || prod.categoryId || "");
             const foundCat = cats.find((c: any) => 
@@ -286,6 +301,8 @@ function EditProductContent() {
         name: name.trim(),
         description: description.trim(),
         category_id: categoryId || (categories.length > 0 ? String(categories[0].id) : ""),
+        gender: gender || "Women",
+        size_chart: sizeChart,
         fabric: fabric.trim() || undefined,
         colour: colour.trim() || undefined,
         occasion: occasion.trim() || undefined,
@@ -497,7 +514,7 @@ function EditProductContent() {
                     className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent focus:ring-1 focus:ring-accent outline-none transition-all text-foreground"
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-3 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-1.5">
                       SKU
@@ -527,6 +544,21 @@ function EditProductContent() {
                       {categories.length === 0 && (
                         <option value="">No categories</option>
                       )}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-1.5">
+                      Department / Gender <span className="text-accent">*</span>
+                    </label>
+                    <select
+                      value={gender}
+                      onChange={(e) => setGender(e.target.value)}
+                      className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent focus:ring-1 focus:ring-accent outline-none transition-all appearance-none text-foreground"
+                    >
+                      <option value="Women">Women</option>
+                      <option value="Men">Men</option>
+                      <option value="Kids">Kids</option>
+                      <option value="Unisex">Unisex</option>
                     </select>
                   </div>
                 </div>
@@ -598,25 +630,25 @@ function EditProductContent() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-1.5">
-                      Selling Price ($) <span className="text-accent">*</span>
+                      Selling Price (₹) <span className="text-accent">*</span>
                     </label>
                     <input
                       type="number"
                       value={priceSelling}
                       onChange={(e) => setPriceSelling(e.target.value)}
-                      placeholder="199.00"
+                      placeholder="2499.00"
                       className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent focus:ring-1 focus:ring-accent outline-none transition-all text-foreground"
                     />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-1.5">
-                      MRP / Compare Price ($)
+                      MRP / Compare Price (₹)
                     </label>
                     <input
                       type="number"
                       value={priceMrp}
                       onChange={(e) => setPriceMrp(e.target.value)}
-                      placeholder="299.00"
+                      placeholder="3499.00"
                       className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent focus:ring-1 focus:ring-accent outline-none transition-all text-foreground"
                     />
                   </div>

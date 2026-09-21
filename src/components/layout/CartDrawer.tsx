@@ -77,7 +77,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
   };
 
   const discountAmount = (subtotal * discountPercent) / 100;
-  const shipping = subtotal > 150 || subtotal === 0 ? 0 : 15;
+  const shipping = subtotal >= 1999 || subtotal === 0 ? 0 : 99;
   const total = Math.max(0, subtotal - discountAmount + shipping);
 
   if (!isOpen) return null;
@@ -116,20 +116,20 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
         <div className="px-6 py-3 bg-accent/5 border-b border-border/50">
           <div className="flex items-center justify-between text-xs mb-1.5">
             <span className="font-medium text-foreground">
-              {subtotal >= 150 ? (
+              {subtotal >= 1999 ? (
                 <span className="text-green-500 font-semibold flex items-center gap-1">
                   <Sparkles className="w-3.5 h-3.5" /> You unlocked Complimentary Global Delivery!
                 </span>
               ) : (
-                `Add $${(150 - subtotal).toFixed(0)} more for Complimentary Delivery`
+                `Add ₹${(1999 - subtotal).toLocaleString('en-IN')} more for Complimentary Delivery`
               )}
             </span>
-            <span className="text-muted-foreground text-[11px]">${subtotal.toFixed(0)} / $150</span>
+            <span className="text-muted-foreground text-[11px]">₹{subtotal.toLocaleString('en-IN')} / ₹1,999</span>
           </div>
           <div className="w-full bg-border rounded-full h-1.5 overflow-hidden">
             <div 
               className="bg-accent h-full rounded-full transition-all duration-500"
-              style={{ width: `${Math.min(100, (subtotal / 150) * 100)}%` }}
+              style={{ width: `${Math.min(100, (subtotal / 1999) * 100)}%` }}
             />
           </div>
         </div>

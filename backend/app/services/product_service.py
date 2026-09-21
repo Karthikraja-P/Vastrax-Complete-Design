@@ -53,6 +53,7 @@ class ProductService:
     def list_products(
         self,
         category_id: Optional[str] = None,
+        gender: Optional[str] = None,
         min_price: Optional[float] = None,
         max_price: Optional[float] = None,
         size: Optional[str] = None,
@@ -63,6 +64,8 @@ class ProductService:
         q = self.db.query(Product)
         if published_only:
             q = q.filter(Product.is_published.is_(True))
+        if gender:
+            q = q.filter(Product.gender.ilike(gender))
         if category_id:
             resolved_cat = self._resolve_category_id(category_id)
             q = q.filter((Product.category_id == category_id) | (Product.category_id == resolved_cat))
@@ -104,6 +107,9 @@ class ProductService:
             name=payload.name,
             fabric=payload.fabric,
             colour=payload.colour,
+            occasion=payload.occasion,
+            gender=payload.gender or "Women",
+            size_chart=payload.size_chart,
             price_mrp=payload.price_mrp,
             price_selling=payload.price_selling,
             model_path=payload.model_path,
@@ -142,7 +148,7 @@ class ProductService:
         if not product:
             raise NotFoundError("Product not found")
 
-        for field in ("name", "fabric", "colour", "price_mrp",
+        for field in ("name", "fabric", "colour", "occasion", "gender", "size_chart", "price_mrp",
                       "price_selling", "description", "is_featured", "is_published"):
             value = getattr(payload, field, None)
             if value is not None:
@@ -303,3 +309,52 @@ class ProductService:
             f"https://{bucket}.s3.{settings.aws_default_region}.amazonaws.com/{key}"
         )
         return {"upload_url": presigned_url, "s3_url": dest_url, "key": key}
+
+    def list_reviews(self, product_id: str) -> list:
+        from app.models.review import ProductReview
+        from app.schemas.reviews import ReviewResponse
+        product = self.db.query(Product).filter(Product.id == product_id).first()
+        if not product:
+            raise NotFoundError("Product not found")
+        reviews = (
+            self.db.query(ProductReview)
+            .filter(ProductReview.product_id == product_id)
+            .order_by(ProductReview.created_at.desc())
+            .all()
+        )
+        return [ReviewResponse.model_validate(r) for r in reviews]
+
+    def add_review(self, product_id: str, user, rating: int, comment: Optional[str] = None):
+        import uuid
+        from app.models.review import ProductReview
+        from app.schemas.reviews import ReviewResponse
+
+        product = self.db.query(Product).filter(Product.id == product_id).first()
+        if not product:
+            raise NotFoundError("Product not found")
+
+        rev = ProductReview(
+            id=f"rev-{uuid.uuid4().hex[:8]}",
+            product_id=product_id,
+            user_id=user.id,
+            user_name=user.full_name or user.email.split("@")[0].capitalize(),
+            rating=rating,
+            comment=comment.strip() if comment else None,
+        )
+        self.db.add(rev)
+        self.db.flush()
+
+        # Dynamic Rating & Review Count Calculation
+        all_reviews = (
+            self.db.query(ProductReview)
+            .filter(ProductReview.product_id == product_id)
+            .all()
+        )
+        total_count = len(all_reviews)
+        if total_count > 0:
+            avg_score = round(sum(r.rating for r in all_reviews) / total_count, 1)
+            product.rating_average = Decimal(str(avg_score))
+            product.rating_count = total_count
+        self.db.commit()
+
+        return ReviewResponse.model_validate(rev)

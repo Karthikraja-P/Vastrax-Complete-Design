@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, File, Form, UploadFile
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db
-from app.middleware.auth import get_current_user
+from app.middleware.auth import get_current_user, get_optional_user
 from app.models.user import User
 from app.services.tryon_service import TryonService
 
@@ -17,7 +17,7 @@ from app.schemas.tryon import TryonSubmitRequest
 @router.post("/submit")
 async def submit_tryon(
     payload: TryonSubmitRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User | None = Depends(get_optional_user),
     db: Session = Depends(get_db),
 ):
     """Unified try-on submission endpoint for JSON clients and frontend modals."""
@@ -28,13 +28,23 @@ async def submit_tryon(
     from app.core.config import settings
 
     garment_url = payload.garment_path
-    if not garment_url and payload.product_id:
+    category = payload.category or payload.garment_type
+    if payload.product_id:
         product = db.query(Product).filter(Product.id == str(payload.product_id)).first()
-        if product and product.images:
-            garment_url = product.images[0].s3_url
+        if product:
+            if not garment_url and product.images:
+                garment_url = product.images[0].s3_url
+            p_cat = str(product.category_id or "").lower()
+            p_name = str(product.name or "").lower()
+            if any(w in p_cat or w in p_name for w in ["dress", "frock", "gown", "lehenga", "one-piece", "cat-dresses"]):
+                category = "one-pieces"
+            elif any(w in p_cat or w in p_name for w in ["pant", "trouser", "skirt", "bottom", "jean", "denim", "palazzo", "cat-bottoms"]):
+                category = "bottoms"
+            elif any(w in p_cat or w in p_name for w in ["top", "tee", "shirt", "t-shirt", "jacket", "hoodie", "cat-tops"]):
+                category = "tops"
 
     garment_url = garment_url or "https://images.unsplash.com/photo-1551028719-00167b16eac5?q=80&w=800&auto=format&fit=crop"
-    category = payload.category or payload.garment_type or detect_category(garment_url)
+    category = category or detect_category(garment_url)
 
     os.makedirs(settings.upload_dir, exist_ok=True)
     os.makedirs(settings.results_dir, exist_ok=True)
@@ -105,14 +115,35 @@ async def submit_tryon(
 @router.post("/")
 async def try_on(
     person_image: UploadFile = File(...),
-    garment_path: str = Form(...),
-    garment_type: str = Form(None),
-    product_id: str = Form(None),
-    current_user: User = Depends(get_current_user),
+    garment_path: str | None = Form(None),
+    garment_type: str | None = Form(None),
+    product_id: str | None = Form(None),
+    current_user: User | None = Depends(get_optional_user),
     db: Session = Depends(get_db),
 ):
+    g_path = garment_path
+    g_type = garment_type
+    if product_id:
+        from app.models.product import Product
+        product = db.query(Product).filter(Product.id == str(product_id)).first()
+        if product:
+            if not g_path and product.images:
+                g_path = product.images[0].s3_url
+            p_cat = str(product.category_id or "").lower()
+            p_name = str(product.name or "").lower()
+            if any(w in p_cat or w in p_name for w in ["dress", "frock", "gown", "lehenga", "one-piece", "cat-dresses"]):
+                g_type = "one-pieces"
+            elif any(w in p_cat or w in p_name for w in ["pant", "trouser", "skirt", "bottom", "jean", "denim", "palazzo", "cat-bottoms"]):
+                g_type = "bottoms"
+            elif any(w in p_cat or w in p_name for w in ["top", "tee", "shirt", "t-shirt", "jacket", "hoodie", "cat-tops"]):
+                g_type = "tops"
+    
+    if not g_path:
+        from app.core.exceptions import BadRequestError
+        raise BadRequestError("Either garment_path or a valid product_id must be provided")
+
     return await TryonService(db).try_on(
-        person_image, garment_path, garment_type, user=current_user, product_id=product_id
+        person_image, g_path, g_type, user=current_user, product_id=product_id
     )
 
 
@@ -122,7 +153,7 @@ async def try_on_combo(
     top_path: str = Form(...),
     bottom_path: str = Form(...),
     product_id: str = Form(None),
-    current_user: User = Depends(get_current_user),
+    current_user: User | None = Depends(get_optional_user),
     db: Session = Depends(get_db),
 ):
     return await TryonService(db).try_on_combo(

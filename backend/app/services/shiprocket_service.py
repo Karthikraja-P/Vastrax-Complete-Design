@@ -5,9 +5,22 @@ from datetime import datetime, timedelta, timezone
 
 logger = logging.getLogger("vastrax.shiprocket")
 
-SHIPROCKET_EMAIL = os.getenv("SHIPROCKET_EMAIL", "")
-SHIPROCKET_PASSWORD = os.getenv("SHIPROCKET_PASSWORD", "")
-PICKUP_PINCODE = os.getenv("PICKUP_PINCODE", "600001") # Default boutique warehouse pincode (Chennai)
+def _get_credentials() -> tuple[str, str, str]:
+    try:
+        from app.core.config import settings
+        cfg_email = getattr(settings, "shiprocket_email", "")
+        cfg_pass = getattr(settings, "shiprocket_password", "")
+        cfg_pin = getattr(settings, "pickup_pincode", "625706")
+    except Exception:
+        cfg_email = ""
+        cfg_pass = ""
+        cfg_pin = "625706"
+
+    email = os.getenv("SHIPROCKET_EMAIL", cfg_email)
+    password = os.getenv("SHIPROCKET_PASSWORD", cfg_pass)
+    pincode = os.getenv("PICKUP_PINCODE", cfg_pin)
+    return email.strip(), password.strip(), pincode.strip()
+
 
 # Global cached token
 _cached_token = None
@@ -19,7 +32,8 @@ def get_token() -> str:
     If credentials are not configured, returns None to signal mock fallback.
     """
     global _cached_token, _token_expiry
-    if not SHIPROCKET_EMAIL or not SHIPROCKET_PASSWORD:
+    email, password, _ = _get_credentials()
+    if not email or not password:
         return None
 
     # Check if cached token is still valid
@@ -29,8 +43,8 @@ def get_token() -> str:
     try:
         url = "https://apiv2.shiprocket.in/v1/external/auth/login"
         payload = {
-            "email": SHIPROCKET_EMAIL,
-            "password": SHIPROCKET_PASSWORD
+            "email": email,
+            "password": password
         }
         resp = requests.post(url, json=payload, timeout=10)
         if resp.status_code == 200:
@@ -51,12 +65,13 @@ def check_serviceability(delivery_pincode: str, total_weight: float = 0.5, cod: 
     Get shipping rates and estimated delivery dates from Shiprocket.
     Falls back to high-quality simulated data if auth token is unavailable.
     """
+    _, _, pickup_pincode = _get_credentials()
     token = get_token()
     if token:
         try:
             url = "https://apiv2.shiprocket.in/v1/external/courier/serviceability/"
             params = {
-                "pickup_postcode": PICKUP_PINCODE,
+                "pickup_postcode": pickup_pincode,
                 "delivery_postcode": delivery_pincode,
                 "weight": total_weight,
                 "cod": 1 if cod else 0
@@ -76,7 +91,7 @@ def check_serviceability(delivery_pincode: str, total_weight: float = 0.5, cod: 
         deliv_int = 600000
 
     # Calculate mock rates/days based on pincode difference to feel realistic
-    diff = abs(int(PICKUP_PINCODE) - deliv_int)
+    diff = abs(int(pickup_pincode) - deliv_int)
     days = 2 + (diff % 4) # 2 to 5 days
     rate = 60.0 + (diff % 120) # ₹60 to ₹180 shipping cost
 
@@ -112,6 +127,7 @@ def create_shipment_order(order_id: str, customer_info: dict, items: list, total
     """
     Create a draft shipment in Shiprocket for a customer order.
     """
+    _, _, pickup_pincode = _get_credentials()
     token = get_token()
     if token:
         try:
@@ -125,9 +141,9 @@ def create_shipment_order(order_id: str, customer_info: dict, items: list, total
             # Standardized address details
             raw_addr = customer_info.get("address", "N/A")
             addr_parts = [p.strip() for p in raw_addr.split(",")]
-            city = addr_parts[-3] if len(addr_parts) >= 3 else "Chennai"
+            city = addr_parts[-3] if len(addr_parts) >= 3 else "Madurai"
             state = addr_parts[-2] if len(addr_parts) >= 2 else "Tamil Nadu"
-            pincode = customer_info.get("pincode", PICKUP_PINCODE)
+            pincode = customer_info.get("pincode", pickup_pincode)
 
             payload = {
                 "order_id": order_id,

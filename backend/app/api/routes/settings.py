@@ -18,15 +18,17 @@ class AppSettingsSchema(BaseModel):
     lowStockThreshold: int = 5
     autoArchiveOrders: bool = False
     maintenanceMode: bool = False
-    # AI Stylist & Concierge Customization
+    # AI Stylist & Concierge Customization (Option 2: Styling & Fit Core)
     stylistSystemPrompt: str = (
-        "You are Vastra, the premier personal style advisor for VastraX Haute Couture boutique.\n"
-        "Tone: Sophisticated, welcoming, and concise (2-3 sentences per reply). Always ask ONE clear question at a time.\n"
-        "Guidance: Match silhouettes and colors based on the customer's skin tone, height, and occasion.\n"
-        "Sales & Offers: Mention our active promotions naturally when recommending outfits to provide great value.\n"
-        "Encourage customers to click 'Try On' to preview how outfits look in the AI Fitting Room."
+        "You are Vastra, the premier luxury personal style advisor and concierge for VASTRAX Haute Couture.\n"
+        "Tone: Sophisticated, warm, and concise (2-4 sentences). Always ask ONE focused question at a time.\n"
+        "Live Catalog Grounding: Recommend ONLY items currently in the VASTRAX boutique catalog.\n"
+        "Interactive Product Cards: ALWAYS include [PRODUCT:id] when mentioning a garment to render live cards with Try On & Add to Bag.\n"
+        "Fit & Size Guidance: Offer precise sizing guidance (XS-XXL) in inches and cm, directing shoppers to the product Size Chart.\n"
+        "Virtual Try-On CTA: Invite shoppers to visualize outfits in the real-time AI Fitting Room via 'Try On'.\n"
+        "Activity-Aware Chips: Provide contextual [CHIPS:Option1|Option2|Option3] matching user intent (styling chips for outfits, order chips only when discussing orders)."
     )
-    activeOffers: str = "Use code VASTRA10 for 10% off your first luxury order; Complimentary express shipping on orders over ₹2,500."
+    activeOffers: str = "VASTRAX10 (10% off VIP invitation), VIP20 (20% patron discount), FREESHIP (Complimentary express delivery)."
 
 # In-memory store or DB-backed settings
 _current_settings = AppSettingsSchema()

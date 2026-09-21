@@ -14,3 +14,4 @@ anthropic
 httpx
 resend
 boto3
+Pillow

@@ -4,9 +4,10 @@ from fastapi import APIRouter, Depends, File, Form, UploadFile, Query, status
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db
-from app.middleware.auth import require_admin, get_optional_user
+from app.middleware.auth import require_admin, get_optional_user, get_current_user
 from app.models.user import User
 from app.schemas.products import ImageUploadIn, ModelUploadIn, ProductCreate, ProductUpdate, StockUpdateIn
+from app.schemas.reviews import ReviewCreate, ReviewResponse
 from app.schemas.stock_notifications import StockNotificationCreate, StockNotificationResponse
 from app.services.product_service import ProductService
 from app.services.stock_notification_service import StockNotificationService
@@ -22,6 +23,7 @@ def get_featured(db: Session = Depends(get_db)):
 @router.get("")
 def list_products(
     category_id: Optional[str] = Query(None),
+    gender: Optional[str] = Query(None),
     min_price: Optional[float] = Query(None),
     max_price: Optional[float] = Query(None),
     size: Optional[str] = Query(None),
@@ -30,7 +32,7 @@ def list_products(
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
 ):
-    return ProductService(db).list_products(category_id, min_price, max_price, size, published_only, skip, limit)
+    return ProductService(db).list_products(category_id, gender, min_price, max_price, size, published_only, skip, limit)
 
 
 @router.get("/search")
@@ -141,3 +143,18 @@ def reconstruct_model(
     db: Session = Depends(get_db),
 ):
     return ProductService(db).reconstruct_model(product_id, front, side, back)
+
+
+@router.get("/{product_id}/reviews")
+def get_product_reviews(product_id: str, db: Session = Depends(get_db)):
+    return ProductService(db).list_reviews(product_id)
+
+
+@router.post("/{product_id}/reviews", status_code=status.HTTP_201_CREATED)
+def create_product_review(
+    product_id: str,
+    body: ReviewCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return ProductService(db).add_review(product_id, current_user, body.rating, body.comment)

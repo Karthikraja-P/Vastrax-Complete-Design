@@ -27,23 +27,25 @@ export default function SettingsPage() {
   const [storeName, setStoreName] = useState("VASTRAX Luxury Apparel");
   const [supportEmail, setSupportEmail] = useState("concierge@vastrax.luxury");
   const [supportPhone, setSupportPhone] = useState("+1 (800) 827-8729");
-  const [currency, setCurrency] = useState("USD ($)");
-  const [timezone, setTimezone] = useState("UTC-05:00 (Eastern Time)");
-  const [announcementText, setAnnouncementText] = useState("Complimentary Global Express Delivery on Orders Over $250");
+  const [currency, setCurrency] = useState("INR (₹)");
+  const [timezone, setTimezone] = useState("UTC+05:30 (India Standard Time)");
+  const [announcementText, setAnnouncementText] = useState("Complimentary Global Express Delivery on Orders Over ₹1,999");
   const [enableGuestCheckout, setEnableGuestCheckout] = useState(true);
   const [enableLowStockAlerts, setEnableLowStockAlerts] = useState(true);
   const [lowStockThreshold, setLowStockThreshold] = useState("5");
   const [autoArchiveOrders, setAutoArchiveOrders] = useState(false);
   const [maintenanceMode, setMaintenanceMode] = useState(false);
   const [stylistSystemPrompt, setStylistSystemPrompt] = useState(
-    "You are Vastra, the premier personal style advisor for VastraX Haute Couture boutique.\n" +
-    "Tone: Sophisticated, welcoming, and concise (2-3 sentences per reply). Always ask ONE clear question at a time.\n" +
-    "Guidance: Match silhouettes and colors based on customer skin tone, height, and occasion.\n" +
-    "Sales & Offers: Mention our active promotions naturally when recommending outfits.\n" +
-    "Encourage customers to click 'Try On' to preview outfits in the AI Fitting Room."
+    "You are Vastra, the premier luxury personal style advisor and concierge for VASTRAX Haute Couture.\n" +
+    "Tone: Sophisticated, warm, and concise (2-4 sentences). Always ask ONE focused question at a time.\n" +
+    "Live Catalog Grounding: Recommend ONLY items currently in the VASTRAX boutique catalog.\n" +
+    "Interactive Product Cards: ALWAYS include [PRODUCT:id] when mentioning a garment to render live cards with Try On & Add to Bag.\n" +
+    "Fit & Size Guidance: Offer precise sizing guidance (XS-XXL) in inches and cm, directing shoppers to the product Size Chart.\n" +
+    "Virtual Try-On CTA: Invite shoppers to visualize outfits in the real-time AI Fitting Room via 'Try On'.\n" +
+    "Activity-Aware Chips: Provide contextual [CHIPS:Option1|Option2|Option3] matching user intent (styling chips for outfits, order chips only when discussing orders)."
   );
   const [activeOffers, setActiveOffers] = useState(
-    "Use code VASTRA10 for 10% off your first luxury order; Complimentary express shipping on orders over ₹2,500."
+    "VASTRAX10 (10% off VIP invitation), VIP20 (20% patron discount), FREESHIP (Complimentary express delivery)."
   );
   const [isSavingAppSettings, setIsSavingAppSettings] = useState(false);
   const [appSettingsSaved, setAppSettingsSaved] = useState(false);
@@ -470,6 +472,7 @@ export default function SettingsPage() {
                           onChange={(e) => setCurrency(e.target.value)}
                           className="w-full px-4 py-2.5 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-accent transition-all text-foreground appearance-none pr-10"
                         >
+                          <option value="INR (₹)">INR (₹) - Indian Rupee</option>
                           <option value="USD ($)">USD ($) - US Dollar</option>
                           <option value="EUR (€)">EUR (€) - Euro</option>
                           <option value="GBP (£)">GBP (£) - British Pound</option>

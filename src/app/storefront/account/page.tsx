@@ -9,6 +9,7 @@ import {
 import { Header } from "@/components/layout/Header";
 import { CartDrawer } from "@/components/layout/CartDrawer";
 import { StylistDrawer } from "@/components/stylist/StylistDrawer";
+import { performSignOut } from "@/lib/auth-utils";
 
 export const dynamic = "force-dynamic";
 
@@ -43,6 +44,12 @@ function CustomerAccountContent() {
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isStylistOpen, setIsStylistOpen] = useState(false);
   
+  useEffect(() => {
+    const handleOpenStylist = () => setIsStylistOpen(true);
+    window.addEventListener("open-stylist", handleOpenStylist);
+    return () => window.removeEventListener("open-stylist", handleOpenStylist);
+  }, []);
+
   // Profile state
   const [firstName, setFirstName] = useState("Aishwarya");
   const [lastName, setLastName] = useState("R");
@@ -175,6 +182,15 @@ function CustomerAccountContent() {
               <p className="text-sm text-muted-foreground mt-1">{email}</p>
             </div>
           </div>
+          <div>
+            <button
+              onClick={() => performSignOut("/storefront/home")}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-red-400 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 hover:border-red-500/40 transition-all shadow-sm"
+            >
+              <LogOut className="w-4 h-4" />
+              <span>Sign Out</span>
+            </button>
+          </div>
         </div>
 
         {/* Portal Grid */}
@@ -205,6 +221,16 @@ function CustomerAccountContent() {
                 </button>
               );
             })}
+
+            <div className="pt-4 border-t border-border/40">
+              <button
+                onClick={() => performSignOut("/storefront/home")}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-base font-medium text-red-400/80 hover:text-red-400 hover:bg-red-500/10 transition-all border border-transparent hover:border-red-500/20"
+              >
+                <LogOut className="w-4 h-4" />
+                <span>Sign Out</span>
+              </button>
+            </div>
           </div>
 
           {/* Tab Content */}

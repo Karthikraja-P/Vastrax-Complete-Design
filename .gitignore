@@ -50,4 +50,6 @@ venv/
 ENV/
 *.zip
 .claude/
+scratch/
+*.swp
 

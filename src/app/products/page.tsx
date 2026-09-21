@@ -20,6 +20,7 @@ export default function ProductsPage() {
   // Filters State
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("");
+  const [selectedGender, setSelectedGender] = useState("");
   const [selectedFeatured, setSelectedFeatured] = useState("");
   const [selectedStatus, setSelectedStatus] = useState("");
 
@@ -50,8 +51,9 @@ export default function ProductsPage() {
             name: p.name || p.title || "Unnamed Piece",
             sku: p.sku || (p.variants?.[0]?.sku) || `PRD-${String(p.id).slice(0, 8)}`,
             category: catMap.get(String(p.category_id || p.categoryId)) || (cats && cats.length > 0 ? cats[0].name : "Apparel"),
-            price: `$${typeof p.price_selling === 'number' ? p.price_selling.toFixed(2) : (typeof p.price === 'number' ? p.price.toFixed(2) : (p.price_selling || p.price || '0.00'))}`,
-            originalPrice: p.price_mrp ? `$${Number(p.price_mrp).toFixed(2)}` : (p.originalPrice ? `$${Number(p.originalPrice).toFixed(2)}` : null),
+            gender: p.gender || "Women",
+            price: `₹${typeof p.price_selling === 'number' ? p.price_selling.toFixed(2) : (typeof p.price === 'number' ? p.price.toFixed(2) : (p.price_selling || p.price || '0.00'))}`,
+            originalPrice: p.price_mrp ? `₹${Number(p.price_mrp).toFixed(2)}` : (p.originalPrice ? `₹${Number(p.originalPrice).toFixed(2)}` : null),
             rawPrice: Number(p.price_selling || p.price || 0),
             stock: p.stock ?? p.inventoryCount ?? (p.variants?.[0]?.stock_qty) ?? 10,
             status: p.is_published === false ? "Draft" : (p.status || "Active"),
@@ -78,6 +80,7 @@ export default function ProductsPage() {
   const handleResetFilters = () => {
     setSearchQuery("");
     setSelectedCategory("");
+    setSelectedGender("");
     setSelectedFeatured("");
     setSelectedStatus("");
     setCurrentPage(1);
@@ -130,6 +133,8 @@ export default function ProductsPage() {
       
       const matchesCategory = !selectedCategory || p.categoryId === selectedCategory;
       
+      const matchesGender = !selectedGender || (p.gender && p.gender.toLowerCase() === selectedGender.toLowerCase());
+
       const matchesFeatured = !selectedFeatured || 
         (selectedFeatured === "true" ? p.isFeatured : !p.isFeatured);
       
@@ -138,9 +143,9 @@ export default function ProductsPage() {
          selectedStatus === "draft" ? p.status === "Draft" : 
          selectedStatus === "out_of_stock" ? p.stock <= 0 : true);
 
-      return matchesSearch && matchesCategory && matchesFeatured && matchesStatus;
+      return matchesSearch && matchesCategory && matchesGender && matchesFeatured && matchesStatus;
     });
-  }, [productsData, searchQuery, selectedCategory, selectedFeatured, selectedStatus]);
+  }, [productsData, searchQuery, selectedCategory, selectedGender, selectedFeatured, selectedStatus]);
 
   // Pagination calculation
   const totalPages = Math.ceil(filteredProducts.length / pageSize);
@@ -218,7 +223,7 @@ export default function ProductsPage() {
       <div className="bg-surface border border-border rounded-xl p-5 mt-6 space-y-4">
         <div className="flex flex-col lg:flex-row items-end gap-4">
           
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 flex-1 w-full">
+          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 flex-1 w-full">
             {/* Search */}
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-foreground">Search</label>
@@ -230,6 +235,25 @@ export default function ProductsPage() {
                   placeholder="Search by name, SKU..." 
                   className="w-full px-4 py-2 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-accent text-foreground placeholder:text-muted-foreground/60"
                 />
+              </div>
+            </div>
+
+            {/* Department Dropdown */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-foreground">Department</label>
+              <div className="relative">
+                <select 
+                  value={selectedGender}
+                  onChange={(e) => { setSelectedGender(e.target.value); setCurrentPage(1); }}
+                  className="w-full px-4 py-2 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-accent text-foreground appearance-none cursor-pointer font-medium text-accent"
+                >
+                  <option value="">All Departments</option>
+                  <option value="Women">Women</option>
+                  <option value="Men">Men</option>
+                  <option value="Kids">Kids</option>
+                  <option value="Unisex">Unisex</option>
+                </select>
+                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
               </div>
             </div>
 
@@ -357,8 +381,11 @@ export default function ProductsPage() {
                           </p>
                           <div className="flex items-center gap-2 mt-0.5">
                             <span className="text-[11px] text-muted-foreground">{product.category}</span>
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-500/10 border border-blue-500/20 text-blue-500">
+                              {product.gender || "Women"}
+                            </span>
                             {product.isFeatured && (
-                              <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-accent/10 border border-accent/20 text-accent">
+                              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-accent/10 border border-accent/20 text-accent">
                                 Featured
                               </span>
                             )}

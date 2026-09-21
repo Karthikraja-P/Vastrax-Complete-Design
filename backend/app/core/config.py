@@ -25,6 +25,11 @@ class Settings(BaseSettings):
     razorpay_key_secret: str = "MOCK_SECRET"
     razorpay_webhook_secret: str = "MOCK_WEBHOOK_SECRET"
 
+    # Shiprocket Logistics
+    shiprocket_email: str = "vastrax.shop@gmail.com"
+    shiprocket_password: str = "Doggie#89"
+    pickup_pincode: str = "625706"
+
     # App
     allowed_origins: str = "*"
     frontend_url: str = "http://localhost:3000,https://d11ldjfc82x9pb.cloudfront.net"

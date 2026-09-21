@@ -43,22 +43,44 @@ def chat_endpoint(req: ChatRequest, db: Session = Depends(get_db)):
     )
 
     # Extract suggested products from reply tags e.g. [PRODUCT:vtx-frock-floral]
+    # and match against live published catalog so recommendations are guaranteed to be available on the webpage
     suggested = []
+    seen_ids = set()
     try:
         import re
-        product_ids = re.findall(r"\[PRODUCT:([^\]]+)\]", reply_text)
+        product_ids = re.findall(r"\[PRODUCT:([^\]]+)\]", reply_text, re.IGNORECASE)
+        # 1. Add explicitly tagged products
         if product_ids:
             found_products = db.query(Product).filter(Product.id.in_(product_ids)).all()
             for fp in found_products:
-                cat_name = fp.category.name if fp.category else "tops"
-                img_url = fp.images[0].s3_url if fp.images else "https://images.unsplash.com/photo-1598033129183-c4f50c736f10?q=80&w=400&auto=format&fit=crop"
-                suggested.append({
-                    "id": fp.id,
-                    "name": fp.name,
-                    "price": f"₹{fp.price_selling:,.0f}" if fp.price_selling else "₹1,999",
-                    "image": img_url,
-                    "category": cat_name
-                })
+                if fp.id not in seen_ids:
+                    seen_ids.add(fp.id)
+                    cat_name = fp.category.name if fp.category else "tops"
+                    img_url = fp.images[0].s3_url if fp.images else "https://images.unsplash.com/photo-1598033129183-c4f50c736f10?q=80&w=400&auto=format&fit=crop"
+                    suggested.append({
+                        "id": fp.id,
+                        "name": fp.name,
+                        "price": f"₹{fp.price_selling:,.0f}" if fp.price_selling else "₹1,999",
+                        "image": img_url,
+                        "category": cat_name
+                    })
+
+        # 2. Fallback scan: if LLM mentioned published product names without tags, still include them!
+        all_published = db.query(Product).filter(Product.is_published == True).all()
+        reply_lower = reply_text.lower()
+        for p in all_published:
+            if p.id not in seen_ids:
+                if (p.name and len(p.name) > 3 and p.name.lower() in reply_lower) or (p.id and p.id.lower() in reply_lower):
+                    seen_ids.add(p.id)
+                    cat_name = p.category.name if p.category else "tops"
+                    img_url = p.images[0].s3_url if p.images else "https://images.unsplash.com/photo-1598033129183-c4f50c736f10?q=80&w=400&auto=format&fit=crop"
+                    suggested.append({
+                        "id": p.id,
+                        "name": p.name,
+                        "price": f"₹{p.price_selling:,.0f}" if p.price_selling else "₹1,999",
+                        "image": img_url,
+                        "category": cat_name
+                    })
     except Exception:
         pass
 

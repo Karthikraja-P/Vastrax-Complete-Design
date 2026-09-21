@@ -1,6 +1,6 @@
 from datetime import datetime
 from decimal import Decimal
-from typing import Optional
+from typing import Optional, Any
 
 from pydantic import BaseModel, ConfigDict
 
@@ -39,9 +39,13 @@ class ProductCreate(BaseModel):
     fabric: Optional[str] = None
     colour: Optional[str] = None
     occasion: Optional[str] = None
+    gender: Optional[str] = "Women"
+    size_chart: Optional[Any] = None
     price_mrp: Decimal
     price_selling: Decimal
     description: Optional[str] = None
+    rating_average: Optional[Decimal] = Decimal("4.8")
+    rating_count: Optional[int] = 15
     is_featured: bool = False
     is_published: bool = True
     model_path: Optional[str] = None  # URL or S3 key for 3D model
@@ -55,9 +59,13 @@ class ProductUpdate(BaseModel):
     fabric: Optional[str] = None
     colour: Optional[str] = None
     occasion: Optional[str] = None
+    gender: Optional[str] = None
+    size_chart: Optional[Any] = None
     price_mrp: Optional[Decimal] = None
     price_selling: Optional[Decimal] = None
     description: Optional[str] = None
+    rating_average: Optional[Decimal] = None
+    rating_count: Optional[int] = None
     is_featured: Optional[bool] = None
     is_published: Optional[bool] = None
     model_path: Optional[str] = None
@@ -72,9 +80,13 @@ class ProductResponse(BaseModel):
     fabric: str | None
     colour: str | None
     occasion: str | None
+    gender: str | None = "Women"
+    size_chart: Any | None = None
     price_mrp: Decimal
     price_selling: Decimal
     description: str | None
+    rating_average: Decimal = Decimal("4.8")
+    rating_count: int = 15
     is_featured: bool
     is_published: bool
     created_at: datetime
