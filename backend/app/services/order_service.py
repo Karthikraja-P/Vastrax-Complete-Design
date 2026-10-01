@@ -58,37 +58,22 @@ class OrderService:
 
         with _inventory_lock:
             for item_data in payload.items:
-                variant = None
-                if item_data.variant_id and item_data.variant_id != "var_dummy":
-                    variant = self.db.query(ProductVariant).filter(
-                        ProductVariant.id == item_data.variant_id
-                    ).first()
-
                 product = self.db.query(Product).filter(Product.id == item_data.product_id).first()
                 if not product:
                     raise NotFoundError(f"Product {item_data.product_id} not found")
 
+                q = self.db.query(ProductVariant).filter(ProductVariant.product_id == product.id)
+                variant = None
+                if item_data.variant_id and item_data.variant_id != "var_dummy":
+                    variant = q.filter(ProductVariant.id == item_data.variant_id).first()
+                if not variant and item_data.size:
+                    variant = q.filter(ProductVariant.size == item_data.size).first()
                 if not variant:
-                    target_size = item_data.size or "Standard"
-                    variant = self.db.query(ProductVariant).filter(
-                        ProductVariant.product_id == item_data.product_id,
-                        ProductVariant.size == target_size
-                    ).first()
-
-                    if not variant:
-                        variant = self.db.query(ProductVariant).filter(
-                            ProductVariant.product_id == item_data.product_id
-                        ).first()
-
-                    if not variant:
-                        variant = ProductVariant(
-                            id=str(uuid.uuid4()),
-                            product_id=item_data.product_id,
-                            size=target_size,
-                            stock_qty=50,
-                        )
-                        self.db.add(variant)
-                        self.db.flush()
+                    only = q.all()
+                    if len(only) == 1 and not item_data.size:
+                        variant = only[0]
+                if not variant:
+                    raise BadRequestError(f"Size '{item_data.size or ''}' is not available for {product.name}")
 
                 if variant.stock_qty < item_data.quantity:
                     raise BadRequestError(
