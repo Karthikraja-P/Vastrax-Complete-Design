@@ -25,8 +25,8 @@ export async function middleware(req: NextRequest) {
   }
 
   // 3. Admin / Dashboard routes check
-  const secret = process.env.NEXTAUTH_SECRET || "placeholder-nextauth-secret";
-  const token = await getToken({ req, secret });
+  const secret = process.env.NEXTAUTH_SECRET;
+  const token = secret ? await getToken({ req, secret }) : null;
   const isAdmin = token && String(token.role || "").toLowerCase() === "admin";
 
   // Root route ("/")

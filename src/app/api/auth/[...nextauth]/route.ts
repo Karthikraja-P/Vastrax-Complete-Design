@@ -23,15 +23,27 @@ const handler = NextAuth({
 
         const email = credentials.email.toLowerCase().trim();
 
-        // If an authenticated token from backend is already present
+        // Verify supplied backend tokens before creating a NextAuth session.
         if (credentials.accessToken && credentials.accessToken !== "undefined") {
-          return {
-            id: credentials.id || `usr_${Date.now()}`,
-            name: credentials.name || email.split("@")[0] || "User",
-            email: email,
-            role: (credentials as any).role || "CUSTOMER",
-            accessToken: credentials.accessToken,
-          };
+          const backendBase = process.env.INTERNAL_BACKEND_URL || "http://backend:8090";
+          try {
+            const res = await fetch(`${backendBase}/api/v1/auth/me`, {
+              headers: { Authorization: `Bearer ${credentials.accessToken}` },
+              cache: "no-store",
+            });
+            if (!res.ok) return null;
+            const user = await res.json();
+            if (!user?.id || !user?.email || !user?.is_active) return null;
+            return {
+              id: String(user.id),
+              name: user.full_name || user.email.split("@")[0],
+              email: user.email,
+              role: user.role || "customer",
+              accessToken: credentials.accessToken,
+            };
+          } catch {
+            return null;
+          }
         }
 
         // Direct authentication against FastAPI backend
@@ -94,7 +106,7 @@ const handler = NextAuth({
     strategy: "jwt",
     maxAge: 60 * 60, // 1 hour session expiration
   },
-  secret: process.env.NEXTAUTH_SECRET || "placeholder-nextauth-secret",
+  secret: process.env.NEXTAUTH_SECRET,
 });
 
 export { handler as GET, handler as POST };

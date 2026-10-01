@@ -21,6 +21,10 @@ def get_current_user(
 
     try:
         payload = decode_token(credentials.credentials)
+        if payload.get("purpose") != "access":
+            raise UnauthorizedError("Invalid token purpose")
+    except UnauthorizedError:
+        raise
     except Exception:
         raise UnauthorizedError("Invalid or expired token")
 
@@ -50,6 +54,8 @@ def get_optional_user(
         return None
     try:
         payload = decode_token(credentials.credentials)
+        if payload.get("purpose") != "access":
+            return None
         user_id = payload.get("sub", "")
         if not user_id:
             return None

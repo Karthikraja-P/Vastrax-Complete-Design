@@ -17,6 +17,7 @@ from app.core.logging import get_logger
 from app.core.security import (
     create_access_token,
     create_refresh_token,
+    create_password_reset_token,
     decode_token,
     hash_password,
     verify_password,
@@ -166,6 +167,9 @@ class AuthService:
         if not user:
             raise UnauthorizedError("User not found")
 
+        if user.is_active:
+            raise BadRequestError("Account already verified")
+
         if not user.is_active:
             clean_code = (code or "").strip()
             otp = self.db.query(OTP).filter(
@@ -217,7 +221,7 @@ class AuthService:
         if not user:
             return generic_response
 
-        reset_token = create_access_token({"sub": user.id, "purpose": "reset"})
+        reset_token = create_password_reset_token(user.id)
         reset_link = f"{settings.frontend_url.split(',')[0].strip()}/reset-password?token={reset_token}"
         try:
             await send_email(

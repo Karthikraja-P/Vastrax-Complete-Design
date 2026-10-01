@@ -18,7 +18,7 @@ class Settings(BaseSettings):
 
     # JWT
     jwt_secret_key: str = ""
-    access_token_expire_minutes: int = 60
+    access_token_expire_minutes: int = 1440
 
     # Razorpay
     razorpay_key_id: str = "rzp_test_MOCK"
@@ -27,11 +27,11 @@ class Settings(BaseSettings):
 
     # Shiprocket Logistics
     shiprocket_email: str = "vastrax.shop@gmail.com"
-    shiprocket_password: str = "Doggie#89"
+    shiprocket_password: str = ""
     pickup_pincode: str = "625706"
 
     # App
-    allowed_origins: str = "*"
+    allowed_origins: str = "http://localhost:3000,https://vastrax.ai"
     frontend_url: str = "http://localhost:3000,https://d11ldjfc82x9pb.cloudfront.net"
     debug: bool = False
 
@@ -65,7 +65,9 @@ class Settings(BaseSettings):
             self.results_dir = "/tmp/results" if _is_lambda else os.path.join(_backend, "results")
 
         if not self.jwt_secret_key:
-            self.jwt_secret_key = os.getenv("SECRET_KEY", "vastrax-jwt-secret-key-min-32-chars-long!!")
+            self.jwt_secret_key = os.getenv("SECRET_KEY", "")
+        if len(self.jwt_secret_key) < 32:
+            raise ValueError("JWT_SECRET_KEY must be configured with at least 32 characters")
         if not self.aws_access_key_id:
             self.aws_access_key_id = os.getenv("AWS_ACCESS_KEY_ID", "")
         if not self.aws_secret_access_key:

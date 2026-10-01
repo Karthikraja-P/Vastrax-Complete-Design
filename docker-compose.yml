@@ -10,15 +10,19 @@ services:
       - "8090:8090"
     environment:
       - DATABASE_URL=sqlite:////app/vastrax.db
-      - ALLOWED_ORIGINS=*
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:?Set JWT_SECRET_KEY in .env}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3000,https://vastrax.ai}
       - FRONTEND_URL=http://localhost:3000
       - RESEND_API_KEY=${RESEND_API_KEY:-}
       - RESEND_FROM_EMAIL=${RESEND_FROM_EMAIL:-noreply@vastrax.ai}
       - FASHN_TRYON_URL=http://172.17.0.1:8001
+      - GENERATOR_3D_URL=http://172.17.0.1:8081
+      - GENERATOR_3D_SECRET=${GENERATOR_3D_SECRET:?Set GENERATOR_3D_SECRET in .env}
       - SHIPROCKET_EMAIL=${SHIPROCKET_EMAIL:-vastrax.shop@gmail.com}
-      - SHIPROCKET_PASSWORD=${SHIPROCKET_PASSWORD:-Doggie#89}
+      - SHIPROCKET_PASSWORD=${SHIPROCKET_PASSWORD:-}
       - PICKUP_PINCODE=${PICKUP_PINCODE:-625706}
     volumes:
+      - ./backend/app:/app/app
       - ./backend/vastrax.db:/app/vastrax.db
       - ./backend/user_uploads:/app/user_uploads
       - ./backend/results:/app/results
@@ -46,6 +50,8 @@ services:
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
       - NEXTAUTH_URL=${NEXTAUTH_URL}
       - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+    volumes:
+      - ./public:/app/public
     depends_on:
       backend:
         condition: service_healthy
