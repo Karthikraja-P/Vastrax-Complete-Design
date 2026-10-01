@@ -32,3 +32,13 @@ GPU jobs (3D + try-on) go through the backend priority queue (`GET /api/v1/gpu/q
 ## Ops notes
 - Rotate secrets that were hard-coded in older git history (Shiprocket password, old JWT default).
 - `HUNYUAN_TEXTURE=false` disables texture painting if VRAM is needed elsewhere.
+
+## Monitoring
+`scripts/healthcheck.sh` runs every 5 min (Windows task **Vastrax Health**): probes all five services, restarts Docker containers if the frontend/backend are down, flags disk >= 90%, logs state changes to `~/vastrax-health.log`. Optional `.env` keys: `HEALTHCHECK_PING_URL` (dead-man's-switch such as healthchecks.io; it alerts you when the PC itself goes offline) and `ALERT_WEBHOOK_URL`.
+Backups are integrity-checked; set `BACKUP_SYNC_CMD` (e.g. an rclone copy) for an off-machine copy.
+
+## Pre-launch data cleanup
+`scripts/cleanup_test_data.py` (dry-run by default; `--apply` backs up first and rotates the admin password into `~/vastrax-admin-credentials.txt`).
+
+## Production env
+`APP_ENV=production`, `ALLOWED_ORIGINS=https://vastrax.ai`, real `RAZORPAY_*` keys incl. webhook secret, `NEXT_PUBLIC_SITE_URL`.
