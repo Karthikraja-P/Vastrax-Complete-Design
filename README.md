@@ -13,7 +13,7 @@ For complete end-to-end architecture documentation, system flow diagrams, and AP
   - `page.tsx` - All products table with filters, search, thumbnails, delete modal, and pagination.
   - `create/page.tsx` - Create product form with category linkage and variant generation.
   - `add/page.tsx` - Enhanced Add Product wizard with tabbed layout: Basic Info, Pricing & Inventory, Product Images (drag-drop 2D upload with previews/reorder/remove), and **3D Product** (front/side/back photo upload → Hunyuan 3D reconstruction → GLB preview).
-  - `edit/page.tsx` - Edit product form with preloaded garment parameters and category assignment.
+  - `edit/page.tsx` - Edit product form with preloaded garment parameters, category assignment, 3D photo reconstruction (`/api/v1/3d/generate`), GLB upload, and interactive 3D preview.
 - `/src/app/categories/` - Product Categories Management (active catalog & deleted trash bin).
 - `/src/app/orders/page.tsx` - Orders Management & Live Fulfillment Tracking.
 - `/src/app/users/` - Admin User Directory & Deleted Archive.
@@ -58,17 +58,18 @@ For complete end-to-end architecture documentation, system flow diagrams, and AP
   - `app/models/` - SQLAlchemy models (`User`, `Product`, `Order`, `Payment`, `ChatMessage`, `SupportTicket`, `TryonSession`, `StockNotification`, etc.).
   - `app/services/` - Business logic services (Razorpay, Fashn VTON, Shiprocket, OpenAI GPT-4o mini Stylist with `chat_tools` function calling & authorization boundary, Resend email notifications, OrderService with thread-safe inventory locking `_inventory_lock` preventing overselling, StockNotificationService with throttled background batch email queue, and PaymentService).
   - `app/middleware/auth.py` - JWT auth (`get_current_user`, `require_admin`) — no anonymous/admin fallback; missing or invalid credentials are always rejected.
-- `/virtual-try-on/` - Standalone Virtual Try-On sub-system (FASHN VTON 1.5 engine + Fitting Room UI).
-  - `backend/` - Dedicated VTON FastAPI service with GPU inference execution.
-  - `frontend/` - Standalone luxury boutique UI and modal fitting room.
-  - `docker-compose.yml` - Container orchestration for standalone try-on.
+- `/virtual-try-on/` - Virtual Try-On sub-system (FASHN VTON 1.5 CUDA GPU engine on port 8001).
+  - `/home/pkr/fashn-tryon/server.py` - FastAPI CUDA inference server with TryOnPipeline.
+  - `/scripts/start-tryon-service.sh` - Background supervisor script for FASHN AI GPU server.
+  - `docker-compose.yml` - Passes `FASHN_TRYON_URL=http://172.17.0.1:8001` to backend container.
 - `/3d-model/` - 3D Garment Generation & Interactive 3D Product Display Pipeline.
-  - `server_3d.py` - Dedicated FastAPI 3D Garment Generator service on port 8081 (mirroring FASHN AI on 8001), managed by backend `gpu_queue` to ensure zero VRAM collision.
+  - `server_3d.py` - Dedicated FastAPI 3D Garment Generator service on port 8081 with category-aware mesh selection (Dresses/Gowns, Tops/Shirts, Pants/Bottoms), auto-cropping, full-coverage PBR UV texture baking, GLB injection, and automated connection to Hunyuan3D-2.1 GPU server (port 8082).
   - `Hunyuan3D-2.1/` - Neural 3D shape reconstruction, texturing, and remeshing engine.
   - `Hunyuan3D-2.1/hy3dshape/` - 3D Shape reconstruction, remeshing, decimation, and base meshes.
   - `Hunyuan3D-2.1/hy3dshape/web_test/` - Interactive boutique 3D web viewer with `.glb` assets (`garment_perfect.glb`, `textured_garment.glb`, etc.).
   - `Hunyuan3D-2.1/hy3dpaint/` - AI texture painting pipeline, custom rasterizer, and UV mappers.
-  - `Hunyuan3D-2.1/api_server.py` - FastAPI 3D generation & texture synthesis server.
+  - `Hunyuan3D-2.1/api_server.py` - FastAPI 3D generation & texture synthesis server running on port 8082.
+  - `/scripts/start-3d-service.sh` - Background supervisor script for the 3D model generator.
 
 ## Quick Start: Local PC Instant Docker Deployment
 
