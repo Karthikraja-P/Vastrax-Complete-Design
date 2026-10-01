@@ -105,7 +105,7 @@ function ProductContent() {
 
   const get3DModelForProduct = (name: string, catName: string) => {
     const p = (name + " " + catName).toLowerCase();
-    if (/frock|dress/i.test(p)) return "/models/3d/garment3_multiview.glb";
+    if (/frock|dress/i.test(p)) return "/models/3d/textured_garment.glb";
     if (/limitless|graphic|white/i.test(p)) return "/models/3d/garment2_textured.glb";
     if (/pant|trouser/i.test(p)) return "/models/3d/garment_photo_textured.glb";
     return "/models/3d/garment2_textured.glb";

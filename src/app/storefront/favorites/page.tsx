@@ -73,7 +73,7 @@ export default function FavoritesPage() {
             isNew: p.isNew || p.is_featured,
             categoryId: p.categoryId || p.category_id,
             categoryName: p.category?.name || p.category || "Apparel",
-            model3dUrl: p.model_path || p.model3dUrl || (/frock|dress|gown/i.test(p.name || "") ? "/models/3d/garment3_multiview.glb" : /pant|trouser/i.test(p.name || "") ? "/models/3d/garment_photo_textured.glb" : "/models/3d/garment2_textured.glb")
+            model3dUrl: p.model_path || p.model3dUrl || (/frock|dress|gown/i.test(p.name || "") ? "/models/3d/textured_garment.glb" : /pant|trouser/i.test(p.name || "") ? "/models/3d/garment_photo_textured.glb" : "/models/3d/garment2_textured.glb")
           };
         });
         setProducts(mapped);
