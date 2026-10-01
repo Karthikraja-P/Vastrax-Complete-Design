@@ -24,6 +24,9 @@ VALID_ADMIN_STATUSES = {"packed", "shipped", "delivered", "cancelled"}
 _inventory_lock = threading.Lock()
 
 
+SHIPPING = {"standard": 0, "express": 150, "concierge": 350}  # mirrors checkout; tax is 8% of subtotal
+
+
 class OrderService:
     def __init__(self, db: Session) -> None:
         self.db = db
@@ -42,14 +45,24 @@ class OrderService:
         if not address:
             raise NotFoundError("Delivery address not found")
 
-        order_id = f"VX-{datetime.now(timezone.utc).year}-{uuid.uuid4().hex[:4].upper()}"
+        # Price server-side: client-supplied prices/totals are never trusted.
+        prices = {p.id: p.price_selling for p in self.db.query(Product).filter(
+            Product.id.in_([i.product_id for i in payload.items])).all()}
+        for i in payload.items:
+            if i.product_id not in prices:
+                raise NotFoundError(f"Product {i.product_id} not found")
+        subtotal = sum((Decimal(prices[i.product_id]) * i.quantity for i in payload.items), Decimal("0"))
+        shipping = Decimal(SHIPPING.get(payload.delivery_method, 350))
+        total = (subtotal * Decimal("1.08") + shipping).quantize(Decimal("0.01"))
+
+        order_id = f"VX-{datetime.now(timezone.utc).year}-{uuid.uuid4().hex[:10].upper()}"
         is_cod = payload.payment_method in ("Cash on Delivery", "COD")
 
         order = Order(
             id=order_id,
             user_id=user.id,
             address_id=payload.address_id,
-            total_amount=payload.total_amount,
+            total_amount=total,
             status="confirmed" if is_cod else "pending",
             payment_status="pending",
         )
@@ -86,7 +99,7 @@ class OrderService:
                     product_id=item_data.product_id,
                     variant_id=variant.id,
                     quantity=item_data.quantity,
-                    unit_price=item_data.final_unit_price,
+                    unit_price=prices[item_data.product_id],
                 ))
 
             self.db.commit()

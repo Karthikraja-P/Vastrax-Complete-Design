@@ -73,9 +73,11 @@ def test_full_purchase_flow(c, monkeypatch, admin_tok):
 
     assert order("XL", 1, 1000).status_code == 400       # unknown size rejected
     assert order("S", 3, 3000).status_code == 400        # over stock rejected
-    r = order("M", 2, 2000)
+    r = order("M", 2, 1)  # tampered client total must be ignored
     assert r.status_code in (200, 201), r.text
     oid = r.json()["id"]
+    assert float(r.json()["total_amount"]) == 2160.0  # 2 x 1000 + 8% tax, server-priced
+    assert c.post("/api/v1/payments/initiate", headers=H(cust), json={"order_id": oid, "amount": 1}).status_code == 400
 
     # stock decremented on the right variant only
     prod = c.get(f"/api/v1/products/{pid}", headers=H(cust)).json()
@@ -83,13 +85,13 @@ def test_full_purchase_flow(c, monkeypatch, admin_tok):
     assert stock == {"S": 2, "M": 3}
 
     # payments: dev mock works, production mock is blocked
-    r = c.post("/api/v1/payments/initiate", headers=H(cust), json={"order_id": oid, "amount": 2000})
+    r = c.post("/api/v1/payments/initiate", headers=H(cust), json={"order_id": oid, "amount": 2160})
     assert r.status_code == 200 and r.json()["mode"] == "simulation", r.text
     txn = r.json()["txn_id"]
     assert c.post("/api/v1/payments/simulate", headers=H(cust), json={"txn_id": txn, "success": True}).status_code == 200
     from app.core.config import settings
     monkeypatch.setattr(settings, "app_env", "production")
-    assert c.post("/api/v1/payments/initiate", headers=H(cust), json={"order_id": oid, "amount": 2000}).status_code == 400
+    assert c.post("/api/v1/payments/initiate", headers=H(cust), json={"order_id": oid, "amount": 2160}).status_code == 400
     assert c.post("/api/v1/payments/simulate", headers=H(cust), json={"txn_id": txn, "success": True}).status_code in (400, 403)
     assert c.post("/api/v1/payments/webhook", content=b"{}", headers={"X-Razorpay-Signature": "abc"}).status_code == 400
 

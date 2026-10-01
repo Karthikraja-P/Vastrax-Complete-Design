@@ -248,6 +248,7 @@ export default function CheckoutPage() {
           address_id: addressData.id,
           payment_method: paymentMethod.toUpperCase(),
           total_amount: total,
+          delivery_method: deliveryMethod,
           items: items.map(item => ({
             product_id: String(item.id),
             size: item.size || "M",

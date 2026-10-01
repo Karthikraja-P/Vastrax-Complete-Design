@@ -72,7 +72,7 @@ class PaymentService:
                 "currency": "INR",
             }
 
-        return self._call_razorpay(payment, payload.amount)
+        return self._call_razorpay(payment, Decimal(order.total_amount))
 
     def _call_razorpay(self, payment: Payment, amount: Decimal) -> dict:
         amount_paise = int(amount * 100)

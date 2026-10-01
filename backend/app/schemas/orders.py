@@ -2,7 +2,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.schemas.products import ProductVariantResponse
 
@@ -12,7 +12,7 @@ class OrderItemCreate(BaseModel):
     variant_id: Optional[str] = None
     size: Optional[str] = "M"
     color: Optional[str] = None
-    quantity: int = 1
+    quantity: int = Field(1, ge=1, le=20)
     unit_price: Optional[Decimal] = None
     price: Optional[Decimal] = None
 
@@ -24,7 +24,8 @@ class OrderItemCreate(BaseModel):
 class OrderCreate(BaseModel):
     address_id: str
     items: list[OrderItemCreate]
-    total_amount: Decimal
+    total_amount: Optional[Decimal] = None  # ignored: the server prices the order
+    delivery_method: str = "standard"
     payment_method: str = "UPI"
 
 
