@@ -4,6 +4,10 @@ set -e
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$DIR"
 
+echo "[0/4] Waiting for Docker"
+for _ in $(seq 1 60); do docker info >/dev/null 2>&1 && break; sleep 5; done
+docker info >/dev/null 2>&1 || { echo "Docker is not available" >&2; exit 1; }
+
 echo "[1/4] App containers (frontend, backend)"
 docker compose up -d
 
