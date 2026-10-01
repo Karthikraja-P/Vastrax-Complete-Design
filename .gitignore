@@ -53,3 +53,9 @@ ENV/
 scratch/
 *.swp
 
+
+# local runtime artifacts
+3d-model/*.log
+public/models/3d/vtx_3d_*.glb
+!public/models/3d/vtx_3d_cbb285ad.glb
+!public/models/3d/vtx_3d_e75039d6.glb
