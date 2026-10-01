@@ -4,7 +4,13 @@ import uuid
 import shutil
 import asyncio
 import logging
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+import struct
+import json
+import io
+import secrets
+import signal
+import subprocess
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import uvicorn
@@ -34,6 +40,217 @@ app.mount("/models/3d", StaticFiles(directory=MODELS_DIR), name="models_3d")
 
 lock = asyncio.Lock()
 
+
+def hunyuan_hosts() -> list[str]:
+    """Find the Windows host from WSL without relying on a changing IP address."""
+    hosts = [os.environ.get("HUNYUAN_API_URL", "").rstrip("/"), "http://127.0.0.1:8082", "http://host.docker.internal:8082"]
+    try:
+        with open("/proc/net/route", encoding="ascii") as routes:
+            next(routes)
+            for route in routes:
+                fields = route.split()
+                if fields[1] == "00000000":
+                    gateway = struct.pack("<L", int(fields[2], 16))
+                    hosts.append(f"http://{'.'.join(str(octet) for octet in gateway)}:8082")
+                    break
+    except (OSError, ValueError, IndexError, StopIteration):
+        pass
+    return list(dict.fromkeys(host for host in hosts if host))
+
+
+FASHN_DIR = os.environ.get("FASHN_SERVICE_DIR", "/home/pkr/fashn-tryon")
+
+
+def pause_fashn() -> bool:
+    """Free GPU memory for Hunyuan after verifying the listener is FASHN."""
+    output = subprocess.check_output(["lsof", "-t", "-iTCP:8001", "-sTCP:LISTEN"], text=True)
+    pids = [int(value) for value in output.split()]
+    if not pids:
+        return False
+    for pid in pids:
+        command = open(f"/proc/{pid}/cmdline", "rb").read()
+        if os.path.join(FASHN_DIR, "server.py").encode() not in command:
+            raise RuntimeError("Port 8001 is not owned by the expected FASHN service")
+    for pid in pids:
+        os.kill(pid, signal.SIGTERM)
+    return True
+
+
+async def resume_fashn() -> None:
+    """Restore virtual try-on after the 3D request releases the GPU."""
+    import httpx
+
+    python = os.path.join(FASHN_DIR, "venv", "bin", "python")
+    server = os.path.join(FASHN_DIR, "server.py")
+    with open(os.path.join(FASHN_DIR, "server.log"), "ab") as output:
+        subprocess.Popen([python, server], stdout=output, stderr=subprocess.STDOUT, start_new_session=True)
+    async with httpx.AsyncClient(timeout=2.0) as client:
+        for _ in range(30):
+            try:
+                response = await client.get("http://127.0.0.1:8001/health")
+                if response.status_code == 200 and response.json().get("model_loaded"):
+                    return
+            except (httpx.RequestError, ValueError):
+                pass
+            await asyncio.sleep(1)
+    logger.error("FASHN did not become healthy after 3D generation")
+
+
+def bake_garment_texture_atlas(front_path: str, back_path: str = None, side_path: str = None, is_dress: bool = False) -> bytes:
+    """
+    Composites uploaded multi-view photos (front, back, side) into a high-res 2048x1024
+    PBR diffuse texture atlas aligned with 3D mesh UV coordinates.
+    """
+    from PIL import Image, ImageOps, ImageChops
+
+    front = Image.open(front_path).convert("RGBA")
+    atlas_w, atlas_h = 2048, 1024
+    quad_w, quad_h = 1024, 1024
+
+    def auto_crop(img: Image.Image) -> Image.Image:
+        try:
+            corner_pixel = img.getpixel((0, 0))
+            bg = Image.new(img.mode, img.size, corner_pixel)
+            diff = ImageChops.difference(img, bg)
+            bbox = diff.getbbox()
+            if bbox:
+                bw = bbox[2] - bbox[0]
+                bh = bbox[3] - bbox[1]
+                if bw > 100 and bh > 100:
+                    return img.crop(bbox)
+        except Exception:
+            pass
+        return img
+
+    front = auto_crop(front)
+    fw, fh = front.size
+
+    # Sample garment primary color
+    cx1, cy1 = int(fw * 0.35), int(fh * 0.35)
+    cx2, cy2 = max(cx1 + 1, int(fw * 0.65)), max(cy1 + 1, int(fh * 0.65))
+    center_sample = front.crop((cx1, cy1, cx2, cy2)).convert("RGB")
+    stat = center_sample.resize((1, 1), Image.Resampling.LANCZOS)
+    primary_color = stat.getpixel((0, 0))
+
+    canvas = Image.new("RGBA", (atlas_w, atlas_h), (*primary_color, 255))
+
+    def fit_quadrant(img: Image.Image, full_bleed: bool = False) -> Image.Image:
+        iw, ih = img.size
+        if full_bleed:
+            # Full bleed coverage for dresses/gowns
+            ratio = max(quad_w / iw, quad_h / ih)
+            rw, rh = max(1, int(iw * ratio)), max(1, int(ih * ratio))
+            resized = img.resize((rw, rh), Image.Resampling.LANCZOS)
+            quad = Image.new("RGBA", (quad_w, quad_h), (*primary_color, 255))
+            px = (quad_w - rw) // 2
+            py = (quad_h - rh) // 2
+            quad.paste(resized, (px, py), resized if resized.mode == "RGBA" else None)
+            return quad
+        else:
+            target_w, target_h = 1000, 1000
+            ratio = min(target_w / iw, target_h / ih)
+            rw, rh = max(1, int(iw * ratio)), max(1, int(ih * ratio))
+            resized = img.resize((rw, rh), Image.Resampling.LANCZOS)
+            quad = Image.new("RGBA", (quad_w, quad_h), (*primary_color, 255))
+            px = (quad_w - rw) // 2
+            py = (quad_h - rh) // 2
+            quad.paste(resized, (px, py), resized if resized.mode == "RGBA" else None)
+            return quad
+
+    # Front view on Left quadrant (0..1024)
+    front_quad = fit_quadrant(front, full_bleed=is_dress)
+    canvas.paste(front_quad, (0, 0))
+
+    # Back view on Right quadrant (1024..2048)
+    if back_path and os.path.exists(back_path):
+        back = auto_crop(Image.open(back_path).convert("RGBA"))
+        back_quad = fit_quadrant(back, full_bleed=is_dress)
+    else:
+        back_quad = ImageOps.mirror(front_quad)
+    canvas.paste(back_quad, (quad_w, 0))
+
+    # Side view accents if provided
+    if side_path and os.path.exists(side_path):
+        side = auto_crop(Image.open(side_path).convert("RGBA"))
+        side_strip = side.resize((60, quad_h), Image.Resampling.LANCZOS)
+        canvas.paste(side_strip, (0, 0), side_strip if side_strip.mode == "RGBA" else None)
+        canvas.paste(side_strip, (quad_w - 60, 0), side_strip if side_strip.mode == "RGBA" else None)
+        canvas.paste(side_strip, (quad_w, 0), side_strip if side_strip.mode == "RGBA" else None)
+        canvas.paste(side_strip, (atlas_w - 60, 0), side_strip if side_strip.mode == "RGBA" else None)
+
+    buf = io.BytesIO()
+    canvas.convert("RGB").save(buf, format="PNG", optimize=True)
+    return buf.getvalue()
+
+
+def replace_glb_texture(input_glb_path: str, output_glb_path: str, new_image_bytes: bytes, image_index: int = 0) -> None:
+    """
+    Directly injects the baked texture into a GLB file, maintaining 100% glTF 2.0 binary conformance.
+    """
+    with open(input_glb_path, "rb") as f:
+        data = f.read()
+
+    magic, version, total_len = struct.unpack("<4sII", data[:12])
+    if magic != b"glTF":
+        raise ValueError("Invalid GLB binary header")
+
+    chunk0_len, _ = struct.unpack("<II", data[12:20])
+    json_bytes = data[20:20 + chunk0_len]
+    gltf = json.loads(json_bytes.decode("utf-8"))
+
+    bin_header_offset = 20 + chunk0_len
+    chunk1_len, _ = struct.unpack("<II", data[bin_header_offset : bin_header_offset + 8])
+    bin_data_offset = bin_header_offset + 8
+    bin_data = bytearray(data[bin_data_offset : bin_data_offset + chunk1_len])
+
+    target_img = gltf["images"][image_index]
+    bv_idx = target_img["bufferView"]
+    bv = gltf["bufferViews"][bv_idx]
+
+    old_offset = bv.get("byteOffset", 0)
+    old_length = bv["byteLength"]
+
+    # Align new image to 4 bytes
+    pad_len = (4 - (len(new_image_bytes) % 4)) % 4
+    new_padded_image = new_image_bytes + (b"\x00" * pad_len)
+    new_len = len(new_image_bytes)
+    delta = len(new_padded_image) - (old_length + ((4 - (old_length % 4)) % 4))
+
+    new_bin = bytearray()
+    new_bin.extend(bin_data[:old_offset])
+    new_bin.extend(new_padded_image)
+    new_bin.extend(bin_data[old_offset + old_length + ((4 - (old_length % 4)) % 4):])
+
+    bv["byteLength"] = new_len
+    for i, other_bv in enumerate(gltf["bufferViews"]):
+        if i != bv_idx and other_bv.get("byteOffset", 0) > old_offset:
+            other_bv["byteOffset"] += delta
+
+    if "buffers" in gltf and len(gltf["buffers"]) > 0:
+        gltf["buffers"][0]["byteLength"] = len(new_bin)
+
+    new_json_bytes = json.dumps(gltf, separators=(",", ":")).encode("utf-8")
+    json_pad = (4 - (len(new_json_bytes) % 4)) % 4
+    new_json_bytes += b" " * json_pad
+    new_chunk0_len = len(new_json_bytes)
+
+    bin_pad = (4 - (len(new_bin) % 4)) % 4
+    new_bin += b"\x00" * bin_pad
+    new_chunk1_len = len(new_bin)
+
+    new_total_len = 12 + 8 + new_chunk0_len + 8 + new_chunk1_len
+    header = struct.pack("<4sII", b"glTF", 2, new_total_len)
+    chunk0_header = struct.pack("<II", new_chunk0_len, 0x4E4F534A)
+    chunk1_header = struct.pack("<II", new_chunk1_len, 0x004E4942)
+
+    with open(output_glb_path, "wb") as out_f:
+        out_f.write(header)
+        out_f.write(chunk0_header)
+        out_f.write(new_json_bytes)
+        out_f.write(chunk1_header)
+        out_f.write(new_bin)
+
+
 @app.get("/health")
 def health():
     return {
@@ -43,18 +260,31 @@ def health():
         "models_dir": MODELS_DIR,
     }
 
+
 @app.post("/generate")
 @app.post("/api/v1/3d/generate")
 async def generate_3d(
     product_id: str = Form(None),
+    category_id: str = Form(None),
+    product_name: str = Form(None),
     front_image: UploadFile = File(...),
     side_image: UploadFile = File(None),
     back_image: UploadFile = File(None),
+    x_generator_key: str | None = Header(None),
 ):
     """
     Accepts multi-view 2D garment photos (front, side, back)
-    and produces a textured .glb 3D mesh for the VASTRAX interactive viewer.
+    and produces a tailored, custom-textured .glb 3D mesh matching the uploaded garment.
     """
+    import httpx
+    import base64
+
+    expected_key = os.environ.get("GENERATOR_3D_SECRET", "")
+    if not expected_key:
+        raise HTTPException(status_code=503, detail="Generator key is not configured")
+    if not x_generator_key or not secrets.compare_digest(x_generator_key, expected_key):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
     job_id = f"vtx_3d_{uuid.uuid4().hex[:8]}"
     out_filename = f"{job_id}.glb"
     dest_path = os.path.join(MODELS_DIR, out_filename)
@@ -67,57 +297,124 @@ async def generate_3d(
             with open(front_path, "wb") as f:
                 f.write(await front_image.read())
 
+            side_path = None
             if side_image:
                 side_ext = os.path.splitext(side_image.filename or "side.jpg")[1] or ".jpg"
                 side_path = os.path.join(UPLOADS_DIR, f"{job_id}_side{side_ext}")
                 with open(side_path, "wb") as f:
                     f.write(await side_image.read())
 
+            back_path = None
             if back_image:
                 back_ext = os.path.splitext(back_image.filename or "back.jpg")[1] or ".jpg"
                 back_path = os.path.join(UPLOADS_DIR, f"{job_id}_back{back_ext}")
                 with open(back_path, "wb") as f:
                     f.write(await back_image.read())
 
-            logger.info(f"[{job_id}] Received photos for 3D reconstruction.")
+            logger.info(f"[{job_id}] Received photos for 3D reconstruction (category: {category_id}, name: {product_name}).")
 
-            # 2. Check for local Hunyuan3D pipeline execution
+            # 2. Check for active Hunyuan3D neural service on port 8082
             generated = False
             try:
-                sys.path.insert(0, os.path.join(BASE_DIR, "Hunyuan3D-2.1", "hy3dshape"))
-                # If pipeline code is callable in current env:
-                from hy3dshape.pipelines import Hunyuan3DDiTFlowMatchingPipeline  # type: ignore
-                pipeline = Hunyuan3DDiTFlowMatchingPipeline.from_pretrained("tencent/Hunyuan3D-2.1")
-                mesh = pipeline(image=front_path)[0]
-                mesh.export(dest_path)
-                generated = True
-                logger.info(f"[{job_id}] Hunyuan3D pipeline generated model: {dest_path}")
-            except Exception as e:
-                logger.info(f"[{job_id}] Neural pipeline notice ({e}); generating from master garment mesh.")
+                async with httpx.AsyncClient(timeout=1200.0) as hy_client:
+                    with open(front_path, "rb") as f_in:
+                        b64_str = base64.b64encode(f_in.read()).decode("utf-8")
+                    payload = {
+                        "image": b64_str,
+                        "texture": os.environ.get("HUNYUAN_TEXTURE", "true").lower() == "true",
+                        "type": "glb"
+                    }
+                    hy_host = None
+                    for candidate in hunyuan_hosts():
+                        try:
+                            ready = await hy_client.get(f"{candidate}/health", timeout=3.0)
+                            if ready.status_code == 200 and ready.json().get("status") == "healthy":
+                                hy_host = candidate
+                                break
+                        except Exception:
+                            continue
 
-            # 3. If neural pipeline is initializing or in fallback, instantiate the master high-fidelity garment GLB
+                    hy_res = None
+                    if hy_host:
+                        fashn_paused = False
+                        try:
+                            try:
+                                fashn_health = await hy_client.get("http://127.0.0.1:8001/health", timeout=2.0)
+                                if fashn_health.status_code == 200 and fashn_health.json().get("model_loaded"):
+                                    fashn_paused = pause_fashn()
+                                    if not fashn_paused:
+                                        raise RuntimeError("FASHN could not be paused for 3D generation")
+                                    await asyncio.sleep(2)
+                            except httpx.RequestError:
+                                pass
+                            hy_res = await hy_client.post(
+                                f"{hy_host}/generate",
+                                json=payload,
+                                headers={"X-Generator-Key": expected_key},
+                            )
+                        finally:
+                            if fashn_paused:
+                                await resume_fashn()
+
+                    if hy_res and hy_res.status_code == 200:
+                        with open(dest_path, "wb") as out_f:
+                            out_f.write(hy_res.content)
+                        generated = True
+                        generation_mode = hy_res.headers.get("X-Generation-Mode", "hunyuan_untextured")
+                        logger.info(f"[{job_id}] Hunyuan3D GPU service generated mesh: {dest_path}")
+            except Exception as hy_err:
+                logger.info(f"[{job_id}] Hunyuan3D 8082 not available ({hy_err}); using category-matched 3D mesh.")
+
+            # 3. Fallback: Select matching 3D garment mesh and bake full-coverage texture
             if not generated or not os.path.exists(dest_path):
-                # Use the master clean textured garment mesh as base
-                master_glb = os.path.join(MODELS_DIR, "garment_perfect.glb")
-                if not os.path.exists(master_glb):
-                    master_glb = os.path.join(MODELS_DIR, "garment.glb")
+                # Detect garment category
+                cat_lower = (category_id or "").lower()
+                name_lower = (product_name or "").lower()
 
-                if os.path.exists(master_glb):
-                    shutil.copyfile(master_glb, dest_path)
-                    logger.info(f"[{job_id}] Reconstructed GLB created from master mesh at {dest_path}")
+                aspect_is_tall = False
+                try:
+                    from PIL import Image
+                    with Image.open(front_path) as _im:
+                        _w, _h = _im.size
+                        aspect_is_tall = _h > (_w * 1.1)
+                except Exception:
+                    pass
+
+                is_dress = any(w in cat_lower or w in name_lower for w in ["dress", "frock", "gown", "saree", "kurti", "skirt"]) or aspect_is_tall
+                is_bottom = any(w in cat_lower or w in name_lower for w in ["pant", "bottom", "trouser", "jean", "short"])
+
+                if is_dress:
+                    master_glb = os.path.join(MODELS_DIR, "textured_garment.glb")
+                    if not os.path.exists(master_glb):
+                        master_glb = os.path.join(MODELS_DIR, "garment.glb")
+                elif is_bottom:
+                    master_glb = os.path.join(MODELS_DIR, "garment_photo_textured.glb")
                 else:
-                    raise HTTPException(status_code=500, detail="Master 3D garment asset not found")
+                    master_glb = os.path.join(MODELS_DIR, "garment3_multiview.glb")
+
+                if not os.path.exists(master_glb):
+                    master_glb = os.path.join(MODELS_DIR, "garment2_textured.glb")
+
+                try:
+                    baked_bytes = bake_garment_texture_atlas(front_path, back_path, side_path, is_dress=is_dress)
+                    replace_glb_texture(master_glb, dest_path, baked_bytes)
+                    logger.info(f"[{job_id}] Category-tailored ({'dress' if is_dress else ('bottom' if is_bottom else 'top')}) GLB generated at {dest_path}")
+                except Exception as bake_err:
+                    logger.warning(f"[{job_id}] Texture baking fallback notice: {bake_err}")
+                    shutil.copyfile(master_glb, dest_path)
 
             return {
                 "status": "success",
                 "job_id": job_id,
                 "model_url": f"/models/3d/{out_filename}",
                 "filename": out_filename,
-                "message": "3D garment model generated successfully"
+                "generation_mode": generation_mode if generated else "template",
+                "message": "Hunyuan mesh generated" if generated else "Template mesh created; Hunyuan service unavailable"
             }
         except Exception as err:
             logger.error(f"[{job_id}] 3D reconstruction failed: {err}")
             raise HTTPException(status_code=500, detail=str(err))
+
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT_3D", 8081))

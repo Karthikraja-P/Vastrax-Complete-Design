@@ -91,6 +91,7 @@ class ProductResponse(BaseModel):
     is_published: bool
     created_at: datetime
     updated_at: datetime
+    model_path: Optional[str] = None
     images: list[ProductImageResponse] = []
     variants: list[ProductVariantResponse] = []
 

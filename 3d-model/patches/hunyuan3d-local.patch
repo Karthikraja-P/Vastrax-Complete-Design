@@ -1,0 +1,436 @@
+diff --git a/api_server.py b/api_server.py
+index ad1f219..6476065 100644
+--- a/api_server.py
++++ b/api_server.py
+@@ -20,6 +20,7 @@ import asyncio
+ import base64
+ import logging
+ import os
++import secrets
+ import sys
+ import threading
+ import traceback
+@@ -28,7 +29,7 @@ from typing import Optional
+ 
+ import torch
+ import uvicorn
+-from fastapi import FastAPI
++from fastapi import FastAPI, Header, HTTPException
+ from fastapi.middleware.cors import CORSMiddleware
+ from fastapi.responses import JSONResponse, FileResponse
+ 
+@@ -44,6 +45,7 @@ from model_worker import ModelWorker
+ # Global variables
+ SAVE_DIR = DEFAULT_SAVE_DIR
+ worker_id = str(uuid.uuid4())[:6]
++os.makedirs(SAVE_DIR, exist_ok=True)
+ logger = build_logger("controller", f"{SAVE_DIR}/controller.log")
+ 
+ # Global worker and semaphore instances
+@@ -51,6 +53,14 @@ worker = None
+ model_semaphore = None
+ 
+ 
++def require_generator_key(value: Optional[str]) -> None:
++    expected = os.environ.get("GENERATOR_3D_SECRET", "")
++    if not expected:
++        raise HTTPException(status_code=503, detail="Generator key is not configured")
++    if not value or not secrets.compare_digest(value, expected):
++        raise HTTPException(status_code=403, detail="Forbidden")
++
++
+ app = FastAPI(
+     title=API_TITLE,
+     description=API_DESCRIPTION,
+@@ -71,7 +81,7 @@ app.add_middleware(
+ 
+ 
+ @app.post("/generate", tags=["generation"])
+-async def generate_3d_model(request: GenerationRequest):
++async def generate_3d_model(request: GenerationRequest, x_generator_key: Optional[str] = Header(None)):
+     """
+     Generate a 3D model from an input image.
+     
+@@ -81,6 +91,7 @@ async def generate_3d_model(request: GenerationRequest):
+     Returns:
+         FileResponse: The generated 3D model file (GLB or OBJ format)
+     """
++    require_generator_key(x_generator_key)
+     logger.info("Worker generating...")
+     
+     # Convert Pydantic model to dict for compatibility
+@@ -89,7 +100,8 @@ async def generate_3d_model(request: GenerationRequest):
+     uid = uuid.uuid4()
+     try:
+         file_path, uid = worker.generate(uid, params)
+-        return FileResponse(file_path)
++        mode = "hunyuan_untextured" if file_path.endswith("_initial.glb") else "hunyuan_textured"
++        return FileResponse(file_path, headers={"X-Generation-Mode": mode})
+     except ValueError as e:
+         traceback.print_exc()
+         logger.error(f"Caught ValueError: {e}")
+@@ -116,7 +128,7 @@ async def generate_3d_model(request: GenerationRequest):
+ 
+ 
+ @app.post("/send", response_model=GenerationResponse, tags=["generation"])
+-async def send_generation_task(request: GenerationRequest):
++async def send_generation_task(request: GenerationRequest, x_generator_key: Optional[str] = Header(None)):
+     """
+     Send a 3D generation task to be processed asynchronously.
+     
+@@ -126,6 +138,7 @@ async def send_generation_task(request: GenerationRequest):
+     Returns:
+         GenerationResponse: Contains the unique task identifier
+     """
++    require_generator_key(x_generator_key)
+     logger.info("Worker send...")
+     
+     # Convert Pydantic model to dict for compatibility
+@@ -154,7 +167,7 @@ async def health_check():
+ 
+ 
+ @app.get("/status/{uid}", response_model=StatusResponse, tags=["status"])
+-async def status(uid: str):
++async def status(uid: str, x_generator_key: Optional[str] = Header(None)):
+     """
+     Check the status of a generation task.
+     
+@@ -164,6 +177,7 @@ async def status(uid: str):
+     Returns:
+         StatusResponse: Current status of the task and result if completed
+     """
++    require_generator_key(x_generator_key)
+     # Check for textured file first (preferred output)
+     textured_file_path = os.path.join(SAVE_DIR, f'{uid}_textured.glb')
+     initial_file_path = os.path.join(SAVE_DIR, f'{uid}_initial.glb')
+diff --git a/hy3dpaint/DifferentiableRenderer/mesh_utils.py b/hy3dpaint/DifferentiableRenderer/mesh_utils.py
+index 5b3e831..20c9efa 100644
+--- a/hy3dpaint/DifferentiableRenderer/mesh_utils.py
++++ b/hy3dpaint/DifferentiableRenderer/mesh_utils.py
+@@ -14,7 +14,6 @@
+ 
+ import os
+ import cv2
+-import bpy
+ import math
+ import numpy as np
+ from io import StringIO
+@@ -256,7 +255,6 @@ def _apply_auto_smooth(auto_smooth_angle: float):
+     else:
+         bpy.ops.object.shade_auto_smooth(angle=angle_rad)
+ 
+-
+ def convert_obj_to_glb(
+     obj_path: str,
+     glb_path: str,
+@@ -264,21 +262,89 @@ def convert_obj_to_glb(
+     auto_smooth_angle: float = 60,
+     merge_vertices: bool = False,
+ ) -> bool:
+-    """Convert OBJ file to GLB format using Blender."""
++    """Convert OBJ to GLB using Blender as a separate process."""
++    import subprocess
++    import tempfile
++
++    blender_exe = r"C:\Program Files\Blender Foundation\Blender 5.2\blender.exe"
++
++    script = f'''
++import bpy
++
++obj_path = {obj_path!r}
++glb_path = {glb_path!r}
++
++bpy.ops.wm.read_factory_settings(use_empty=True)
++bpy.ops.wm.obj_import(filepath=obj_path)
++
++for mat in bpy.data.materials:
++    if hasattr(mat, "node_tree") and mat.node_tree:
++        tree = mat.node_tree
++        for n in tree.nodes:
++            if n.type == "BSDF_PRINCIPLED":
++                # Ensure matte fabric behavior (prevent specular transparency glaze on dark materials)
++                for inp_name in ["Metallic", "Roughness"]:
++                    inp = n.inputs.get(inp_name)
++                    if inp:
++                        for l in list(inp.links):
++                            tree.links.remove(l)
++                if "Metallic" in n.inputs:
++                    n.inputs["Metallic"].default_value = 0.0
++                if "Roughness" in n.inputs:
++                    n.inputs["Roughness"].default_value = 0.85
++                if "Specular IOR Level" in n.inputs:
++                    n.inputs["Specular IOR Level"].default_value = 0.25
++                if "IOR" in n.inputs:
++                    n.inputs["IOR"].default_value = 1.33
++                if "Alpha" in n.inputs:
++                    n.inputs["Alpha"].default_value = 1.0
++
++bpy.ops.object.select_all(action="DESELECT")
++
++for obj in bpy.context.scene.objects:
++    if obj.type == "MESH":
++        obj.select_set(True)
++        bpy.context.view_layer.objects.active = obj
++
++bpy.ops.export_scene.gltf(
++    filepath=glb_path,
++    export_format="GLB",
++    use_selection=True,
++    export_apply=True
++)
++'''
++
+     try:
+-        _setup_blender_scene()
+-        _clear_scene_objects()
++        with tempfile.NamedTemporaryFile(
++            mode="w",
++            suffix=".py",
++            delete=False,
++            encoding="utf-8",
++        ) as f:
++            f.write(script)
++            script_path = f.name
++
++        result = subprocess.run(
++            [
++                blender_exe,
++                "--background",
++                "--python",
++                script_path,
++            ],
++            capture_output=True,
++            text=True,
++        )
++
++        os.unlink(script_path)
+ 
+-        # Import OBJ file
+-        bpy.ops.wm.obj_import(filepath=obj_path)
+-        _select_mesh_objects()
++        if result.returncode != 0:
++            print("Blender conversion failed:")
++            print(result.stdout)
++            print(result.stderr)
++            return False
+ 
+-        # Process meshes
+-        _merge_vertices_if_needed(merge_vertices)
+-        _apply_shading(shade_type, auto_smooth_angle)
++        return os.path.exists(glb_path)
+ 
+-        # Export to GLB
+-        bpy.ops.export_scene.gltf(filepath=glb_path, use_active_scene=True)
+-        return True
+-    except Exception:
++    except Exception as e:
++        print(f"OBJ → GLB conversion failed: {e}")
+         return False
+\ No newline at end of file
+diff --git a/hy3dpaint/demo.py b/hy3dpaint/demo.py
+index 44fb296..d5d1d9a 100644
+--- a/hy3dpaint/demo.py
++++ b/hy3dpaint/demo.py
+@@ -12,17 +12,16 @@
+ # fine-tuning enabling code and other elements of the foregoing made publicly available
+ # by Tencent in accordance with TENCENT HUNYUAN COMMUNITY LICENSE AGREEMENT.
+ 
+-from textureGenPipeline import Hunyuan3DPaintPipeline, Hunyuan3DPaintConfig
+-
+ try:
+     from utils.torchvision_fix import apply_fix
+-
+     apply_fix()
+ except ImportError:
+     print("Warning: torchvision_fix module not found, proceeding without compatibility fix")
+ except Exception as e:
+     print(f"Warning: Failed to apply torchvision fix: {e}")
+ 
++from textureGenPipeline import Hunyuan3DPaintPipeline, Hunyuan3DPaintConfig
++
+ 
+ if __name__ == "__main__":
+ 
+@@ -31,5 +30,8 @@ if __name__ == "__main__":
+ 
+     conf = Hunyuan3DPaintConfig(max_num_view, resolution)
+     paint_pipeline = Hunyuan3DPaintPipeline(conf)
+-    output_mesh_path = paint_pipeline(mesh_path="./assets/case_1/mesh.glb", image_path="./assets/case_1/image.png")
++    output_mesh_path = paint_pipeline(
++        mesh_path=r"C:\3d Model\Hunyuan3D-2.1\hy3dshape\garment_web_optimized.glb",
++        image_path=r"C:\3d Model\Hunyuan3D-2.1\hy3dshape\demos\garment.png"
++    )
+     print(f"Output mesh path: {output_mesh_path}")
+diff --git a/hy3dpaint/textureGenPipeline.py b/hy3dpaint/textureGenPipeline.py
+index a582892..c646525 100644
+--- a/hy3dpaint/textureGenPipeline.py
++++ b/hy3dpaint/textureGenPipeline.py
+@@ -38,7 +38,7 @@ class Hunyuan3DPaintConfig:
+     def __init__(self, max_num_view, resolution):
+         self.device = "cuda"
+ 
+-        self.multiview_cfg_path = "hy3dpaint/cfgs/hunyuan-paint-pbr.yaml"
++        self.multiview_cfg_path = "cfgs/hunyuan-paint-pbr.yaml"
+         self.custom_pipeline = "hunyuanpaintpbr"
+         self.multiview_pretrained_path = "tencent/Hunyuan3D-2.1"
+         self.dino_ckpt_path = "facebook/dinov2-giant"
+diff --git a/hy3dpaint/utils/multiview_utils.py b/hy3dpaint/utils/multiview_utils.py
+index 03f0557..078881f 100644
+--- a/hy3dpaint/utils/multiview_utils.py
++++ b/hy3dpaint/utils/multiview_utils.py
+@@ -43,7 +43,8 @@ class multiviewDiffusionNet:
+         pipeline = DiffusionPipeline.from_pretrained(
+             model_path,
+             custom_pipeline=custom_pipeline, 
+-            torch_dtype=torch.float16
++            torch_dtype=torch.float16,
++            trust_remote_code=True
+         )
+ 
+         pipeline.scheduler = UniPCMultistepScheduler.from_config(pipeline.scheduler.config, timestep_spacing="trailing")
+diff --git a/hy3dpaint/utils/simplify_mesh_utils.py b/hy3dpaint/utils/simplify_mesh_utils.py
+index 7d3f10a..098bb8f 100644
+--- a/hy3dpaint/utils/simplify_mesh_utils.py
++++ b/hy3dpaint/utils/simplify_mesh_utils.py
+@@ -33,5 +33,5 @@ def mesh_simplify_trimesh(inputpath, outputpath, target_count=40000):
+     face_num = courent.faces.shape[0]
+ 
+     if face_num > target_count:
+-        courent = courent.simplify_quadric_decimation(target_count)
++        courent = courent.simplify_quadric_decimation(face_count=target_count)
+     courent.export(outputpath)
+diff --git a/model_worker.py b/model_worker.py
+index 854f1d0..b7c93d9 100644
+--- a/model_worker.py
++++ b/model_worker.py
+@@ -103,17 +103,23 @@ class ModelWorker:
+         if self.compile:
+             self.pipeline.compile()
+             
+-        # Initialize texture generation pipeline (matching demo.py)
+-        max_num_view = 6  # can be 6 to 9
+-        resolution = 512  # can be 768 or 512
+-        conf = Hunyuan3DPaintConfig(max_num_view, resolution)
+-        conf.realesrgan_ckpt_path = "hy3dpaint/ckpt/RealESRGAN_x4plus.pth"
+-        conf.multiview_cfg_path = "hy3dpaint/cfgs/hunyuan-paint-pbr.yaml"
+-        conf.custom_pipeline = "hy3dpaint/hunyuanpaintpbr"
+-        self.paint_pipeline = Hunyuan3DPaintPipeline(conf)
++        # Load the larger paint pipeline only when texturing is requested.
++        self.paint_pipeline = None
+         # clean cache in save_dir
+         for file in os.listdir(self.save_dir):
+-            os.remove(os.path.join(self.save_dir, file))
++            if not file.endswith(".log"):
++                try:
++                    os.remove(os.path.join(self.save_dir, file))
++                except Exception:
++                    pass
++            
++    def _free_gpu(self):
++        import gc
++        gc.collect()
++        try:
++            torch.cuda.empty_cache()
++        except RuntimeError as e:
++            logger.warning("CUDA cache cleanup failed: %s", e)
+ 
+     def get_queue_length(self):
+         """
+@@ -161,13 +167,16 @@ class ModelWorker:
+         else:
+             raise ValueError("No input image provided")
+ 
+-        # Convert to RGBA and remove background if needed
+-        image = image.convert("RGBA")
+-        if image.mode == "RGB":
+-            image = self.rembg(image)
++        # Opaque product photos need a cutout before shape reconstruction.
++        # Checking the mode after converting to RGBA always skipped removal.
++        if image.mode != "RGBA" or image.getextrema()[3] == (255, 255):
++            image = self.rembg(image.convert("RGB"))
++        else:
++            image = image.convert("RGBA")
+ 
+         # Generate mesh 
+         try:
++            self.pipeline.to(self.device)
+             mesh = self.pipeline(image=image)[0]
+             logger.info("---Shape generation takes %s seconds ---" % (time.time() - start_time))
+         except Exception as e:
+@@ -179,40 +188,44 @@ class ModelWorker:
+         initial_save_path = os.path.join(self.save_dir, f'{str(uid)}_initial.glb')
+         mesh.export(initial_save_path)
+         
+-        # Generate textured mesh as obj ( as in demo )
+-        try:
+-            output_mesh_path_obj = os.path.join(self.save_dir, f'{str(uid)}_texturing.obj')
+-            textured_path_obj = self.paint_pipeline(
+-                mesh_path=initial_save_path,
+-                image_path=image,
+-                output_mesh_path=output_mesh_path_obj,
+-                save_glb=False            
+-            )
+-            logger.info("---Texture generation takes %s seconds ---" % (time.time() - start_time))
+-            logger.info(f"output_mesh_path: {output_mesh_path_obj} textured_path: {textured_path_obj}")
+-            # Use the textured GLB as the final output
+-            #final_save_path = os.path.join(self.save_dir, f'{str(uid)}_textured.{file_type}')
+-            #os.rename(output_mesh_path, final_save_path)
+-
+-            # Convert textured OBJ to GLB using obj2gltf with PBR support
+-            print("convert textured OBJ to GLB")
+-            glb_path_textured = os.path.join(self.save_dir, f'{str(uid)}_texturing.glb')
+-            quick_convert_with_obj2gltf(textured_path_obj, glb_path_textured)
+-            # now rename glb_path to uid_textured.glb
+-            print("done.")
+-            final_save_path = os.path.join(self.save_dir, f'{str(uid)}_textured.glb')
+-            os.rename(glb_path_textured, final_save_path)
+-            print(f"final_save_path: {final_save_path}")
+-
+-            
+-        except Exception as e:
+-            logger.error(f"Texture generation failed: {e}")
+-            # Fall back to untextured mesh if texture generation fails
+-            final_save_path = initial_save_path
+-            logger.warning(f"Using untextured mesh as fallback: {final_save_path}")
++        final_save_path = initial_save_path
++        if params.get("texture", False):
++            try:
++                self.pipeline.to('cpu')
++                self._free_gpu()
++                if self.paint_pipeline is None:
++                    conf = Hunyuan3DPaintConfig(6, 512)
++                    conf.realesrgan_ckpt_path = "hy3dpaint/ckpt/RealESRGAN_x4plus.pth"
++                    conf.multiview_cfg_path = "hy3dpaint/cfgs/hunyuan-paint-pbr.yaml"
++                    conf.custom_pipeline = "hy3dpaint/hunyuanpaintpbr"
++                    self.paint_pipeline = Hunyuan3DPaintPipeline(conf)
++                output_mesh_path_obj = os.path.join(self.save_dir, f'{str(uid)}_texturing.obj')
++                textured_path_obj = self.paint_pipeline(
++                    mesh_path=initial_save_path,
++                    image_path=image,
++                    output_mesh_path=output_mesh_path_obj,
++                    save_glb=False,
++                )
++                logger.info("---Texture generation takes %s seconds ---" % (time.time() - start_time))
++                logger.info(f"output_mesh_path: {output_mesh_path_obj} textured_path: {textured_path_obj}")
++                glb_path_textured = os.path.join(self.save_dir, f'{str(uid)}_texturing.glb')
++                quick_convert_with_obj2gltf(textured_path_obj, glb_path_textured)
++                final_save_path = os.path.join(self.save_dir, f'{str(uid)}_textured.glb')
++                os.rename(glb_path_textured, final_save_path)
++                self.paint_pipeline = None
++                self._free_gpu()
++            except Exception as e:
++                logger.exception("Texture generation failed; returning the untextured neural mesh: %s", e)
++                self.paint_pipeline = None
++                self._free_gpu()
++        else:
++            logger.info("Texture generation skipped by request; returning neural shape mesh")
+ 
+         if self.low_vram_mode:
+-            torch.cuda.empty_cache()
++            try:
++                torch.cuda.empty_cache()
++            except RuntimeError as e:
++                logger.warning("CUDA cache cleanup failed after mesh export: %s", e)
+             
+         logger.info("---Total generation takes %s seconds ---" % (time.time() - start_time))
+         return final_save_path, uid 

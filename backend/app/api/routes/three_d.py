@@ -16,10 +16,12 @@ router = APIRouter(prefix="/3d", tags=["3D Generation"])
 @router.post("/generate", status_code=status.HTTP_200_OK)
 async def generate_3d_mesh(
     product_id: str = Form(None),
+    category_id: str = Form(None),
+    product_name: str = Form(None),
     front_image: UploadFile = File(...),
     side_image: UploadFile = File(None),
     back_image: UploadFile = File(None),
-    _: User = Depends(require_admin),
+    current_user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
     """
@@ -33,6 +35,7 @@ async def generate_3d_mesh(
     job_id = f"job_3d_{uuid.uuid4().hex[:8]}"
     generator_url = os.getenv("GENERATOR_3D_URL", "http://172.17.0.1:8081")
     model_url = f"/models/3d/{job_id}.glb"
+    generation_mode = "unknown"
 
     async with gpu_queue.acquire(f"3d_reconstruct_{job_id}"):
         try:
@@ -51,19 +54,36 @@ async def generate_3d_mesh(
             data = {}
             if product_id:
                 data["product_id"] = product_id
+                product = db.query(Product).filter(Product.id == product_id).first()
+                if product:
+                    data["category_id"] = category_id or product.category_id or ""
+                    data["product_name"] = product_name or product.name or ""
+            else:
+                if category_id:
+                    data["category_id"] = category_id
+                if product_name:
+                    data["product_name"] = product_name
 
             # Call 3D generator service
-            async with httpx.AsyncClient(timeout=120.0) as client:
-                resp = await client.post(f"{generator_url}/generate", files=files, data=data)
+            async with httpx.AsyncClient(timeout=1260.0) as client:
+                resp = await client.post(
+                    f"{generator_url}/generate",
+                    files=files,
+                    data=data,
+                    headers={"X-Generator-Key": os.environ["GENERATOR_3D_SECRET"]},
+                )
                 if resp.status_code == 200:
                     res_json = resp.json()
                     model_url = res_json.get("model_url", model_url)
+                    generation_mode = res_json.get("generation_mode", "unknown")
                 else:
                     logger.warning(f"3D generator returned {resp.status_code}: {resp.text}")
-                    model_url = "/models/3d/garment_perfect.glb"
+                    raise HTTPException(status_code=502, detail="3D generator failed")
+        except HTTPException:
+            raise
         except Exception as e:
-            logger.warning(f"3D generator service connection notice ({e}); using master 3D mesh template.")
-            model_url = "/models/3d/garment_perfect.glb"
+            logger.exception("3D generator service failed: %s", e)
+            raise HTTPException(status_code=503, detail="3D generator unavailable")
 
         if product_id:
             product = db.query(Product).filter(Product.id == product_id).first()
@@ -72,10 +92,15 @@ async def generate_3d_mesh(
                 db.commit()
 
     return {
-        "status": "success",
+        "status": "success" if generation_mode == "hunyuan_textured" else ("partial" if generation_mode == "hunyuan_untextured" else "template"),
         "job_id": job_id,
         "model_url": model_url,
-        "message": "3D garment mesh generated and texture-painted successfully"
+        "generation_mode": generation_mode,
+        "message": (
+            "Textured neural 3D model generated" if generation_mode == "hunyuan_textured"
+            else "Neural 3D shape generated without texture" if generation_mode == "hunyuan_untextured"
+            else "Template mesh created; Hunyuan reconstruction unavailable"
+        )
     }
 
 
@@ -83,20 +108,20 @@ async def generate_3d_mesh(
 @router.post("/products/{product_id}/generate-3d", status_code=status.HTTP_200_OK)
 def generate_product_3d(
     product_id: str,
-    _: User = Depends(require_admin),
+    current_user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
     product = db.query(Product).filter(Product.id == product_id).first()
     if not product:
         raise NotFoundError("Product not found")
 
-    model_url = "/models/garment_perfect.glb"
+    model_url = "/models/3d/garment_perfect.glb"
     product.model_path = model_url
     db.commit()
 
     return {
-        "status": "success",
+        "status": "template_assigned",
         "product_id": product.id,
         "model_url": model_url,
-        "message": f"3D model generated for {product.name}"
+        "message": f"Template 3D model assigned to {product.name}"
     }
