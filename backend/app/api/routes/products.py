@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.db.database import get_db
 from app.middleware.auth import require_admin, get_optional_user, get_current_user
+from app.core.exceptions import ForbiddenError, NotFoundError
 from app.models.user import User
 from app.schemas.products import ImageUploadIn, ModelUploadIn, ProductCreate, ProductUpdate, StockUpdateIn
 from app.schemas.reviews import ReviewCreate, ReviewResponse
@@ -30,8 +31,11 @@ def list_products(
     published_only: bool = Query(True),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
+    current_user: Optional[User] = Depends(get_optional_user),
     db: Session = Depends(get_db),
 ):
+    if not published_only and (not current_user or str(current_user.role).lower() != "admin"):
+        raise ForbiddenError("Admin access required to list drafts")
     return ProductService(db).list_products(category_id, gender, min_price, max_price, size, published_only, skip, limit)
 
 
@@ -46,8 +50,15 @@ def search_products(
 
 
 @router.get("/{product_id}")
-def get_product(product_id: str, db: Session = Depends(get_db)):
-    return ProductService(db).get_product(product_id)
+def get_product(
+    product_id: str,
+    current_user: Optional[User] = Depends(get_optional_user),
+    db: Session = Depends(get_db),
+):
+    product = ProductService(db).get_product(product_id)
+    if not product.is_published and (not current_user or str(current_user.role).lower() != "admin"):
+        raise NotFoundError("Product not found")
+    return product
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
@@ -67,6 +78,7 @@ def update_product(
     db: Session = Depends(get_db),
 ):
     return ProductService(db).update_product(product_id, body)
+
 
 
 @router.delete("/{product_id}", status_code=status.HTTP_204_NO_CONTENT)

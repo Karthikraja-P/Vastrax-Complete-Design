@@ -7,6 +7,9 @@ from sqlalchemy.orm import Session
 from fastapi.responses import StreamingResponse
 
 from app.db.database import get_db
+from app.middleware.auth import get_optional_user
+from app.models.user import User
+from app.core.exceptions import ForbiddenError
 from app.models.chat_message import ChatMessage
 from app.models.product import Product
 from app.schemas.chat import ChatRequest
@@ -15,16 +18,38 @@ from app.services.chat_service import chat as vastra_chat, chat_stream as vastra
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 
+def _verified_user_id(claimed_user_id: str | None, current_user: User | None) -> str | None:
+    if claimed_user_id and (not current_user or claimed_user_id not in (current_user.id, current_user.email)):
+        raise ForbiddenError("Cannot use another user's chat identity")
+    return current_user.id if current_user else None
+
+
+def _authorize_session(db: Session, session_id: str, current_user: User | None) -> None:
+    owners = {
+        owner for (owner,) in db.query(ChatMessage.user_id)
+        .filter(ChatMessage.session_id == session_id, ChatMessage.user_id.isnot(None))
+        .distinct().all()
+    }
+    if owners and (not current_user or not owners.issubset({current_user.id, current_user.email})):
+        raise ForbiddenError("Chat session access denied")
+
+
 @router.post("")
-def chat_endpoint(req: ChatRequest, db: Session = Depends(get_db)):
+def chat_endpoint(
+    req: ChatRequest,
+    current_user: User | None = Depends(get_optional_user),
+    db: Session = Depends(get_db),
+):
     session_id = req.session_id or f"ses_{uuid.uuid4().hex[:12]}"
+    user_id = _verified_user_id(req.user_id, current_user)
+    _authorize_session(db, session_id, current_user)
     messages = [{"role": m.role, "content": m.content} for m in req.messages]
     
     # Save the latest user message to DB if present
     if req.messages and req.messages[-1].role == "user":
         user_msg = ChatMessage(
             session_id=session_id,
-            user_id=req.user_id,
+            user_id=user_id,
             sender="user",
             content=req.messages[-1].content,
         )
@@ -38,7 +63,7 @@ def chat_endpoint(req: ChatRequest, db: Session = Depends(get_db)):
         db=db,
         context_url=req.context_url,
         cart_items=req.cart_items,
-        user_id=req.user_id,
+        user_id=user_id,
         session_id=session_id,
     )
 
@@ -89,7 +114,7 @@ def chat_endpoint(req: ChatRequest, db: Session = Depends(get_db)):
     # Save assistant message to DB
     assistant_msg = ChatMessage(
         session_id=session_id,
-        user_id=req.user_id,
+        user_id=user_id,
         sender="stylist",
         content=reply_text,
         suggested_products=json.dumps(suggested) if suggested else None,
@@ -109,14 +134,20 @@ def chat_endpoint(req: ChatRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/stream")
-def chat_stream_endpoint(req: ChatRequest, db: Session = Depends(get_db)):
+def chat_stream_endpoint(
+    req: ChatRequest,
+    current_user: User | None = Depends(get_optional_user),
+    db: Session = Depends(get_db),
+):
     session_id = req.session_id or f"ses_{uuid.uuid4().hex[:12]}"
+    user_id = _verified_user_id(req.user_id, current_user)
+    _authorize_session(db, session_id, current_user)
     messages = [{"role": m.role, "content": m.content} for m in req.messages]
 
     if req.messages and req.messages[-1].role == "user":
         user_msg = ChatMessage(
             session_id=session_id,
-            user_id=req.user_id,
+            user_id=user_id,
             sender="user",
             content=req.messages[-1].content,
         )
@@ -130,7 +161,7 @@ def chat_stream_endpoint(req: ChatRequest, db: Session = Depends(get_db)):
             db=db,
             context_url=req.context_url,
             cart_items=req.cart_items,
-            user_id=req.user_id,
+            user_id=user_id,
             session_id=session_id,
         ),
         media_type="text/event-stream"
@@ -141,9 +172,13 @@ def chat_stream_endpoint(req: ChatRequest, db: Session = Depends(get_db)):
 def get_chat_history(
     session_id: Optional[str] = Query(None),
     user_id: Optional[str] = Query(None),
-    db: Session = Depends(get_db)
+    current_user: User | None = Depends(get_optional_user),
+    db: Session = Depends(get_db),
 ):
     """Retrieve previous conversation messages for a customer or session."""
+    _verified_user_id(user_id, current_user)
+    if session_id:
+        _authorize_session(db, session_id, current_user)
     if not session_id and not user_id:
         return {"messages": []}
 
@@ -178,9 +213,13 @@ def get_chat_history(
 def clear_chat_history(
     session_id: Optional[str] = Query(None),
     user_id: Optional[str] = Query(None),
-    db: Session = Depends(get_db)
+    current_user: User | None = Depends(get_optional_user),
+    db: Session = Depends(get_db),
 ):
     """Clear chat history for a session or customer."""
+    _verified_user_id(user_id, current_user)
+    if session_id:
+        _authorize_session(db, session_id, current_user)
     if not session_id and not user_id:
         return {"success": False, "detail": "session_id or user_id required"}
 
