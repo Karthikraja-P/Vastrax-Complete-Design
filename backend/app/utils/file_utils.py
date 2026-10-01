@@ -105,8 +105,13 @@ def resolve_garment(garment_path: str) -> tuple[str, bool]:
                 garment_path,
                 headers={"User-Agent": "VastraX-VTON/1.0"}
             )
+            class NoRedirect(urllib.request.HTTPRedirectHandler):
+                def redirect_request(self, request, fp, code, msg, headers, newurl):
+                    raise BadRequestError("Garment image redirects are not allowed")
+
+            opener = urllib.request.build_opener(NoRedirect)
             with _pinned_dns(hostname, pinned_ip):
-                with urllib.request.urlopen(req, timeout=10) as response:
+                with opener.open(req, timeout=10) as response:
                     status_code = getattr(response, "status", 200)
                     content_type = response.headers.get("Content-Type", "").lower()
                     if status_code != 200 or ("image" not in content_type and "octet-stream" not in content_type):
