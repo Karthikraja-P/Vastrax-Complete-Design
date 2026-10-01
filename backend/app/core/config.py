@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     allowed_origins: str = "http://localhost:3000,https://vastrax.ai"
     frontend_url: str = "http://localhost:3000,https://d11ldjfc82x9pb.cloudfront.net"
     debug: bool = False
+    app_env: str = "development"  # set APP_ENV=production when public
 
     # Directories (computed below if not set explicitly)
     upload_dir: str = ""

@@ -1,4 +1,4 @@
-import random
+import secrets
 import os
 import httpx
 from datetime import timedelta, timezone
@@ -9,6 +9,7 @@ from pydantic import BaseModel, EmailStr
 from app.db.database import get_db
 from app.models.otp import OTP
 from app.services.email_service import send_email
+from app.core.rate_limit import enforce, reset
 
 router = APIRouter()
 
@@ -25,7 +26,7 @@ class OTPVerifyRequest(BaseModel):
 
 def generate_otp_code() -> str:
     """Generates a random 6-digit OTP."""
-    return str(random.randint(100000, 999999))
+    return str(100000 + secrets.randbelow(900000))
 
 @router.post("/send", status_code=status.HTTP_200_OK)
 async def send_otp(request: OTPSendRequest, db: Session = Depends(get_db)):
@@ -36,6 +37,7 @@ async def send_otp(request: OTPSendRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Either email or phone_number must be provided.")
         
     identifier = request.phone_number if request.phone_number else request.email
+    enforce(f"otp-send:{identifier}", 3, 600)
 
     # 1. Invalidate any existing unused OTPs for this identifier to prevent spam
     existing_otps = db.query(OTP).filter(OTP.identifier == identifier, OTP.is_used == False).all()
@@ -118,6 +120,7 @@ async def verify_otp(request: OTPVerifyRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Either email or phone_number must be provided.")
         
     identifier = request.phone_number if request.phone_number else request.email
+    enforce(f"otp-verify:{identifier}", 5, 600)
 
     from app.models.otp import _now
     
@@ -140,6 +143,7 @@ async def verify_otp(request: OTPVerifyRequest, db: Session = Depends(get_db)):
         
     # Mark as used
     otp.is_used = True
+    reset(f"otp-verify:{identifier}")
     
     # ---------------------------------------------------------
     # REAL DATABASE INTEGRATION: Fetch or Create User

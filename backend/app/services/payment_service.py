@@ -28,6 +28,10 @@ def _is_mock_mode() -> bool:
     )
 
 
+def _webhook_secret_is_default() -> bool:
+    return settings.razorpay_webhook_secret in ("", "MOCK_WEBHOOK_SECRET")
+
+
 def _razorpay_auth() -> tuple[str, str]:
     return (settings.razorpay_key_id, settings.razorpay_key_secret)
 
@@ -57,6 +61,8 @@ class PaymentService:
         self.db.add(payment)
         self.db.commit()
 
+        if _is_mock_mode() and settings.app_env == "production":
+            raise BadRequestError("Online payments are not available right now")
         if _is_mock_mode():
             return {
                 "status": "success",
@@ -126,7 +132,7 @@ class PaymentService:
         return {"status": "ok", "txn_id": payment.id}
 
     def simulate_payment(self, txn_id: str, user: User, success: bool) -> dict:
-        if not _is_mock_mode():
+        if not _is_mock_mode() or settings.app_env == "production":
             raise ForbiddenError("Simulation is only available when Razorpay is unconfigured")
 
         payment = self.db.query(Payment).filter(Payment.id == txn_id).first()
@@ -173,6 +179,8 @@ class PaymentService:
         logger.warning("Payment failed: %s for order: %s", payment.id, payment.order_id)
 
     def handle_webhook(self, raw_body: bytes, signature: str | None) -> dict:
+        if _webhook_secret_is_default():
+            raise BadRequestError("Webhook not configured")
         if not signature:
             raise BadRequestError("Missing X-Razorpay-Signature header")
 

@@ -10,9 +10,9 @@ class AppSettingsSchema(BaseModel):
     storeName: str = "VASTRAX Luxury Apparel"
     supportEmail: str = "concierge@vastrax.luxury"
     supportPhone: str = "+1 (800) 827-8729"
-    currency: str = "USD ($)"
-    timezone: str = "UTC-05:00 (Eastern Time)"
-    announcementText: str = "Complimentary Global Express Delivery on Orders Over $250"
+    currency: str = "INR (₹)"
+    timezone: str = "UTC+05:30 (India Standard Time)"
+    announcementText: str = "Complimentary Express Delivery on Orders Over ₹1,999"
     enableGuestCheckout: bool = True
     enableLowStockAlerts: bool = True
     lowStockThreshold: int = 5
@@ -33,9 +33,17 @@ class AppSettingsSchema(BaseModel):
 # In-memory store or DB-backed settings
 _current_settings = AppSettingsSchema()
 
+PUBLIC_FIELDS = {"storeName", "supportEmail", "supportPhone", "currency", "timezone", "announcementText", "enableGuestCheckout", "maintenanceMode", "activeOffers"}
+
+
 @router.get("/app")
 def get_app_settings():
-    """Retrieve global store and app configuration (public for storefront flags)."""
+    """Public storefront flags only; the stylist prompt stays private."""
+    return _current_settings.model_dump(include=PUBLIC_FIELDS)
+
+
+@router.get("/app/admin")
+def get_app_settings_admin(admin: User = Depends(require_admin)):
     return _current_settings
 
 @router.put("/app")

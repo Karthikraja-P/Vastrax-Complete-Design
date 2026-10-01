@@ -73,7 +73,7 @@ export default function SettingsPage() {
 
   useEffect(() => {
     async function loadSettings() {
-      const data = await settingsApi.getApp();
+      const data = await fetchApi<any>("/settings/app/admin").catch(() => null);
       if (data) {
         if (data.storeName) setStoreName(data.storeName);
         if (data.supportEmail) setSupportEmail(data.supportEmail);

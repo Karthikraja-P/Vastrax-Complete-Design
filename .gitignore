@@ -59,3 +59,8 @@ scratch/
 public/models/3d/vtx_3d_*.glb
 !public/models/3d/vtx_3d_cbb285ad.glb
 !public/models/3d/vtx_3d_e75039d6.glb
+
+# local data
+backend/vastrax.db
+backend/*.db
+backend/user_uploads/

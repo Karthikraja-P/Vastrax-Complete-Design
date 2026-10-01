@@ -10,6 +10,7 @@ from fastapi import FastAPI
 from app.core.config import settings
 from app.api.router import api_router
 from app.middleware.cors import setup_cors
+from app.middleware.security import setup_security
 from app.core.start import initialize_directories
 from app.core.exceptions import register_exception_handlers
 from app.core.logging import setup_logging
@@ -25,13 +26,18 @@ initialize_directories()
 Base.metadata.create_all(bind=engine)
 ensure_columns(engine)
 
+_prod = settings.app_env == "production"
 app = FastAPI(
+    docs_url=None if _prod else "/docs",
+    redoc_url=None if _prod else "/redoc",
+    openapi_url=None if _prod else "/openapi.json",
     title="VastraX API",
     description="Virtual try-on and AI style advisor for VastraX boutique",
     version="1.0.0",
 )
 
 register_exception_handlers(app)
+setup_security(app)
 setup_cors(app)
 app.include_router(api_router)
 mount_static_files(app)
