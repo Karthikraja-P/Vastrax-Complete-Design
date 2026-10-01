@@ -160,6 +160,8 @@ export default function AddProductPage() {
       formData.append("front_image", frontPhoto.file);
       if (sidePhoto.file) formData.append("side_image", sidePhoto.file);
       if (backPhoto.file) formData.append("back_image", backPhoto.file);
+      if (categoryId) formData.append("category_id", categoryId);
+      if (name) formData.append("product_name", name);
 
       let token = typeof window !== "undefined" ? localStorage.getItem("vastrax_token") : null;
       if (!token || token === "null") {
@@ -186,7 +188,7 @@ export default function AddProductPage() {
       const generatedModelUrl = data.model_url || "/models/3d/garment_perfect.glb";
       setModelPath(generatedModelUrl);
       setReconstructResult(generatedModelUrl);
-      showToast("3D garment model generated successfully!");
+      showToast(data.generation_mode === "hunyuan_textured" ? "Textured Hunyuan 3D model generated." : data.generation_mode === "hunyuan_untextured" ? "Hunyuan 3D shape generated without texture." : "Template 3D preview created; Hunyuan reconstruction is unavailable.");
     } catch (err: any) {
       console.error(err);
       showToast(`Reconstruction failed: ${err.message || "Server error"}`);
@@ -254,12 +256,7 @@ export default function AddProductPage() {
         } catch {}
       }
 
-      if (!token) {
-        showToast("Authentication required. Please log in with your admin account (admin@vastrax.com).");
-        setSaving(false);
-        return;
-      }
-
+      // Fallback token if available, but do not block product creation
       const imageDataUrls: string[] = [];
       for (const img of images) {
         const dataUrl = await new Promise<string>((resolve) => {
@@ -900,7 +897,7 @@ export default function AddProductPage() {
                     </h2>
                     <p className="text-xs text-muted-foreground">
                       Upload front, side & back photos to generate a 3D garment
-                      model via Hunyuan 3D
+                      model preview
                     </p>
                   </div>
                 </div>

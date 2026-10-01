@@ -240,7 +240,7 @@ export function StylistDrawer({ isOpen: externalIsOpen, onClose: externalOnClose
     let lastActive = localStorage.getItem("vastrax_stylist_last_active");
     
     if (!sid || !lastActive || (Date.now() - parseInt(lastActive, 10)) > SESSION_TIMEOUT_MS) {
-      sid = `ses_${Math.random().toString(36).substring(2, 11)}_${Date.now()}`;
+      sid = `ses_${crypto.randomUUID()}`;
       localStorage.setItem("vastrax_stylist_session_id", sid);
       localStorage.setItem("vastrax_stylist_last_active", Date.now().toString());
     } else {
@@ -330,7 +330,7 @@ export function StylistDrawer({ isOpen: externalIsOpen, onClose: externalOnClose
   const handleClearChat = async () => {
     if (confirm("Reset and clear your styling conversation history?")) {
       await chatApi.clearHistory(sessionId);
-      const newSid = `ses_${Math.random().toString(36).substring(2, 11)}_${Date.now()}`;
+      const newSid = `ses_${crypto.randomUUID()}`;
       localStorage.setItem("vastrax_stylist_session_id", newSid);
       setSessionId(newSid);
       setMessages([]);

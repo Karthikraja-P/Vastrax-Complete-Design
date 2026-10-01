@@ -2,15 +2,16 @@
 
 import { useState, useRef, useEffect, Suspense } from "react";
 import {
-  ArrowLeft, Save, Sparkles, Image as ImageIcon, Box, Shirt, Video, Plus,
+  ArrowLeft, Save, Sparkles, Image as ImageIcon, Box, Plus,
   X as XIcon, Upload, Loader2, Check, RotateCw, Camera, Eye
 } from "lucide-react";
 import Link from "next/link";
 import { clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
-import { AiVideoGenerator } from "@/components/products/AiVideoGenerator";
 import { productsApi, categoriesApi } from "@/lib/api";
 import { useRouter, useSearchParams } from "next/navigation";
+import { getSession } from "next-auth/react";
+import { Product3DModal } from "@/components/3d/Product3DModal";
 
 function cn(...inputs: (string | undefined | null | false)[]) {
   return twMerge(clsx(inputs));
@@ -20,8 +21,6 @@ const tabs = [
   { id: "basic", label: "Basic Info" },
   { id: "pricing", label: "Pricing & Inventory" },
   { id: "images", label: "Product Images", icon: ImageIcon },
-  { id: "vto", label: "Virtual Try-On", icon: Shirt, highlight: true },
-  { id: "ai-video", label: "AI Video", icon: Video, highlight: true },
   { id: "3d", label: "3D Product", icon: Box, highlight: true },
 ];
 
@@ -30,6 +29,7 @@ interface UploadedImage {
   file: File;
   preview: string;
   label?: string;
+  isExisting?: boolean;
 }
 
 interface ReconstructPhoto {
@@ -99,6 +99,7 @@ function EditProductContent() {
   const [backPhoto, setBackPhoto] = useState<ReconstructPhoto>({ file: null, preview: null });
   const [reconstructing, setReconstructing] = useState(false);
   const [reconstructResult, setReconstructResult] = useState<string | null>(null);
+  const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
   const frontRef = useRef<HTMLInputElement>(null);
   const sideRef = useRef<HTMLInputElement>(null);
   const backRef = useRef<HTMLInputElement>(null);
@@ -120,6 +121,8 @@ function EditProductContent() {
             setPriceSelling(String(selling));
             setPriceMrp(String(mrp));
             setOccasion(prod.occasion || "");
+            setFabric(prod.fabric || "");
+            setColour(prod.colour || "");
             setModelPath(prod.model_path || "");
             setGender(prod.gender || "Women");
             if (prod.size_chart) setSizeChart(prod.size_chart);
@@ -186,7 +189,7 @@ function EditProductContent() {
   const handleRemoveImage = (id: string) => {
     setImages((prev) => {
       const img = prev.find((i) => i.id === id);
-      if (img) URL.revokeObjectURL(img.preview);
+      if (img?.preview.startsWith("blob:")) URL.revokeObjectURL(img.preview);
       return prev.filter((i) => i.id !== id);
     });
   };
@@ -223,18 +226,45 @@ function EditProductContent() {
     setReconstructing(true);
     setReconstructResult(null);
     try {
-      // We need a product ID first — create a draft product if not yet created
-      showToast("Sending photos to Hunyuan 3D reconstruction service…");
+      showToast("Sending photos to 3D garment generator service…");
 
-      // Simulate a delay for the reconstruction process
-      // In production this calls: POST /api/v1/products/{id}/reconstruct
-      await new Promise((r) => setTimeout(r, 3000));
+      const formData = new FormData();
+      formData.append("front_image", frontPhoto.file);
+      if (sidePhoto.file) formData.append("side_image", sidePhoto.file);
+      if (backPhoto.file) formData.append("back_image", backPhoto.file);
+      if (productId) formData.append("product_id", productId);
+      if (categoryId) formData.append("category_id", categoryId);
+      if (name) formData.append("product_name", name);
 
-      setReconstructResult("reconstruction_complete");
-      showToast("3D model reconstructed successfully! The GLB model is ready.");
+      let token = typeof window !== "undefined" ? localStorage.getItem("vastrax_token") : null;
+      if (!token || token === "null") {
+        try {
+          const session = await getSession();
+          if ((session as any)?.accessToken) {
+            token = (session as any).accessToken;
+          }
+        } catch {}
+      }
+
+      const res = await fetch("/api/v1/3d/generate", {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.detail || errJson.message || "Failed to generate 3D model");
+      }
+
+      const data = await res.json();
+      const generatedModelUrl = data.model_url || "/models/3d/garment_perfect.glb";
+      setModelPath(generatedModelUrl);
+      setReconstructResult(generatedModelUrl);
+      showToast(data.generation_mode === "hunyuan_textured" ? "Textured Hunyuan 3D model generated." : data.generation_mode === "hunyuan_untextured" ? "Hunyuan 3D shape generated without texture." : "Template 3D preview created; Hunyuan reconstruction is unavailable.");
     } catch (err: any) {
       console.error(err);
-      showToast("Reconstruction failed.");
+      showToast(`Reconstruction failed: ${err.message || "Server error"}`);
     } finally {
       setReconstructing(false);
     }
@@ -289,6 +319,10 @@ function EditProductContent() {
     try {
       const imageDataUrls: string[] = [];
       for (const img of images) {
+        if (img.isExisting) {
+          imageDataUrls.push(img.preview);
+          continue;
+        }
         const dataUrl = await new Promise<string>((resolve) => {
           const reader = new FileReader();
           reader.onloadend = () => resolve(reader.result as string);
@@ -795,7 +829,9 @@ function EditProductContent() {
                     <button
                       type="button"
                       onClick={() => {
-                        images.forEach((img) => URL.revokeObjectURL(img.preview));
+                        images.forEach((img) => {
+                          if (img.preview.startsWith("blob:")) URL.revokeObjectURL(img.preview);
+                        });
                         setImages([]);
                       }}
                       className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/10 border border-red-500/20 rounded-lg text-[11px] font-semibold text-red-500 hover:bg-red-500/20 transition-colors"
@@ -911,25 +947,6 @@ function EditProductContent() {
             </div>
           )}
 
-          {/* VIRTUAL TRY-ON */}
-          {activeTab === "vto" && (
-            <div className="space-y-6 animate-in fade-in text-center py-20">
-              <Shirt className="w-16 h-16 text-accent/50 mx-auto mb-4" />
-              <h2 className="text-xl font-semibold text-foreground">
-                Virtual Try-On Setup
-              </h2>
-              <p className="text-muted-foreground max-w-md mx-auto">
-                Upload product reference images to enable the Virtual Try-On
-                feature for customers.
-              </p>
-              <button className="mt-6 px-6 py-2 bg-accent text-white rounded-md font-medium hover:bg-accent/90 transition-colors">
-                Enable Feature
-              </button>
-            </div>
-          )}
-
-          {/* AI VIDEO */}
-          {activeTab === "ai-video" && <AiVideoGenerator />}
 
           {/* 3D PRODUCT */}
           {activeTab === "3d" && (
@@ -946,7 +963,7 @@ function EditProductContent() {
                     </h2>
                     <p className="text-xs text-muted-foreground">
                       Upload front, side & back photos to generate a 3D garment
-                      model via Hunyuan 3D
+                      model preview
                     </p>
                   </div>
                 </div>
@@ -1076,7 +1093,8 @@ function EditProductContent() {
                   </p>
                   <button
                     type="button"
-                    className="flex items-center gap-2 px-4 py-2 bg-surface border border-border rounded-lg text-xs font-medium text-foreground hover:bg-surface-hover transition-colors mx-auto"
+                    onClick={() => setIsPreviewModalOpen(true)}
+                    className="flex items-center gap-2 px-5 py-2.5 bg-accent hover:bg-accent/90 text-white rounded-lg text-xs font-semibold transition-all shadow-md mx-auto cursor-pointer"
                   >
                     <Eye className="w-4 h-4" />
                     Preview 3D Model
@@ -1087,6 +1105,17 @@ function EditProductContent() {
           )}
         </div>
       </div>
+
+      <Product3DModal
+        isOpen={isPreviewModalOpen}
+        onClose={() => setIsPreviewModalOpen(false)}
+        product={{
+          id: productId || "preview",
+          name: name || "Garment 3D Model",
+          price: parseFloat(priceSelling) || 0,
+          model3dUrl: modelPath || "/models/3d/garment_perfect.glb",
+        }}
+      />
     </div>
   );
 }

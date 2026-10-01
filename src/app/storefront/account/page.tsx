@@ -10,6 +10,7 @@ import { Header } from "@/components/layout/Header";
 import { CartDrawer } from "@/components/layout/CartDrawer";
 import { StylistDrawer } from "@/components/stylist/StylistDrawer";
 import { performSignOut } from "@/lib/auth-utils";
+import { fetchApi } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
@@ -51,13 +52,28 @@ function CustomerAccountContent() {
   }, []);
 
   // Profile state
-  const [firstName, setFirstName] = useState("Aishwarya");
-  const [lastName, setLastName] = useState("R");
-  const [headerName, setHeaderName] = useState("Aishwarya R");
-  const [email, setEmail] = useState("aishwarya.r@outlook.com");
-  const [phone, setPhone] = useState("+91 99622 88110");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [headerName, setHeaderName] = useState("Your account");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
   const [is2FAEnabled, setIs2FAEnabled] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [profileError, setProfileError] = useState("");
+
+  useEffect(() => {
+    fetchApi<{ full_name?: string; email?: string; phone_number?: string }>("/users/me")
+      .then((profile) => {
+        const fullName = (profile.full_name || "").trim();
+        const parts = fullName.split(/\s+/);
+        setFirstName(parts.shift() || "");
+        setLastName(parts.join(" "));
+        setHeaderName(fullName || "Your account");
+        setEmail(profile.email || "");
+        setPhone(profile.phone_number || "");
+      })
+      .catch(() => setProfileError("Unable to load your profile."));
+  }, []);
 
   // Address state
   const [addresses, setAddresses] = useState<any[]>([]);
@@ -80,11 +96,21 @@ function CustomerAccountContent() {
     localStorage.setItem("vastrax_favorites", JSON.stringify(newFavorites));
   };
 
-  const handleSaveProfile = (e: React.FormEvent) => {
+  const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    setHeaderName(`${firstName} ${lastName}`);
-    setSavedSuccess(true);
-    setTimeout(() => setSavedSuccess(false), 3000);
+    setProfileError("");
+    try {
+      const fullName = `${firstName} ${lastName}`.trim();
+      await fetchApi("/users/me", {
+        method: "PUT",
+        body: JSON.stringify({ full_name: fullName, phone_number: phone }),
+      });
+      setHeaderName(fullName);
+      setSavedSuccess(true);
+      setTimeout(() => setSavedSuccess(false), 3000);
+    } catch {
+      setProfileError("Profile update failed. Please try again.");
+    }
   };
 
   const handleDownloadInvoice = async (order: OrderItem) => {
@@ -372,6 +398,7 @@ function CustomerAccountContent() {
                 </div>
 
                 <form onSubmit={handleSaveProfile} className="bg-surface/60 border border-border/80 rounded-2xl p-6 space-y-4 max-w-xl">
+                  {profileError && <p role="alert" className="text-red-400">{profileError}</p>}
                   {savedSuccess && (
                     <div className="p-4 bg-green-500/10 border border-green-500/20 text-green-500 rounded-xl text-lg font-medium flex items-center gap-2">
                       <CheckCircle2 className="w-5 h-5" /> Profile successfully updated.
@@ -406,7 +433,7 @@ function CustomerAccountContent() {
                     <input 
                       type="email" 
                       value={email}
-                      onChange={(e) => setEmail(e.target.value)}
+                      readOnly
                       className="w-full bg-surface border border-border/50 rounded-xl px-4 py-3 text-lg text-foreground focus:outline-none focus:border-accent transition-colors"
                       required
                     />

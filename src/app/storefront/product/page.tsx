@@ -554,7 +554,7 @@ function ProductContent() {
                         src={product.model3dUrl || "/models/3d/garment2_textured.glb"}
                         alt={product.name}
                         poster={product.images?.[activeImageIndex] || product.image}
-                        badgeTitle="Hunyuan3D-2.1 PBR"
+                        badgeTitle="Garment Preview"
                         className="w-full h-full"
                       />
                     </div>

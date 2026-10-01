@@ -67,13 +67,15 @@ export function Product3DModal({
           </div>
 
           <div className="flex items-center gap-3">
-            <Link
-              href={`/storefront/product?id=${product.id}`}
-              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white text-xs font-medium transition-all"
-            >
-              <span>Full Details</span>
-              <ExternalLink className="w-3.5 h-3.5" />
-            </Link>
+            {product.id !== "preview" && (
+              <Link
+                href={`/storefront/product?id=${product.id}`}
+                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white text-xs font-medium transition-all"
+              >
+                <span>Full Details</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </Link>
+            )}
             <button
               onClick={onClose}
               className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-all cursor-pointer"
@@ -84,12 +86,12 @@ export function Product3DModal({
         </div>
 
         {/* 3D Canvas Area */}
-        <div className="flex-1 relative w-full h-full">
+        <div className="flex-1 relative w-full min-h-0">
           <GarmentViewer3D
             src={modelUrl}
             alt={product.name}
             poster={product.image}
-            badgeTitle="Hunyuan3D-2.1 Neural Mesh"
+            badgeTitle="Garment Preview"
             className="w-full h-full rounded-none"
           />
         </div>
@@ -97,7 +99,7 @@ export function Product3DModal({
         {/* Footer Quick Action */}
         <div className="px-6 py-3.5 border-t border-white/10 bg-black/40 backdrop-blur-md flex items-center justify-between">
           <span className="text-xs text-white/50">
-            Interactive 3D Preview powered by Hunyuan3D-2.1
+            Interactive 3D garment preview
           </span>
           <div className="flex items-center gap-3">
             <Link

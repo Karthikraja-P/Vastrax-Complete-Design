@@ -6,7 +6,7 @@ import {
   Edit3, Eye, EyeOff, ChevronDown, Lock, AlertTriangle, Upload, CheckCircle2, Loader2,
   Store, Globe, Bell, DollarSign, Clock, ShieldAlert, Sparkles, Sliders
 } from "lucide-react";
-import { settingsApi } from "@/lib/api";
+import { settingsApi, fetchApi } from "@/lib/api";
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'app'>('profile');
@@ -15,6 +15,23 @@ export default function SettingsPage() {
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [profileImage, setProfileImage] = useState<string | null>(null);
+  const [profileFirst, setProfileFirst] = useState("");
+  const [profileLast, setProfileLast] = useState("");
+  const [profileEmail, setProfileEmail] = useState("");
+  const [profilePhone, setProfilePhone] = useState("");
+  const [profileError, setProfileError] = useState("");
+
+  useEffect(() => {
+    fetchApi<{ full_name?: string; email?: string; phone_number?: string }>("/users/me")
+      .then((profile) => {
+        const parts = (profile.full_name || "").trim().split(/\s+/);
+        setProfileFirst(parts.shift() || "");
+        setProfileLast(parts.join(" "));
+        setProfileEmail(profile.email || "");
+        setProfilePhone(profile.phone_number || "");
+      })
+      .catch(() => setProfileError("Unable to load profile."));
+  }, []);
   
   // Security State
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
@@ -22,6 +39,10 @@ export default function SettingsPage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [passwordChanged, setPasswordChanged] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordError, setPasswordError] = useState("");
 
   // App Settings State
   const [storeName, setStoreName] = useState("VASTRAX Luxury Apparel");
@@ -94,12 +115,20 @@ export default function SettingsPage() {
     setTimeout(() => setAppSettingsSaved(false), 3000);
   };
 
-  const handleSaveProfile = () => {
+  const handleSaveProfile = async () => {
     setIsSavingProfile(true);
-    setTimeout(() => {
-      setIsSavingProfile(false);
+    setProfileError("");
+    try {
+      await fetchApi("/users/me", {
+        method: "PUT",
+        body: JSON.stringify({ full_name: `${profileFirst} ${profileLast}`.trim(), phone_number: profilePhone }),
+      });
       setIsEditingProfile(false);
-    }, 1000);
+    } catch {
+      setProfileError("Profile update failed.");
+    } finally {
+      setIsSavingProfile(false);
+    }
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -113,13 +142,28 @@ export default function SettingsPage() {
     }
   };
 
-  const handleChangePassword = () => {
+  const handleChangePassword = async () => {
+    setPasswordError("");
+    if (!currentPassword || !newPassword || newPassword !== confirmPassword) {
+      setPasswordError("Enter the current password and matching new passwords.");
+      return;
+    }
     setIsChangingPassword(true);
-    setTimeout(() => {
-      setIsChangingPassword(false);
+    try {
+      await fetchApi("/users/me/change-password", {
+        method: "POST",
+        body: JSON.stringify({ old_password: currentPassword, new_password: newPassword }),
+      });
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
       setPasswordChanged(true);
       setTimeout(() => setPasswordChanged(false), 3000);
-    }, 1500);
+    } catch {
+      setPasswordError("Password change failed. Check your current password.");
+    } finally {
+      setIsChangingPassword(false);
+    }
   };
 
   return (
@@ -215,8 +259,8 @@ export default function SettingsPage() {
                       </div>
                     ) : (
                       <div>
-                        <h2 className="text-xl font-bold text-foreground">Demo Tester</h2>
-                        <p className="text-sm text-muted-foreground mt-0.5">demo+vjkjzs5v@example.com</p>
+                        <h2 className="text-xl font-bold text-foreground">{`${profileFirst} ${profileLast}`.trim() || "Your profile"}</h2>
+                        <p className="text-sm text-muted-foreground mt-0.5">{profileEmail}</p>
                       </div>
                     )}
                   </div>
@@ -248,6 +292,7 @@ export default function SettingsPage() {
                   )}
                 </div>
 
+                {profileError && <p role="alert" className="text-red-400">{profileError}</p>}
                 {/* Profile Form */}
                 <div className="space-y-6 pt-2">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -255,7 +300,8 @@ export default function SettingsPage() {
                       <label className="text-sm font-medium text-foreground">First Name</label>
                       <input 
                         type="text" 
-                        defaultValue="Demo"
+                        value={profileFirst}
+                        onChange={(e) => setProfileFirst(e.target.value)}
                         readOnly={!isEditingProfile}
                         className={`w-full px-4 py-2.5 rounded-lg text-sm transition-all focus:outline-none ${isEditingProfile ? 'bg-background border border-border focus:ring-1 focus:ring-accent text-foreground' : 'bg-background/50 border border-border/50 text-muted-foreground'}`}
                       />
@@ -264,7 +310,8 @@ export default function SettingsPage() {
                       <label className="text-sm font-medium text-foreground">Last Name</label>
                       <input 
                         type="text" 
-                        defaultValue="Tester"
+                        value={profileLast}
+                        onChange={(e) => setProfileLast(e.target.value)}
                         readOnly={!isEditingProfile}
                         className={`w-full px-4 py-2.5 rounded-lg text-sm transition-all focus:outline-none ${isEditingProfile ? 'bg-background border border-border focus:ring-1 focus:ring-accent text-foreground' : 'bg-background/50 border border-border/50 text-muted-foreground'}`}
                       />
@@ -276,7 +323,7 @@ export default function SettingsPage() {
                       <label className="text-sm font-medium text-foreground">Email Address</label>
                       <input 
                         type="email" 
-                        defaultValue="demo+vjkjzs5v@example.com"
+                        value={profileEmail}
                         readOnly
                         className="w-full px-4 py-2.5 bg-background/50 border border-border/50 rounded-lg text-sm text-muted-foreground/70 cursor-not-allowed focus:outline-none"
                       />
@@ -291,6 +338,8 @@ export default function SettingsPage() {
                         <input 
                           type="tel" 
                           placeholder="Enter your phone number"
+                          value={profilePhone}
+                          onChange={(e) => setProfilePhone(e.target.value)}
                           readOnly={!isEditingProfile}
                           className={`w-full px-4 py-2.5 bg-transparent text-sm focus:outline-none ${isEditingProfile ? 'text-foreground placeholder:text-muted-foreground' : 'text-muted-foreground'}`}
                         />
@@ -339,6 +388,8 @@ export default function SettingsPage() {
                       <input 
                         type={showCurrentPassword ? "text" : "password"}
                         placeholder="Enter your current password"
+                        value={currentPassword}
+                        onChange={(e) => setCurrentPassword(e.target.value)}
                         className="w-full px-4 py-2.5 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-accent transition-all text-foreground placeholder:text-muted-foreground pr-12"
                       />
                       <button 
@@ -357,6 +408,8 @@ export default function SettingsPage() {
                         <input 
                           type={showNewPassword ? "text" : "password"}
                           placeholder="Enter your new password"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
                           className="w-full px-4 py-2.5 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-accent transition-all text-foreground placeholder:text-muted-foreground pr-12"
                         />
                         <button 
@@ -373,6 +426,8 @@ export default function SettingsPage() {
                         <input 
                           type={showConfirmPassword ? "text" : "password"}
                           placeholder="Confirm your new password"
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
                           className="w-full px-4 py-2.5 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-accent transition-all text-foreground placeholder:text-muted-foreground pr-12"
                         />
                         <button 
@@ -398,6 +453,7 @@ export default function SettingsPage() {
 
                   {/* Action Button */}
                   <div className="pt-4 flex items-center justify-end gap-4">
+                    {passwordError && <span role="alert" className="text-sm text-red-400">{passwordError}</span>}
                     {passwordChanged && (
                       <span className="flex items-center gap-2 text-sm text-green-500 animate-in fade-in zoom-in duration-300">
                         <CheckCircle2 className="w-4 h-4" />

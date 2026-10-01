@@ -26,7 +26,7 @@ export function GarmentViewer3D({
   poster,
   autoRotate = true,
   className = "",
-  badgeTitle = "Hunyuan3D-2.1 PBR Mesh",
+  badgeTitle = "Garment Preview",
   showControls = true,
 }: GarmentViewer3DProps) {
   const viewerRef = useRef<any>(null);
@@ -50,7 +50,7 @@ export function GarmentViewer3D({
     { name: "Studio Slate", bg: "radial-gradient(circle at 50% 30%, #2e384d 0%, #151a24 100%)" },
   ];
 
-  // Load model-viewer script dynamically
+  // Load model-viewer script dynamically with fallback
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (customElements.get("model-viewer")) {
@@ -60,10 +60,42 @@ export function GarmentViewer3D({
 
     const script = document.createElement("script");
     script.type = "module";
-    script.src = "https://ajax.googleapis.com/ajax/libs/model-viewer/4.0.0/model-viewer.min.js";
-    script.onload = () => setIsScriptLoaded(true);
+    script.src = "/js/model-viewer.min.js";
+    script.onload = () => {
+      customElements.whenDefined("model-viewer").then(() => setIsScriptLoaded(true));
+    };
+    script.onerror = () => {
+      const fallback = document.createElement("script");
+      fallback.type = "module";
+      fallback.src = "https://cdn.jsdelivr.net/npm/@google/model-viewer@3.5.0/dist/model-viewer.min.js";
+      fallback.onload = () => {
+        customElements.whenDefined("model-viewer").then(() => setIsScriptLoaded(true));
+      };
+      document.head.appendChild(fallback);
+    };
     document.head.appendChild(script);
   }, []);
+
+  // Listen to native model-viewer DOM events
+  useEffect(() => {
+    const el = viewerRef.current;
+    if (!el) return;
+
+    const handleLoad = () => setIsLoading(false);
+    const handleError = () => setIsLoading(false);
+
+    el.addEventListener("load", handleLoad);
+    el.addEventListener("error", handleError);
+
+    // Safety timeout: dismiss loading overlay after 1.5s
+    const timer = setTimeout(() => setIsLoading(false), 1500);
+
+    return () => {
+      el.removeEventListener("load", handleLoad);
+      el.removeEventListener("error", handleError);
+      clearTimeout(timer);
+    };
+  }, [src, isScriptLoaded]);
 
   // Sync rotation state with viewer element
   const toggleRotation = () => {
@@ -73,12 +105,13 @@ export function GarmentViewer3D({
     setIsRotating(next);
   };
 
-  // Reset camera view
+
+  // Reset camera view to auto-framed center
   const resetCamera = () => {
     if (!viewerRef.current) return;
-    viewerRef.current.cameraOrbit = "0deg 75deg 4.0m";
-    viewerRef.current.cameraTarget = "0m 0m 0m";
-    viewerRef.current.fieldOfView = "40deg";
+    viewerRef.current.cameraOrbit = "auto auto auto";
+    viewerRef.current.cameraTarget = "auto auto auto";
+    viewerRef.current.fieldOfView = "auto";
   };
 
   // Cycle lighting
@@ -114,36 +147,42 @@ export function GarmentViewer3D({
 
       {/* Stats Pill (Top Right) */}
       <div className="absolute top-4 right-4 z-20 hidden sm:flex items-center gap-3 bg-black/60 dark:bg-white/10 backdrop-blur-xl border border-white/10 px-3 py-1.5 rounded-xl shadow-lg pointer-events-none text-[11px] text-white/80">
-        <span className="text-white/50">Mesh:</span>
-        <span className="font-semibold text-[#38bdf8]">50K Poly</span>
-        <span className="text-white/20">|</span>
-        <span className="text-white/50">Texture:</span>
-        <span className="font-semibold text-[#e07a3f]">2K PBR</span>
+        <span className="text-white/70">Drag to rotate • Scroll to zoom</span>
       </div>
 
       {/* Model Viewer Web Component */}
       {isScriptLoaded ? (
-        <ModelViewer
-          ref={viewerRef}
-          src={src}
-          poster={poster}
-          alt={alt}
-          camera-controls="true"
-          touch-action="pan-y"
-          auto-rotate={autoRotate ? "true" : undefined}
-          auto-rotate-delay="800"
-          rotation-per-second="22deg"
-          shadow-intensity="0.8"
-          shadow-softness="0.7"
-          environment-image="neutral"
-          exposure={lightingPresets[lightingIndex].exposure}
-          camera-orbit="0deg 75deg 4.0m"
-          camera-target="0m 0m 0m"
-          field-of-view="40deg"
-          interaction-prompt="none"
-          onLoad={() => setIsLoading(false)}
-          style={{ width: "100%", height: "100%", outline: "none", cursor: "grab" }}
-        />
+        <>
+          <ModelViewer
+            ref={viewerRef}
+            src={src}
+            poster={poster}
+            alt={alt}
+            camera-controls="true"
+            touch-action="pan-y"
+            auto-rotate={autoRotate ? "true" : undefined}
+            auto-rotate-delay="500"
+            rotation-per-second="20deg"
+            shadow-intensity="1.0"
+            shadow-softness="0.6"
+            bounds="tight"
+            environment-image="neutral"
+            exposure={lightingPresets[lightingIndex].exposure}
+            interaction-prompt="none"
+            onLoad={() => setIsLoading(false)}
+            onError={(e: any) => {
+              console.warn("ModelViewer load event notice:", e);
+              setIsLoading(false);
+            }}
+            style={{ width: "100%", height: "100%", outline: "none", cursor: "grab" }}
+          />
+          {isLoading && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/40 backdrop-blur-xs z-15 pointer-events-none">
+              <div className="w-8 h-8 border-2 border-white/20 border-t-[#38bdf8] rounded-full animate-spin" />
+              <span className="text-xs font-medium text-white/80 tracking-wide">Loading 3D Garment Mesh…</span>
+            </div>
+          )}
+        </>
       ) : (
         <div className="flex flex-col items-center justify-center gap-3 text-white/60">
           <div className="w-8 h-8 border-2 border-white/20 border-t-[#e07a3f] rounded-full animate-spin" />
