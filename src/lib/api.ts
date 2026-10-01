@@ -256,9 +256,13 @@ export interface CategoryItem {
   name: string;
   slug: string;
   count?: number;
-  image_url?: string;
+  image_url?: string | null;
+  description?: string | null;
+  is_active?: boolean;
   icon?: string;
 }
+
+export type CategoryInput = { name: string; slug: string; description?: string | null; is_active?: boolean; image_url?: string | null };
 
 export const categoriesApi = {
   async list(): Promise<CategoryItem[]> {
@@ -271,9 +275,16 @@ export const categoriesApi = {
     }
   },
 
-  async create(data: { name: string; slug: string; image_url?: string }): Promise<CategoryItem> {
+  async create(data: CategoryInput): Promise<CategoryItem> {
     return await fetchApi<CategoryItem>("/categories", {
       method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  async update(id: string | number, data: Partial<CategoryInput>): Promise<CategoryItem> {
+    return await fetchApi<CategoryItem>(`/categories/${id}`, {
+      method: "PUT",
       body: JSON.stringify(data),
     });
   },

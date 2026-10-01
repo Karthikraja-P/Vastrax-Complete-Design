@@ -16,12 +16,14 @@ from app.core.logging import setup_logging
 from app.core.static_files import mount_static_files
 from app.db.base import Base
 from app.db.database import engine
+from app.db.ensure_schema import ensure_columns
 import app.models  # noqa: F401
 
 
 setup_logging(debug=settings.debug)
 initialize_directories()
 Base.metadata.create_all(bind=engine)
+ensure_columns(engine)
 
 app = FastAPI(
     title="VastraX API",

@@ -25,7 +25,7 @@ class CategoryService:
     def create_category(self, payload: CategoryCreate) -> CategoryResponse:
         if self.db.query(Category).filter(Category.slug == payload.slug).first():
             raise ConflictError(f"Category slug '{payload.slug}' already exists")
-        cat = Category(name=payload.name, slug=payload.slug)
+        cat = Category(**payload.model_dump())
         self.db.add(cat)
         self.db.commit()
         self.db.refresh(cat)
@@ -39,8 +39,9 @@ class CategoryService:
             if self.db.query(Category).filter(Category.slug == payload.slug).first():
                 raise ConflictError(f"Category slug '{payload.slug}' already exists")
             cat.slug = payload.slug
-        if payload.name is not None:
-            cat.name = payload.name
+        for k in ("name", "description", "is_active", "image_url"):
+            if k in payload.model_fields_set:
+                setattr(cat, k, getattr(payload, k))
         self.db.commit()
         self.db.refresh(cat)
         return CategoryResponse.model_validate(cat)

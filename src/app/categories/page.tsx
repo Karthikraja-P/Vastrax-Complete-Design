@@ -113,24 +113,38 @@ export default function CategoriesPage() {
     setNewCatDesc("");
     setNewCatImage(null);
     setIsAddCategoryOpen(false);
-    showToast(`Category "${cleanName}" created successfully.`);
 
     try {
-      const created = await categoriesApi.create({ name: cleanName, slug: cleanSlug });
-      if (created && created.id) {
-        setCategories(prev => prev.map(c => c.id === tempId ? { ...c, id: created.id } : c));
-      }
+      const created = await categoriesApi.create({
+        name: cleanName, slug: cleanSlug, description: newCatDesc || null,
+        is_active: isActiveStatus, image_url: newCatImage,
+      });
+      setCategories(prev => prev.map(c => c.id === tempId ? { ...c, id: created.id } : c));
     } catch (err) {
-      console.warn("Backend category sync notice:", err);
+      console.error("Category create failed:", err);
+      setCategories(prev => prev.filter(c => c.id !== tempId));
+      showToast(`Could not create "${cleanName}". Please try again.`);
     }
   };
 
   const handleUpdateCategory = async () => {
     if (!editingCategory || !editingCategory.name.trim()) return;
-    setCategories(prev => prev.map(c => c.id === editingCategory.id ? { ...c, ...editingCategory } : c));
+    const prevList = categories;
+    const ec = editingCategory;
+    setCategories(prev => prev.map(c => c.id === ec.id ? { ...c, ...ec } : c));
     setIsEditCategoryOpen(false);
-    showToast(`Category "${editingCategory.name}" updated successfully.`);
     setEditingCategory(null);
+    try {
+      await categoriesApi.update(ec.id, {
+        name: ec.name.trim(), description: ec.desc || null,
+        is_active: ec.status !== "Inactive", image_url: ec.image_url ?? null,
+      });
+      showToast(`Category "${ec.name}" updated successfully.`);
+    } catch (err) {
+      console.error("Category update failed:", err);
+      setCategories(prevList);
+      showToast(`Could not update "${ec.name}". Changes were reverted.`);
+    }
   };
 
   const handleDeleteCategory = async () => {
@@ -145,10 +159,8 @@ export default function CategoriesPage() {
       showToast(`Category "${catName}" moved to trash.`);
       setCategoryToDelete(null);
     } catch (err) {
-      console.warn("Delete notice:", err);
-      setCategories(prev => prev.filter(c => c.id !== categoryToDelete.id));
-      showToast(`Category "${catName}" moved to trash.`);
-      setCategoryToDelete(null);
+      console.error("Category delete failed:", err);
+      showToast(`Could not delete "${catName}".`);
     } finally {
       setIsDeleting(false);
     }
