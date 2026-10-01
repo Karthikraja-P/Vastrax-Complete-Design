@@ -56,7 +56,11 @@ def run_fashn(
             has_garment_file = os.path.exists(garment_image_path)
             with open(person_image_path, "rb") as pf:
                 files = {"person_image": (os.path.basename(person_image_path), pf, "image/jpeg")}
-                data = {"garment_path": garment_image_path, "garment_type": category}
+                data = {
+                    "garment_path": garment_image_path,
+                    "garment_type": category,
+                    "segmentation_free": "false",
+                }
 
                 gf = open(garment_image_path, "rb") if has_garment_file else None
                 try:
@@ -71,7 +75,12 @@ def run_fashn(
                                 pf.seek(0)
                                 if gf:
                                     gf.seek(0)
-                                r = client.post(f"{remote_url}{path}", files=files, data=data)
+                                r = client.post(
+                                    f"{remote_url}{path}",
+                                    files=files,
+                                    data=data,
+                                    headers={"X-Generator-Key": os.environ["GENERATOR_3D_SECRET"]},
+                                )
                                 if r.status_code == 200:
                                     resp = r
                                     break
@@ -118,7 +127,7 @@ def run_fashn(
         if result.returncode == 0 and os.path.exists(settings.fashn_output):
             if results_dir:
                 os.makedirs(results_dir, exist_ok=True)
-                dest = os.path.join(results_dir, f"result_{uuid.uuid4().hex[:8]}.png")
+                dest = os.path.join(results_dir, f"result_{uuid.uuid4().hex}.png")
                 shutil.copy2(settings.fashn_output, dest)
                 return dest
             return settings.fashn_output
@@ -144,7 +153,7 @@ def _render_fallback_composite(
     logger = logging.getLogger(__name__)
     out_dir = results_dir or settings.results_dir
     os.makedirs(out_dir, exist_ok=True)
-    dest = os.path.join(out_dir, f"result_{uuid.uuid4().hex[:8]}.png")
+    dest = os.path.join(out_dir, f"result_{uuid.uuid4().hex}.png")
 
     try:
         has_person = os.path.exists(person_image_path)
@@ -195,6 +204,4 @@ def _render_fallback_composite(
 
     # If compositing failed, raise exception so pipeline does not deceive customer with raw photo
     raise RuntimeError(f"Virtual try-on drape rendering failed: {exc}")
-
-
 

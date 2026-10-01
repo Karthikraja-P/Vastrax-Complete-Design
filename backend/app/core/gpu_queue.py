@@ -1,74 +1,104 @@
+"""Priority GPU job queue: one job on the GPU at a time (16 GB VRAM), interactive try-on ahead of long 3D jobs."""
 import asyncio
 import logging
+import os
+import time
 from contextlib import asynccontextmanager
+
+from fastapi import HTTPException
 
 logger = logging.getLogger("vastrax.gpu_queue")
 
+PRIORITY_TRYON = 0  # short, user-facing
+PRIORITY_3D = 10  # long admin jobs
+AGING_SECONDS_PER_LEVEL = float(os.getenv("GPU_QUEUE_AGING_SECONDS", "30"))  # waiting jobs gain priority so 3D cannot starve
+MAX_QUEUE = int(os.getenv("GPU_QUEUE_MAX", "20"))
+MAX_WAIT_SECONDS = float(os.getenv("GPU_QUEUE_MAX_WAIT_SECONDS", "1800"))
+
+
+class _Ticket:
+    __slots__ = ("name", "priority", "enqueued", "started", "future")
+
+    def __init__(self, name: str, priority: int) -> None:
+        self.name = name
+        self.priority = priority
+        self.enqueued = time.monotonic()
+        self.started: float | None = None
+        self.future: asyncio.Future = asyncio.get_running_loop().create_future()
+
+
+def priority_for(job_name: str) -> int:
+    return PRIORITY_3D if job_name.startswith("3d") else PRIORITY_TRYON
+
 
 class GPUQueueManager:
-    """
-    Global FIFO GPU Execution Queue for AI Virtual Try-On and 3D Neural Reconstruction.
-    Enforces concurrency=1 to protect GPU VRAM (16GB) from CUDA OOM and race conditions.
-    """
+    def __init__(self) -> None:
+        self._waiting: list[_Ticket] = []
+        self._active: _Ticket | None = None
 
-    def __init__(self, max_concurrent: int = 1) -> None:
-        self._max_concurrent = max_concurrent
-        self._semaphore: asyncio.Semaphore | None = None
-        self._waiting_count: int = 0
-        self._active_count: int = 0
-
-    @property
-    def semaphore(self) -> asyncio.Semaphore:
-        if self._semaphore is None:
-            self._semaphore = asyncio.Semaphore(self._max_concurrent)
-        return self._semaphore
+    def _rank(self, t: _Ticket, now: float) -> tuple[float, float]:
+        return (t.priority - (now - t.enqueued) / AGING_SECONDS_PER_LEVEL, t.enqueued)
 
     @property
     def queue_depth(self) -> int:
-        """Number of jobs currently waiting in line."""
-        return self._waiting_count
+        return len(self._waiting)
 
     @property
     def active_jobs(self) -> int:
-        """Number of jobs currently executing on the GPU."""
-        return self._active_count
+        return 1 if self._active else 0
+
+    def _grant_next(self) -> None:
+        while self._active is None and self._waiting:
+            now = time.monotonic()
+            nxt = min(self._waiting, key=lambda t: self._rank(t, now))
+            self._waiting.remove(nxt)
+            if nxt.future.done():  # cancelled while waiting
+                continue
+            self._active = nxt
+            nxt.started = now
+            nxt.future.set_result(None)
+            logger.info("GPU granted to [%s] after %.1fs (queue: %d)", nxt.name, now - nxt.enqueued, len(self._waiting))
+
+    def _release(self, t: _Ticket) -> None:
+        if self._active is t:
+            self._active = None
+            logger.info("GPU released by [%s] after %.1fs", t.name, time.monotonic() - (t.started or t.enqueued))
+            self._grant_next()
 
     @asynccontextmanager
-    async def acquire(self, job_name: str = "ai_task"):
-        """Context manager to wait in line and acquire the GPU cleanly."""
-        self._waiting_count += 1
-        pos = self._waiting_count
-        logger.info(
-            "Job [%s] queued. Position in line: %d (Active GPU jobs: %d)",
-            job_name,
-            pos,
-            self._active_count,
-        )
-
+    async def acquire(self, job_name: str = "ai_task", priority: int | None = None):
+        if len(self._waiting) >= MAX_QUEUE:
+            raise HTTPException(status_code=429, detail="GPU queue is full, please try again shortly")
+        t = _Ticket(job_name, priority_for(job_name) if priority is None else priority)
+        self._waiting.append(t)
+        logger.info("GPU job [%s] queued (position %d)", job_name, len(self._waiting))
+        self._grant_next()
         try:
-            async with self.semaphore:
-                self._waiting_count -= 1
-                self._active_count += 1
-                logger.info(
-                    "Job [%s] acquired GPU. Processing started... (Remaining in queue: %d)",
-                    job_name,
-                    self._waiting_count,
-                )
-                try:
-                    yield
-                finally:
-                    self._active_count -= 1
-                    logger.info(
-                        "Job [%s] finished GPU execution. GPU released. (Active: %d, Queue: %d)",
-                        job_name,
-                        self._active_count,
-                        self._waiting_count,
-                    )
-        except Exception:
-            if self._waiting_count > 0 and self._active_count == 0:
-                self._waiting_count -= 1
+            await asyncio.wait_for(t.future, timeout=MAX_WAIT_SECONDS)
+        except BaseException as exc:  # timeout or client disconnect: never leak a slot
+            if self._active is t:
+                self._release(t)
+            elif t in self._waiting:
+                self._waiting.remove(t)
+            if isinstance(exc, asyncio.TimeoutError):
+                raise HTTPException(status_code=503, detail="Timed out waiting for the GPU queue") from exc
             raise
+        try:
+            yield
+        finally:
+            self._release(t)
+
+    def snapshot(self) -> dict:
+        now = time.monotonic()
+        a = self._active
+        return {
+            "active": {"job": a.name, "running_seconds": round(now - (a.started or now))} if a else None,
+            "depth": len(self._waiting),
+            "queued": [
+                {"job": t.name, "priority": t.priority, "waiting_seconds": round(now - t.enqueued)}
+                for t in sorted(self._waiting, key=lambda t: self._rank(t, now))
+            ],
+        }
 
 
-# Global singleton queue instance for the entire application
-gpu_queue = GPUQueueManager(max_concurrent=1)
+gpu_queue = GPUQueueManager()

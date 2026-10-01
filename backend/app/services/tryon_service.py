@@ -2,7 +2,7 @@ import os
 import shutil
 import uuid
 
-from fastapi import UploadFile
+from fastapi import HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -95,7 +95,7 @@ class TryonService:
 
             return {"status": "done", "job_id": session_id, "result_url": result_url, "category_used": category}
 
-        except (NotFoundError, BadRequestError, ForbiddenError):
+        except (NotFoundError, BadRequestError, ForbiddenError, HTTPException):
             self._mark_failed(session_id)
             raise
         except Exception as exc:
@@ -161,6 +161,8 @@ class TryonService:
                 )
             )
             self.db.commit()
+        except HTTPException:
+            raise
         except Exception as exc:
             logger.warning("Failed to log try-on usage session: %s", exc)
             self.db.rollback()
@@ -215,6 +217,8 @@ class TryonService:
             }
         except (NotFoundError, BadRequestError):
             self._log_session(user, product_id, "failed")
+            raise
+        except HTTPException:
             raise
         except Exception as exc:
             self._log_session(user, product_id, "failed")
@@ -282,6 +286,8 @@ class TryonService:
             }
         except (NotFoundError, BadRequestError):
             self._log_session(user, product_id, "failed")
+            raise
+        except HTTPException:
             raise
         except Exception as exc:
             self._log_session(user, product_id, "failed")
