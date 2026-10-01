@@ -18,6 +18,7 @@ class CategoryResponse(BaseModel):
     id: str
     name: str
     slug: str
+    count: int = 0
     created_at: datetime
     updated_at: datetime
 

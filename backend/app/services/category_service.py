@@ -1,7 +1,9 @@
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 
 from app.core.exceptions import ConflictError, NotFoundError
 from app.models.category import Category
+from app.models.product import Product
 from app.schemas.category import CategoryCreate, CategoryResponse, CategoryUpdate
 
 
@@ -11,7 +13,8 @@ class CategoryService:
 
     def list_categories(self) -> list[CategoryResponse]:
         cats = self.db.query(Category).order_by(Category.name).all()
-        return [CategoryResponse.model_validate(c) for c in cats]
+        counts = dict(self.db.query(Product.category_id, func.count(Product.id)).group_by(Product.category_id).all())
+        return [CategoryResponse.model_validate(c).model_copy(update={"count": counts.get(c.id, 0)}) for c in cats]
 
     def get_category(self, category_id: str) -> CategoryResponse:
         cat = self.db.query(Category).filter(Category.id == category_id).first()
