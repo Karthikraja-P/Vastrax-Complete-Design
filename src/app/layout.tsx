@@ -15,8 +15,12 @@ const outfit = Outfit({
 });
 
 export const metadata: Metadata = {
-  title: "Vastra | AI Fashion E-commerce",
-  description: "Premium AI-powered fashion e-commerce platform",
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "https://vastrax.ai"),
+  title: { default: "VastraX | AI Fashion, 3D Views & Virtual Try-On", template: "%s" },
+  description: "Shop premium fashion with an AI stylist, 3D garment views and virtual try-on.",
+  applicationName: "VastraX",
+  openGraph: { type: "website", siteName: "VastraX", title: "VastraX | AI Fashion", description: "Shop premium fashion with an AI stylist, 3D views and virtual try-on.", url: "/" },
+  twitter: { card: "summary_large_image", title: "VastraX | AI Fashion", description: "Shop premium fashion with an AI stylist, 3D views and virtual try-on." },
 };
 
 export default function RootLayout({

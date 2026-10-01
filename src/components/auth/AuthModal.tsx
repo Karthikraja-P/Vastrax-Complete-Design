@@ -698,7 +698,7 @@ export function AuthModal({ isOpen, onClose, initialMode = "signin", onSuccess }
                                   <Square className="w-4 h-4 text-slate-400" />
                                 )}
                                 <span>
-                                  I agree to the <a href="/storefront/terms" target="_blank" className="underline text-[#D4AF37] hover:text-[#B39030]" onClick={(e) => e.stopPropagation()}>Terms of Service</a>
+                                  I agree to the <a href="/storefront/terms" target="_blank" className="underline text-[#D4AF37] hover:text-[#B39030]" onClick={(e) => e.stopPropagation()}>Terms of Service</a> and <a href="/storefront/privacy" target="_blank" className="underline text-[#D4AF37] hover:text-[#B39030]" onClick={(e) => e.stopPropagation()}>Privacy Policy</a>
                                 </span>
                               </button>
                             ) : (
