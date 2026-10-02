@@ -34,10 +34,10 @@ export async function middleware(req: NextRequest) {
     if (isAdmin) {
       return NextResponse.next();
     }
-    // Customers and unauthenticated visitors go straight to the boutique storefront
+    // Visitors and customers get the storefront landing page AT "/" (rewrite keeps the URL)
     const url = req.nextUrl.clone();
     url.pathname = "/storefront/home";
-    return NextResponse.redirect(url);
+    return NextResponse.rewrite(url);
   }
 
   // Protected Admin Management & Analytics routes

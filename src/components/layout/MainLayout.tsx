@@ -4,12 +4,16 @@ import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
+import { useSession } from "next-auth/react";
 
 export function MainLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const { data: session, status } = useSession();
+  const isAdmin = status === "authenticated" && String((session?.user as { role?: string } | undefined)?.role || "").toLowerCase() === "admin";
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
-  if (pathname?.startsWith("/storefront")) {
+  // "/" is the public landing page for everyone except admins (middleware rewrites it)
+  if (pathname?.startsWith("/storefront") || (pathname === "/" && !isAdmin)) {
     return <div className="h-full bg-background text-foreground">{children}</div>;
   }
 
