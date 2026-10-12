@@ -35,3 +35,5 @@ __all__ = [
     "ProductReview",
 ]
 
+
+from .business import CRMLead, CRMActivity, Supplier, PurchaseOrder, PurchaseOrderLine, StockMovement, OperatingExpense

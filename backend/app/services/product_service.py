@@ -5,12 +5,13 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.core.exceptions import InternalError, NotFoundError
+from app.core.exceptions import BadRequestError, InternalError, NotFoundError
 from fastapi import UploadFile
 import requests
 from app.core.logging import get_logger
 from app.models.category import Category
 from app.models.product import Product
+from app.models.business import StockMovement
 from app.models.product_image import ProductImage
 from app.models.product_variant import ProductVariant
 from app.schemas.products import ProductCreate, ProductResponse, ProductUpdate
@@ -29,18 +30,20 @@ class ProductService:
             ).first()
             if cat:
                 return cat.id
-        # Fallback to any existing category, or create a default 'apparel' category
-        first_cat = self.db.query(Category).first()
-        if first_cat:
-            return first_cat.id
-        new_cat = Category(name="Apparel", slug="apparel")
-        self.db.add(new_cat)
-        self.db.commit()
-        self.db.refresh(new_cat)
-        return new_cat.id
+        raise BadRequestError("Select an existing category before saving this product.")
 
     def _to_response(self, product: Product) -> ProductResponse:
-        return ProductResponse.model_validate(product)
+        response = ProductResponse.model_validate(product)
+        actual_ratings = [Decimal(str(review.rating)) for review in product.reviews if review.rating is not None]
+        total_stock = sum(max(0, int(variant.stock_qty or 0)) for variant in product.variants)
+        if actual_ratings:
+            average = sum(actual_ratings) / Decimal(len(actual_ratings))
+            return response.model_copy(update={
+                "stock": total_stock,
+                "rating_average": average.quantize(Decimal("0.01")),
+                "rating_count": len(actual_ratings),
+            })
+        return response.model_copy(update={"stock": total_stock, "rating_average": Decimal("0.00"), "rating_count": 0})
 
     def list_featured(self) -> list[ProductResponse]:
         products = (
@@ -127,12 +130,11 @@ class ProductService:
                 display_order=img_data.display_order,
             ))
         for var_data in payload.variants:
-            self.db.add(ProductVariant(
-                product_id=product.id,
-                sku=var_data.sku,
-                size=var_data.size,
-                stock_qty=var_data.stock_qty,
-            ))
+            variant = ProductVariant(product_id=product.id, sku=var_data.sku, size=var_data.size, stock_qty=var_data.stock_qty)
+            self.db.add(variant)
+            self.db.flush()
+            if var_data.stock_qty > 0:
+                self.db.add(StockMovement(product_id=product.id, variant_id=variant.id, quantity_delta=var_data.stock_qty, stock_before=0, stock_after=var_data.stock_qty, reason="opening_stock", created_by=None))
 
         self.db.commit()
         self.db.refresh(product)
@@ -178,14 +180,44 @@ class ProductService:
                 ))
 
         if payload.variants is not None:
-            self.db.query(ProductVariant).filter(ProductVariant.product_id == product.id).delete(synchronize_session=False)
-            for var_data in payload.variants:
-                self.db.add(ProductVariant(
-                    product_id=product.id,
-                    sku=var_data.sku or f"{product.id}-{var_data.size}",
-                    size=var_data.size,
-                    stock_qty=var_data.stock_qty,
-                ))
+            from app.models.order_item import OrderItem
+
+            existing_variants = self.db.query(ProductVariant).filter(
+                ProductVariant.product_id == product.id
+            ).all()
+            requested_by_size = {variant.size.casefold(): variant for variant in payload.variants}
+            referenced_ids = {
+                row[0] for row in self.db.query(OrderItem.variant_id).filter(
+                    OrderItem.product_id == product.id
+                ).all()
+            }
+            existing_by_size = {variant.size.casefold(): variant for variant in existing_variants}
+
+            for size_key, requested in requested_by_size.items():
+                existing = existing_by_size.pop(size_key, None)
+                if existing:
+                    existing.sku = requested.sku or existing.sku
+                    existing.size = requested.size
+                    before = int(existing.stock_qty or 0)
+                    existing.stock_qty = requested.stock_qty
+                    if before != requested.stock_qty:
+                        self.db.add(StockMovement(product_id=product.id, variant_id=existing.id, quantity_delta=requested.stock_qty - before, stock_before=before, stock_after=requested.stock_qty, reason="admin_product_edit"))
+                else:
+                    self.db.add(ProductVariant(
+                        product_id=product.id,
+                        sku=requested.sku or f"{product.id}-{requested.size}",
+                        size=requested.size,
+                        stock_qty=requested.stock_qty,
+                    ))
+
+            for removed in existing_by_size.values():
+                if removed.id in referenced_ids:
+                    before = int(removed.stock_qty or 0)
+                    removed.stock_qty = 0
+                    if before:
+                        self.db.add(StockMovement(product_id=product.id, variant_id=removed.id, quantity_delta=-before, stock_before=before, stock_after=0, reason="admin_product_edit"))
+                else:
+                    self.db.delete(removed)
 
         self.db.commit()
         self.db.refresh(product)
@@ -233,8 +265,10 @@ class ProductService:
         ).first()
         if not variant:
             raise NotFoundError("Variant not found for this product")
-        old_qty = variant.stock_qty
+        old_qty = int(variant.stock_qty or 0)
         variant.stock_qty = stock_qty
+        if old_qty != stock_qty:
+            self.db.add(StockMovement(product_id=product_id, variant_id=variant_id, quantity_delta=stock_qty - old_qty, stock_before=old_qty, stock_after=stock_qty, reason="admin_stock_update"))
         self.db.commit()
 
         if old_qty <= 0 and stock_qty > 0:

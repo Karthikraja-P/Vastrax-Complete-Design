@@ -16,6 +16,7 @@ from app.api.routes.settings import router as settings_router
 from app.api.routes.otp import router as otp_router
 from app.api.routes.three_d import router as three_d_router
 from app.api.routes.gpu import router as gpu_router
+from app.api.routes.business import router as business_router
 
 api_router = APIRouter()
 
@@ -36,6 +37,7 @@ api_router.include_router(analytics_router, prefix="/api/v1")
 api_router.include_router(settings_router, prefix="/api/v1")
 api_router.include_router(three_d_router, prefix="/api/v1")
 api_router.include_router(gpu_router, prefix="/api/v1")
+api_router.include_router(business_router, prefix="/api/v1")
 api_router.include_router(chat_router, prefix="/api")
 api_router.include_router(chat_router, prefix="/api/v1")
 api_router.include_router(otp_router, prefix="/api/v1/otp")

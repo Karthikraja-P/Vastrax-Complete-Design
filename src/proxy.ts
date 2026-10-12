@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 
-export async function middleware(req: NextRequest) {
+export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   // 1. Bypass static assets, API calls, and public images
@@ -49,6 +49,8 @@ export async function middleware(req: NextRequest) {
     "/admin",
     "/settings",
     "/ai-assistant",
+    "/crm",
+    "/erp",
   ];
 
   const isProtectedAdminRoute = adminRoutes.some(

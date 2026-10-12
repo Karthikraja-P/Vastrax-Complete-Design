@@ -3,20 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import {
-  LayoutDashboard,
-  Sparkles,
-  Package,
-  Tags,
-  ShoppingCart,
-  Users,
-  LayoutTemplate,
-  UserCog,
-  ShieldCheck,
-  Settings,
-  Store,
-  ChevronDown,
-} from "lucide-react";
+import { LayoutDashboard, Package, Tags, ShoppingCart, Users, LayoutTemplate, UserCog, Settings, ChevronDown } from "lucide-react";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -25,7 +12,6 @@ const navGroups = [
     title: "",
     items: [
       { name: "Overview", href: "/", icon: LayoutDashboard },
-      { name: "AI Assistant", href: "/ai-assistant", icon: Sparkles },
     ],
   },
   {
@@ -67,6 +53,12 @@ const navGroups = [
     ],
   },
   {
+    title: "BUSINESS",
+    items: [
+      { name: "CRM", href: "/crm", icon: Users },
+      { name: "ERP", href: "/erp", icon: Package },
+    ],
+  },  {
     title: "STOREFRONT",
     items: [
       { name: "Home Page", href: "/storefront/home", icon: LayoutTemplate },

@@ -1,0 +1,87 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import { fetchApi } from "@/lib/api";
+
+type Inventory = { variant_id: string; product_id: string; product_name: string; size: string; sku: string; stock_qty: number };
+type Supplier = { id: string; name: string; contact_name: string | null; email: string | null; phone: string | null; gstin: string | null };
+type PurchaseOrder = { id: string; supplier_name: string; status: string; items: Array<{ id: string; product_name: string; size: string; quantity_ordered: number; quantity_received: number; unit_cost: string }> };
+type Expense = { id: string; category: string; description: string; amount: string; tax_amount: string; expense_date: string; reference: string | null };
+const card = "rounded-2xl border border-border bg-surface p-5";
+const field = "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground";
+
+export default function ERPPage() {
+  const [tab, setTab] = useState<"inventory" | "purchasing" | "expenses">("inventory");
+  const [inventory, setInventory] = useState<Inventory[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [orders, setOrders] = useState<PurchaseOrder[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [summary, setSummary] = useState<Record<string, number | string>>({});
+  const [search, setSearch] = useState("");
+  const [lowOnly, setLowOnly] = useState(false);
+  const [supplierName, setSupplierName] = useState("");
+  const [supplierEmail, setSupplierEmail] = useState("");
+  const [poSupplier, setPoSupplier] = useState("");
+  const [poVariant, setPoVariant] = useState("");
+  const [poQuantity, setPoQuantity] = useState("1");
+  const [poCost, setPoCost] = useState("");
+  const [expenseDescription, setExpenseDescription] = useState("");
+  const [expenseCategory, setExpenseCategory] = useState("Operations");
+  const [expenseAmount, setExpenseAmount] = useState("");
+  const [expenseTax, setExpenseTax] = useState("0");
+  const [error, setError] = useState("");
+
+  const load = useCallback(async () => {
+    try {
+      const inventoryUrl = `/erp/inventory${search || lowOnly ? `?${[search ? `q=${encodeURIComponent(search)}` : "", lowOnly ? "low_stock_only=true" : ""].filter(Boolean).join("&")}` : ""}`;
+      const [items, supplierRows, poRows, expenseRows, metrics] = await Promise.all([
+        fetchApi<Inventory[]>(inventoryUrl), fetchApi<Supplier[]>("/erp/suppliers"),
+        fetchApi<PurchaseOrder[]>("/erp/purchase-orders"), fetchApi<Expense[]>("/erp/expenses"), fetchApi<Record<string, number | string>>("/erp/overview"),
+      ]);
+      setInventory(items); setSuppliers(supplierRows); setOrders(poRows); setExpenses(expenseRows); setSummary(metrics); setError("");
+      if (!poVariant && items[0]) setPoVariant(items[0].variant_id);
+      if (!poSupplier && supplierRows[0]) setPoSupplier(supplierRows[0].id);
+    } catch (e) { setError(e instanceof Error ? e.message : "Could not load operations data. Check your admin sign-in."); }
+  }, [search, lowOnly, poSupplier, poVariant]);
+  useEffect(() => { const timer = window.setTimeout(() => void load(), 0); return () => window.clearTimeout(timer); }, [load]);
+
+  const addSupplier = async (event: React.FormEvent) => {
+    event.preventDefault();
+    try { await fetchApi("/erp/suppliers", { method: "POST", body: JSON.stringify({ name: supplierName, email: supplierEmail || null }) }); setSupplierName(""); setSupplierEmail(""); await load(); }
+    catch (e) { setError(e instanceof Error ? e.message : "Could not save supplier."); }
+  };
+  const createPO = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!poSupplier || !poVariant || !poCost) return;
+    try { await fetchApi("/erp/purchase-orders", { method: "POST", body: JSON.stringify({ supplier_id: poSupplier, items: [{ variant_id: poVariant, quantity: Number(poQuantity), unit_cost: poCost }] }) }); await load(); }
+    catch (e) { setError(e instanceof Error ? e.message : "Could not create purchase order."); }
+  };
+  const receiveRemaining = async (po: PurchaseOrder) => {
+    const open = po.items.filter(line => line.quantity_received < line.quantity_ordered);
+    if (!open.length) return;
+    try { await fetchApi(`/erp/purchase-orders/${po.id}/receive`, { method: "POST", body: JSON.stringify({ items: open.map(line => ({ line_id: line.id, quantity: line.quantity_ordered - line.quantity_received })) }) }); await load(); }
+    catch (e) { setError(e instanceof Error ? e.message : "Could not receive stock."); }
+  };
+  const adjust = async (item: Inventory) => {
+    const raw = window.prompt(`Stock adjustment for ${item.product_name} · ${item.size}. Enter a positive or negative quantity.`, "0");
+    if (!raw || !/^-?\d+$/.test(raw) || Number(raw) === 0) return;
+    const notes = window.prompt("Reason or note for the inventory audit log:", "Count correction") || undefined;
+    try { await fetchApi(`/erp/inventory/${item.variant_id}/adjust`, { method: "POST", body: JSON.stringify({ quantity_delta: Number(raw), reason: "count_correction", notes }) }); await load(); }
+    catch (e) { setError(e instanceof Error ? e.message : "Could not adjust stock."); }
+  };
+  const addExpense = async (event: React.FormEvent) => {
+    event.preventDefault();
+    try { await fetchApi("/erp/expenses", { method: "POST", body: JSON.stringify({ category: expenseCategory, description: expenseDescription, amount: expenseAmount, tax_amount: expenseTax, expense_date: new Date().toISOString().slice(0, 10) }) }); setExpenseDescription(""); setExpenseAmount(""); setExpenseTax("0"); await load(); }
+    catch (e) { setError(e instanceof Error ? e.message : "Could not save expense."); }
+  };
+
+  return <main className="min-h-screen bg-background p-5 md:p-8"><div className="mx-auto max-w-7xl space-y-6">
+    <header><p className="text-xs font-semibold uppercase tracking-[.2em] text-accent">Vastrax Business</p><h1 className="mt-2 text-3xl font-bold text-foreground">Operations & finance</h1><p className="mt-1 text-sm text-muted-foreground">Inventory, supplier purchasing, and operating expense records connected to the live catalog.</p></header>
+    {error && <div role="alert" className="rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-400">{error}</div>}
+    <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">{[["Units in stock", summary.stock_units], ["Low stock sizes", summary.low_stock_variants], ["Out of stock sizes", summary.out_of_stock_variants], ["Open purchase orders", summary.open_purchase_orders], ["Month expenses", `₹${Number(summary.monthly_expenses || 0).toLocaleString("en-IN")}`], ["Order value", `₹${Number(summary.order_value_booked || 0).toLocaleString("en-IN")}`]].map(([label, value]) => <div className={card} key={String(label)}><p className="text-xs text-muted-foreground">{label}</p><p className="mt-2 text-xl font-semibold text-foreground">{value ?? 0}</p></div>)}</section>
+    <div className="flex flex-wrap gap-2">{(["inventory", "purchasing", "expenses"] as const).map(name => <button key={name} onClick={() => setTab(name)} className={`rounded-full px-4 py-2 text-sm capitalize ${tab === name ? "bg-accent text-white" : "bg-surface text-foreground"}`}>{name}</button>)}</div>
+    {tab === "inventory" && <section className={card}><div className="mb-4 flex flex-wrap items-center justify-between gap-3"><h2 className="text-lg font-semibold text-foreground">Inventory by product size</h2><div className="flex gap-2"><input className={`${field} max-w-xs`} placeholder="Search product, size, SKU" value={search} onChange={e => setSearch(e.target.value)} /><label className="flex items-center gap-2 whitespace-nowrap text-sm text-foreground"><input type="checkbox" checked={lowOnly} onChange={e => setLowOnly(e.target.checked)} />Low stock</label></div></div><div className="overflow-x-auto"><table className="w-full min-w-[720px] text-left text-sm"><thead className="text-muted-foreground"><tr><th className="p-3">Product</th><th className="p-3">Size</th><th className="p-3">SKU</th><th className="p-3">Available</th><th className="p-3">Audit</th></tr></thead><tbody>{inventory.map(item => <tr key={item.variant_id} className="border-t border-border"><td className="p-3 font-medium text-foreground">{item.product_name}</td><td className="p-3">{item.size}</td><td className="p-3">{item.sku}</td><td className={`p-3 font-semibold ${item.stock_qty <= 5 ? "text-amber-500" : "text-foreground"}`}>{item.stock_qty}</td><td className="p-3"><button onClick={() => void adjust(item)} className="rounded-lg border border-border px-3 py-1.5 text-xs text-foreground">Adjust stock</button></td></tr>)}</tbody></table>{inventory.length === 0 && <p className="p-5 text-sm text-muted-foreground">No inventory records found.</p>}</div></section>}
+    {tab === "purchasing" && <div className="grid gap-5 xl:grid-cols-[340px_1fr]"><div className="space-y-5"><form onSubmit={addSupplier} className={`${card} space-y-3`}><h2 className="font-semibold text-foreground">Add supplier</h2><input required className={field} placeholder="Supplier name" value={supplierName} onChange={e => setSupplierName(e.target.value)} /><input type="email" className={field} placeholder="Email" value={supplierEmail} onChange={e => setSupplierEmail(e.target.value)} /><button className="w-full rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white">Save supplier</button></form><form onSubmit={createPO} className={`${card} space-y-3`}><h2 className="font-semibold text-foreground">Create purchase order</h2><select required className={field} value={poSupplier} onChange={e => setPoSupplier(e.target.value)}><option value="">Supplier</option>{suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select><select required className={field} value={poVariant} onChange={e => setPoVariant(e.target.value)}><option value="">Product and size</option>{inventory.map(i => <option key={i.variant_id} value={i.variant_id}>{i.product_name} · {i.size}</option>)}</select><input required type="number" min="1" className={field} aria-label="Quantity ordered" value={poQuantity} onChange={e => setPoQuantity(e.target.value)} /><input required type="number" min="0" step="0.01" placeholder="Unit cost ₹" className={field} value={poCost} onChange={e => setPoCost(e.target.value)} /><button disabled={!suppliers.length} className="w-full rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Create order</button>{!suppliers.length && <p className="text-xs text-muted-foreground">Add a supplier before creating a purchase order.</p>}</form></div><section className={`${card} space-y-3`}><h2 className="font-semibold text-foreground">Purchase orders</h2>{orders.map(po => <article key={po.id} className="rounded-xl border border-border p-4"><div className="flex flex-wrap justify-between gap-2"><div><p className="font-semibold text-foreground">{po.id} · {po.supplier_name}</p><p className="text-xs capitalize text-muted-foreground">{po.status}</p></div><button disabled={po.status === "received"} onClick={() => void receiveRemaining(po)} className="rounded-lg border border-border px-3 py-2 text-xs disabled:opacity-40">Receive remaining stock</button></div>{po.items.map(line => <p key={line.id} className="mt-3 text-sm text-muted-foreground">{line.product_name} / {line.size} · {line.quantity_received} of {line.quantity_ordered} received · ₹{line.unit_cost} each</p>)}</article>)}{orders.length === 0 && <p className="text-sm text-muted-foreground">No purchase orders yet.</p>}</section></div>}
+    {tab === "expenses" && <div className="grid gap-5 lg:grid-cols-[340px_1fr]"><form onSubmit={addExpense} className={`${card} space-y-3`}><h2 className="font-semibold text-foreground">Record operating expense</h2><select className={field} value={expenseCategory} onChange={e => setExpenseCategory(e.target.value)}>{["Operations", "Shipping", "Marketing", "Utilities", "Packaging", "Other"].map(c => <option key={c}>{c}</option>)}</select><input required className={field} placeholder="Description" value={expenseDescription} onChange={e => setExpenseDescription(e.target.value)} /><input required type="number" min="0.01" step="0.01" placeholder="Amount ₹" className={field} value={expenseAmount} onChange={e => setExpenseAmount(e.target.value)} /><input type="number" min="0" step="0.01" aria-label="Tax amount" placeholder="Tax amount ₹" className={field} value={expenseTax} onChange={e => setExpenseTax(e.target.value)} /><button className="w-full rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white">Save expense</button><p className="text-xs text-muted-foreground">This is an operating expense register, not a tax filing or general ledger.</p></form><section className={`${card} overflow-x-auto`}><h2 className="mb-4 font-semibold text-foreground">Expense register</h2><table className="w-full min-w-[540px] text-left text-sm"><thead className="text-muted-foreground"><tr><th className="p-3">Date</th><th className="p-3">Category</th><th className="p-3">Description</th><th className="p-3">Amount + tax</th></tr></thead><tbody>{expenses.map(e => <tr key={e.id} className="border-t border-border"><td className="p-3">{e.expense_date}</td><td className="p-3">{e.category}</td><td className="p-3">{e.description}</td><td className="p-3">₹{(Number(e.amount) + Number(e.tax_amount)).toLocaleString("en-IN", { maximumFractionDigits: 2 })}</td></tr>)}</tbody></table>{expenses.length === 0 && <p className="p-4 text-sm text-muted-foreground">No expenses recorded.</p>}</section></div>}
+  </div></main>;
+}
