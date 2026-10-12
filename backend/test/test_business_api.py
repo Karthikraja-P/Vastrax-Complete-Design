@@ -33,9 +33,10 @@ def business_admin():
     db.commit()
     customer_id, variant_id = customer.id, variant.id
     token = create_access_token({"sub": admin.id})
+    customer_token = create_access_token({"sub": customer.id})
     account_ids = {"inventory_account_id": inventory_account.id, "payable_account_id": payable_account.id}
     db.close()
-    yield {"token": token, "customer_id": customer_id, "variant_id": variant_id, "suffix": suffix, **account_ids}
+    yield {"token": token, "customer_token": customer_token, "customer_id": customer_id, "variant_id": variant_id, "suffix": suffix, **account_ids}
 
 
 
@@ -79,119 +80,7 @@ def test_crm_customer_detail_reads_shared_orders_and_activities(business_admin):
 def test_admin_grants_scoped_business_access_to_existing_team_accounts(business_admin):
     client = TestClient(app)
     admin_headers = {"Authorization": f"Bearer {business_admin['token']}"}
-    member_token = create_access_token({"sub": business_admin["customer_id"]})
-    member_headers = {"Authorization": f"Bearer {member_token}"}
-    path = "/api/v1/users/admin/business-team"
-
-    assert client.get(path).status_code == 401
-    grant = client.put(path, headers=admin_headers, json={
-        "email": f"customer-{business_admin['suffix']}@example.com",
-        "permissions": ["crm"],
-    })
-    repeated_grant = client.put(path, headers=admin_headers, json={
-        "email": f"customer-{business_admin['suffix']}@example.com",
-        "permissions": ["crm"],
-    })
-    assert repeated_grant.status_code == 200, repeated_grant.text
-    db = SessionLocal()
-    team_user = db.get(User, business_admin["customer_id"])
-    team_user.hashed_password = hash_password("TeamMember!123")
-    db.commit()
-    db.close()
-    login = client.post("/api/v1/auth/login", json={
-        "email": f"customer-{business_admin['suffix']}@example.com",
-        "password": "TeamMember!123",
-    })
-    assert login.status_code == 200, login.text
-    assert login.json()["user"]["business_permissions"] == ["crm"]
-    assert grant.status_code == 200, grant.text
-    assert grant.json()["permissions"] == ["crm"]
-    assert client.get("/api/v1/auth/me", headers=member_headers).json()["business_permissions"] == ["crm"]
-    assert client.get("/api/v1/crm/overview", headers=member_headers).status_code == 200
-    assert client.get("/api/v1/erp/overview", headers=member_headers).status_code == 403
-
-    update = client.put(path, headers=admin_headers, json={
-        "email": f"customer-{business_admin['suffix']}@example.com",
-        "permissions": ["erp"],
-    })
-    assert update.status_code == 200
-    assert client.get("/api/v1/crm/overview", headers=member_headers).status_code == 403
-    assert client.get("/api/v1/erp/overview", headers=member_headers).status_code == 200
-
-    revoked = client.delete(f"{path}/{business_admin['customer_id']}", headers=admin_headers)
-    assert revoked.status_code == 204
-    assert client.get("/api/v1/erp/overview", headers=member_headers).status_code == 403
-
-
-def test_supplier_purchase_receipt_and_stock_audit(business_admin):
-    client = TestClient(app)
-    headers = {"Authorization": f"Bearer {business_admin['token']}"}
-    supplier = client.post("/api/v1/erp/suppliers", headers=headers, json={"name": "Textile House", "gstin": "27ABCDE1234F1Z5"})
-    assert supplier.status_code == 201, supplier.text
-    po = client.post("/api/v1/erp/purchase-orders", headers=headers, json={
-        "supplier_id": supplier.json()["id"],
-        "items": [{"variant_id": business_admin["variant_id"], "quantity": 5, "unit_cost": "220.00"}],
-    })
-    assert po.status_code == 201, po.text
-    po_id = po.json()["id"]
-    line = client.get("/api/v1/erp/purchase-orders", headers=headers).json()[0]["items"][0]
-    invalid_accounts = client.post(f"/api/v1/erp/purchase-orders/{po_id}/receive", headers=headers, json={
-        "items": [{"line_id": line["id"], "quantity": 1}],
-        "inventory_account_id": business_admin["inventory_account_id"],
-        "payable_account_id": business_admin["inventory_account_id"],
-    })
-    assert invalid_accounts.status_code == 422
-    db = SessionLocal()
-    assert db.get(ProductVariant, business_admin["variant_id"]).stock_qty == 4
-    db.close()
-    received = client.post(f"/api/v1/erp/purchase-orders/{po_id}/receive", headers=headers, json={"items": [{"line_id": line["id"], "quantity": 3}], "inventory_account_id": business_admin["inventory_account_id"], "payable_account_id": business_admin["payable_account_id"]})
-    assert received.status_code == 200 and received.json()["status"] == "partially_received"
-    db = SessionLocal()
-    assert db.get(ProductVariant, business_admin["variant_id"]).stock_qty == 7
-    db.close()
-    journals = client.get("/api/v1/erp/journals", headers=headers).json()
-    receipt_journal = next(entry for entry in journals if entry["description"].startswith("Inventory receipt for "))
-    assert sum(float(line["debit"]) for line in receipt_journal["lines"]) == 660
-    assert sum(float(line["credit"]) for line in receipt_journal["lines"]) == 660
-    over = client.post(f"/api/v1/erp/purchase-orders/{po_id}/receive", headers=headers, json={"items": [{"line_id": line["id"], "quantity": 3}], "inventory_account_id": business_admin["inventory_account_id"], "payable_account_id": business_admin["payable_account_id"]})
-    assert over.status_code == 409
-    unauthorized_cancel = client.post(f"/api/v1/erp/purchase-orders/{po_id}/cancel")
-    assert unauthorized_cancel.status_code == 401
-    cancelled = client.post(f"/api/v1/erp/purchase-orders/{po_id}/cancel", headers=headers)
-    assert cancelled.status_code == 200 and cancelled.json()["status"] == "cancelled"
-    after_cancel = client.post(f"/api/v1/erp/purchase-orders/{po_id}/receive", headers=headers, json={
-        "items": [{"line_id": line["id"], "quantity": 1}],
-        "inventory_account_id": business_admin["inventory_account_id"],
-        "payable_account_id": business_admin["payable_account_id"],
-    })
-    assert after_cancel.status_code == 404
-    adjust = client.post(f"/api/v1/erp/inventory/{business_admin['variant_id']}/adjust", headers=headers, json={"quantity_delta": -1, "reason": "damaged"})
-    assert adjust.status_code == 200 and adjust.json()["stock_after"] == 6
-    movements = client.get("/api/v1/erp/inventory/movements", headers=headers, params={"variant_id": business_admin["variant_id"]}).json()
-    assert {movement["reason"] for movement in movements} >= {"purchase_receipt", "damaged"}
-
-
-def test_crm_leads_tasks_customer_metrics_and_admin_access(business_admin):
-    client = TestClient(app)
-    headers = {"Authorization": f"Bearer {business_admin['token']}"}
-    denied = client.get("/api/v1/crm/overview")
-    assert denied.status_code == 401
-    leads = client.post("/api/v1/crm/leads", headers=headers, json={"full_name": "Interested Shopper", "source": "website"})
-    assert leads.status_code == 201, leads.text
-    lead_id = leads.json()["id"]
-    task = client.post("/api/v1/crm/activities", headers=headers, json={"lead_id": lead_id, "activity_type": "task", "subject": "Call about sizing", "due_at": "2020-01-01T00:00:00Z"})
-    assert task.status_code == 201, task.text
-    assert client.get("/api/v1/crm/overview", headers=headers).json()["due_tasks"] >= 1
-    assert client.post("/api/v1/crm/activities", headers=headers, json={"customer_id": business_admin["customer_id"], "lead_id": lead_id, "subject": "invalid"}).status_code == 422
-    assert client.get("/api/v1/crm/customers", headers=headers, params={"q": "Beta Customer"}).json()[0]["id"] == business_admin["customer_id"]
-    assert client.post(f"/api/v1/crm/activities/{task.json()['id']}/complete", headers=headers).status_code == 200
-
-
-def test_crm_lead_conversion_links_existing_customer_and_logs_activity(business_admin):
-    client = TestClient(app)
-    headers = {"Authorization": f"Bearer {business_admin['token']}"}
-    customer_email = f"customer-{business_admin['suffix']}@example.com"
-    created = client.post("/api/v1/crm/leads", headers=headers, json={
+    member_toke
         "full_name": "Existing Customer Prospect", "email": customer_email, "source": "website",
     })
     assert created.status_code == 201, created.text

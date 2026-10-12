@@ -55,6 +55,10 @@ class UserService:
         return {"message": "Password changed successfully"}
 
     def delete_account(self, user: User) -> None:
+        from app.models.marketing_consent import CRMMarketingConsentEvent
+        self.db.query(CRMMarketingConsentEvent).filter(
+            CRMMarketingConsentEvent.customer_id == user.id
+        ).delete(synchronize_session=False)
         self.db.delete(user)
         self.db.commit()
 
