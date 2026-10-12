@@ -52,6 +52,16 @@ class SupplierCreate(BaseModel):
     address: str | None = None
 
 
+class SupplierUpdate(BaseModel):
+    name: str | None = Field(default=None, max_length=255)
+    contact_name: str | None = Field(default=None, max_length=255)
+    email: str | None = Field(default=None, max_length=255)
+    phone: str | None = Field(default=None, max_length=40)
+    gstin: str | None = Field(default=None, max_length=20)
+    address: str | None = None
+    is_active: bool | None = None
+
+
 class PurchaseLineCreate(BaseModel):
     variant_id: str
     quantity: int = Field(gt=0, le=100000)
@@ -288,8 +298,35 @@ def list_suppliers(db: Session = Depends(get_db)):
 
 @router.post("/erp/suppliers", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_business_permission("erp"))])
 def create_supplier(body: SupplierCreate, db: Session = Depends(get_db)):
-    supplier = Supplier(**body.model_dump())
+    payload = body.model_dump()
+    payload["name"] = payload["name"].strip()
+    if not payload["name"]:
+        raise HTTPException(422, "Supplier name is required")
+    supplier = Supplier(**payload)
     db.add(supplier)
+    db.commit()
+    db.refresh(supplier)
+    return supplier
+
+
+@router.patch("/erp/suppliers/{supplier_id}", dependencies=[Depends(require_business_permission("erp"))])
+def update_supplier(supplier_id: str, body: SupplierUpdate, db: Session = Depends(get_db)):
+    supplier = db.get(Supplier, supplier_id)
+    if not supplier:
+        raise HTTPException(404, "Supplier not found")
+    updates = body.model_dump(exclude_unset=True)
+    if not updates:
+        raise HTTPException(422, "Provide at least one supplier field to update")
+    if "name" in updates:
+        if updates["name"] is None or not updates["name"].strip():
+            raise HTTPException(422, "Supplier name is required")
+        updates["name"] = updates["name"].strip()
+    if "is_active" in updates and updates["is_active"] is None:
+        raise HTTPException(422, "Supplier active state cannot be null")
+    for field, value in updates.items():
+        if isinstance(value, str):
+            value = value.strip() or None
+        setattr(supplier, field, value)
     db.commit()
     db.refresh(supplier)
     return supplier
