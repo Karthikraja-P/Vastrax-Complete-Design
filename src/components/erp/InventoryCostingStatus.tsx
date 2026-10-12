@@ -27,6 +27,11 @@ type CostingVariant = {
   overvalued_units: number;
 };
 type CostingVariantPage = { items: CostingVariant[]; total: number; has_more: boolean };
+const csvCell = (value: string | number) => {
+  const text = String(value);
+  const safeText = /^[\s]*[=+\-@]/.test(text) ? `'${text}` : text;
+  return `"${safeText.replaceAll('"', '""')}"`;
+};
 
 export function InventoryCostingStatus() {
   const [status, setStatus] = useState<InventoryCostingStatus | null>(null);
@@ -67,6 +72,35 @@ export function InventoryCostingStatus() {
     }
   };
 
+  const downloadOpeningCostTemplate = async () => {
+    setLoadingMore(true);
+    try {
+      const rows: CostingVariant[] = [];
+      let offset = 0;
+      let hasMore = true;
+      while (hasMore) {
+        const page = await fetchApi<CostingVariantPage>(`/erp/inventory-costing/variants?limit=200&offset=${offset}`);
+        if (page.items.length === 0 && page.has_more) throw new Error("Inventory list pagination did not advance. Please retry.");
+        rows.push(...page.items);
+        offset += page.items.length;
+        hasMore = page.has_more;
+      }
+      const header = ["Variant ID", "Product", "Size", "SKU", "On hand units", "Units with receipt cost", "Unvalued units", "Verified opening unit cost (INR)", "Notes"];
+      const body = rows.map(row => [row.variant_id, row.product_name, row.size, row.sku || "", row.on_hand_units, row.recorded_cost_units, row.unvalued_units, "", ""]);
+      const csv = [header, ...body].map(line => line.map(csvCell).join(",")).join("\r\n");
+      const url = URL.createObjectURL(new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "vastrax-opening-stock-costs.csv";
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not create the opening-stock cost worksheet.");
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
   return <section className="space-y-3 rounded-2xl border border-border bg-surface p-5">
     <div>
       <h2 className="font-semibold text-foreground">Inventory costing and COGS</h2>
@@ -86,7 +120,7 @@ export function InventoryCostingStatus() {
           ? <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-300">{status.unposted_cost_consumptions} inventory cost allocations still need ledger posting.</p>
           : <p className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-3 text-sm text-emerald-700 dark:text-emerald-300">Inventory costing is configured and all current stock quantities have cost layers.</p>}
       <div>
-        <h3 className="mb-2 text-sm font-semibold text-foreground">In-stock sizes and recorded costs</h3>
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2"><h3 className="text-sm font-semibold text-foreground">In-stock sizes and recorded costs</h3><button type="button" disabled={loadingMore} onClick={() => void downloadOpeningCostTemplate()} className="rounded-lg border border-border px-3 py-2 text-xs text-foreground disabled:opacity-50">{loadingMore ? "Preparing…" : "Download opening-cost worksheet"}</button></div>
         <div className="overflow-x-auto rounded-xl border border-border">
           <table className="w-full min-w-[760px] text-left text-sm">
             <thead className="text-xs text-muted-foreground"><tr><th className="p-3">Product</th><th className="p-3">Size</th><th className="p-3">SKU</th><th className="p-3">On hand</th><th className="p-3">With receipt cost</th><th className="p-3">Unvalued</th></tr></thead>
