@@ -1088,7 +1088,7 @@ function ProductContent() {
           image: product.image,
           model3dUrl: product.model3dUrl || "/models/3d/garment2_textured.glb"
         }}
-        onAddToBag={addToCart}
+        onAddToBag={() => addToCart(true)}
       />
     </div>
   );
