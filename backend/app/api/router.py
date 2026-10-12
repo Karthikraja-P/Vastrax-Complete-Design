@@ -41,3 +41,6 @@ api_router.include_router(business_router, prefix="/api/v1")
 api_router.include_router(chat_router, prefix="/api")
 api_router.include_router(chat_router, prefix="/api/v1")
 api_router.include_router(otp_router, prefix="/api/v1/otp")
+
+from app.api.routes.returns import router as returns_router
+api_router.include_router(returns_router, prefix='/api/v1')
