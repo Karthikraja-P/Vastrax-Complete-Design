@@ -9,7 +9,7 @@ from app.core.security import create_access_token, hash_password
 from app.db.database import SessionLocal
 from app.main import app
 from app.models.address import Address
-from app.models.business import CRMActivity, PurchaseOrder, PurchaseOrderLine, ERPPurchaseOrderRequest
+from app.models.business import CRMActivity, PurchaseOrder, PurchaseOrderLine, ERPPurchaseOrderRequest, ERPInventoryCostLayer
 from app.models.category import Category
 from app.models.product import Product
 from app.models.order import Order
@@ -293,7 +293,7 @@ def test_inventory_costing_status_is_read_only_and_requires_erp_access(business_
     status_payload = response.json()
     assert status_payload["configured"] is False
     assert status_payload["unvalued_variants"] == status_payload["positive_stock_variants"]
-    assert status_payload["unvalued_units"] == status_payload["on_hand_units"]
+    assert status_payload["unvalued_units"] + status_payload["valued_units"] == status_payload["on_hand_units"]
     assert status_payload["unposted_cost_consumptions"] == 0
 
 
@@ -487,6 +487,14 @@ def test_multi_line_purchase_order_receipt_updates_shared_inventory_and_ledger(b
     db = SessionLocal()
     assert db.get(ProductVariant, business_admin["variant_id"]).stock_qty == 7
     assert db.get(ProductVariant, second_id).stock_qty == 6
+    layers = db.query(ERPInventoryCostLayer).filter(
+        ERPInventoryCostLayer.source_type == "purchase_receipt",
+        ERPInventoryCostLayer.source_key.like(f"{receipt_payload['idempotency_key']}:%"),
+    ).all()
+    assert {(layer.variant_id, layer.original_quantity, str(layer.unit_cost)) for layer in layers} == {
+        (business_admin["variant_id"], 3, "220.0000"),
+        (second_id, 4, "125.5000"),
+    }
     from app.models.ledger import JournalEntry
     assert db.query(JournalEntry).filter(JournalEntry.source_key == f"inventory-receipt:{receipt_payload['idempotency_key']}").count() == 1
     db.close()

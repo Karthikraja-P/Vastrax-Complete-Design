@@ -721,6 +721,16 @@ def receive_purchase_order(po_id: str, body: PurchaseReceipt, admin: User = Depe
         db.add(StockMovement(product_id=line.product_id, variant_id=line.variant_id, quantity_delta=receipt.quantity,
                              stock_before=before, stock_after=variant.stock_qty, reason="purchase_receipt",
                              reference_id=po.id, created_by=admin.id))
+        # Preserve the supplier's actual unit cost for later FIFO or moving-average
+        # valuation. This records source data only; the selected policy controls use.
+        db.add(ERPInventoryCostLayer(
+            variant_id=line.variant_id,
+            original_quantity=receipt.quantity,
+            remaining_quantity=receipt.quantity,
+            unit_cost=line.unit_cost,
+            source_type="purchase_receipt",
+            source_key=f"{idempotency_key}:{line.id}",
+        ))
     lines = db.query(PurchaseOrderLine).filter(PurchaseOrderLine.purchase_order_id == po.id).all()
     po.status = "received" if all(line.quantity_received == line.quantity_ordered for line in lines) else "partially_received"
     journal_entry_id = None
