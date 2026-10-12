@@ -118,6 +118,331 @@ def crm_overview(db: Session = Depends(get_db)):
 
 
 @router.get("/crm/customers", dependencies=[Depends(require_business_permission("crm"))])
+def crm_customers(q: str | None = Query(default=None, max_length=120), db: Session = Depends(get_db)):
+    query = db.query(
+        User.id, User.full_name, User.email, User.phone_number, User.created_at,
+        func.count(func.distinct(Order.id)).label("order_count"),
+        func.coalesce(func.sum(case((Order.status != "cancelled", Order.total_amount), else_=0)), 0).label("lifetime_value"),
+        func.max(Order.placed_at).label("last_order_at"),
+    ).outerjoin(Order, Order.user_id == User.id).filter(User.role == "customer", User.is_active.is_(True)).group_by(User.id)
+    if q:
+        term = f"%{q.strip()}%"
+        query = query.filter(or_(User.full_name.ilike(term), User.email.ilike(term), User.phone_number.ilike(term)))
+    rows = query.order_by(User.created_at.desc()).limit(500).all()
+    return [{"id": row.id, "full_name": row.full_name, "email": row.email, "phone": row.phone_number,
+             "created_at": row.created_at, "order_count": row.order_count,
+             "lifetime_value": str(row.lifetime_value or 0), "last_order_at": row.last_order_at} for row in rows]
+
+
+@router.get("/crm/customers/{customer_id}", dependencies=[Depends(require_business_permission("crm"))])
+def crm_customer_detail(customer_id: str, db: Session = Depends(get_db)):
+    customer = db.query(User).filter(User.id == customer_id, User.role == "customer").first()
+    if not customer:
+        raise HTTPException(404, "Customer not found")
+    orders = db.query(Order).filter(Order.user_id == customer.id).order_by(Order.placed_at.desc()).limit(100).all()
+    order_ids = [order.id for order in orders]
+    item_rows = []
+    if order_ids:
+        item_rows = db.query(OrderItem, Product.name, ProductVariant.size).join(
+            Product, Product.id == OrderItem.product_id
+        ).join(ProductVariant, ProductVariant.id == OrderItem.variant_id).filter(
+            OrderItem.order_id.in_(order_ids)
+        ).all()
+    items_by_order: dict[str, list[dict]] = {}
+    for item, product_name, size in item_rows:
+        items_by_order.setdefault(item.order_id, []).append({
+            "product_name": product_name, "size": size, "quantity": item.quantity,
+            "unit_price": str(item.unit_price),
+        })
+    consent_events = db.query(CRMMarketingConsentEvent).filter(
+        CRMMarketingConsentEvent.customer_id == customer.id
+    ).order_by(CRMMarketingConsentEvent.recorded_at.desc(), CRMMarketingConsentEvent.id.desc()).limit(100).all()
+    consent_state = {"email_marketing": False, "sms_marketing": False}
+    consent_seen = set()
+    for event in consent_events:
+        key = f"{event.channel}_marketing"
+        if key in consent_state and key not in consent_seen:
+            consent_state[key] = event.granted
+            consent_seen.add(key)
+    activities = db.query(CRMActivity, User.full_name, User.email).join(
+        User, User.id == CRMActivity.created_by
+    ).filter(CRMActivity.customer_id == customer.id).order_by(
+        CRMActivity.created_at.desc()
+    ).limit(100).all()
+    return {
+        "customer": {"id": customer.id, "full_name": customer.full_name, "email": customer.email,
+                      "phone": customer.phone_number, "created_at": customer.created_at},
+        "orders": [{"id": order.id, "status": order.status, "payment_status": order.payment_status,
+                     "total_amount": str(order.total_amount), "placed_at": order.placed_at,
+                     "shipping_status": order.shipping_status, "items": items_by_order.get(order.id, [])}
+                    for order in orders],
+        "marketing_preferences": {
+            **consent_state,
+            "history": [{"channel": event.channel, "granted": event.granted, "source": event.source,
+                         "recorded_at": event.recorded_at} for event in consent_events],
+        },
+        "activities": [{"id": activity.id, "activity_type": activity.activity_type,
+                         "subject": activity.subject, "description": activity.description,
+                         "due_at": activity.due_at, "completed_at": activity.completed_at,
+                         "created_at": activity.created_at,
+                         "created_by": name or email} for activity, name, email in activities],
+    }
+
+
+@router.get("/crm/leads", dependencies=[Depends(require_business_permission("crm"))])
+def list_leads(stage: str | None = None, db: Session = Depends(get_db)):
+    q = db.query(CRMLead)
+    if stage:
+        q = q.filter(CRMLead.stage == stage)
+    return q.order_by(CRMLead.created_at.desc()).limit(500).all()
+
+
+@router.post("/crm/leads", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_business_permission("crm"))])
+def create_lead(body: LeadCreate, admin: User = Depends(require_business_permission("crm")), db: Session = Depends(get_db)):
+    payload = body.model_dump()
+    payload["full_name"] = payload["full_name"].strip()
+    if not payload["full_name"]:
+        raise HTTPException(422, "Lead name is required")
+    payload["email"] = payload["email"].strip().casefold() if payload["email"] else None
+    payload["phone"] = payload["phone"].strip() if payload["phone"] else None
+    lead = CRMLead(**payload, created_by=admin.id)
+    db.add(lead)
+    db.commit()
+    db.refresh(lead)
+    return lead
+
+
+@router.patch("/crm/leads/{lead_id}", dependencies=[Depends(require_business_permission("crm"))])
+def update_lead(lead_id: str, body: LeadUpdate, db: Session = Depends(get_db)):
+    lead = db.get(CRMLead, lead_id)
+    if not lead:
+        raise HTTPException(404, "Lead not found")
+    if lead.converted_customer_id:
+        raise HTTPException(409, "A converted lead cannot be moved back in the pipeline")
+    lead.stage = body.stage
+    lead.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(lead)
+    return lead
+
+
+@router.post("/crm/leads/{lead_id}/convert", dependencies=[Depends(require_business_permission("crm"))])
+def convert_lead(lead_id: str, admin: User = Depends(require_business_permission("crm")), db: Session = Depends(get_db)):
+    lead = db.get(CRMLead, lead_id)
+    if not lead:
+        raise HTTPException(404, "Lead not found")
+    if lead.converted_customer_id:
+        return lead
+    if lead.stage != "qualified":
+        raise HTTPException(409, "Only qualified leads can be converted")
+    if not lead.email and not lead.phone:
+        raise HTTPException(422, "Add an email or phone number before converting this lead")
+
+    match_conditions = []
+    if lead.email:
+        match_conditions.append(func.lower(User.email) == lead.email.casefold())
+    if lead.phone:
+        match_conditions.append(User.phone_number == lead.phone.strip())
+    matches = db.query(User).filter(User.role == "customer", or_(*match_conditions)).all()
+    if not matches:
+        raise HTTPException(404, "No existing customer account matches this lead; do not create a duplicate account")
+    if len(matches) > 1:
+        raise HTTPException(409, "Lead contact details match more than one customer account")
+    customer = matches[0]
+    duplicate = db.query(CRMLead.id).filter(
+        CRMLead.converted_customer_id == customer.id,
+        CRMLead.id != lead.id,
+    ).first()
+    if duplicate:
+        raise HTTPException(409, "This customer is already linked to another converted lead")
+
+    lead.converted_customer_id = customer.id
+    lead.stage = "converted"
+    lead.updated_at = datetime.now(timezone.utc)
+    db.add(CRMActivity(
+        customer_id=customer.id,
+        activity_type="note",
+        subject="Lead converted to customer",
+        description=f"Linked existing Vastrax customer account to CRM lead {lead.id} ({lead.full_name}).",
+        created_by=admin.id,
+    ))
+    db.commit()
+    db.refresh(lead)
+    return lead
+
+
+@router.get("/crm/activities", dependencies=[Depends(require_business_permission("crm"))])
+def list_activities(customer_id: str | None = None, lead_id: str | None = None, upcoming: bool = False, db: Session = Depends(get_db)):
+    q = db.query(CRMActivity)
+    if customer_id:
+        q = q.filter(CRMActivity.customer_id == customer_id)
+    if lead_id:
+        q = q.filter(CRMActivity.lead_id == lead_id)
+    if upcoming:
+        q = q.filter(CRMActivity.completed_at.is_(None), CRMActivity.due_at.isnot(None))
+    return q.order_by(CRMActivity.due_at.asc().nullslast(), CRMActivity.created_at.desc()).limit(500).all()
+
+
+@router.post("/crm/activities", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_business_permission("crm"))])
+def create_activity(body: ActivityCreate, admin: User = Depends(require_business_permission("crm")), db: Session = Depends(get_db)):
+    if bool(body.customer_id) == bool(body.lead_id):
+        raise HTTPException(422, "Choose exactly one customer or lead")
+    if body.customer_id and not db.query(User.id).filter(User.id == body.customer_id, User.role == "customer").first():
+        raise HTTPException(404, "Customer not found")
+    if body.lead_id and not db.get(CRMLead, body.lead_id):
+        raise HTTPException(404, "Lead not found")
+    activity = CRMActivity(**body.model_dump(), created_by=admin.id)
+    db.add(activity)
+    db.commit()
+    db.refresh(activity)
+    return activity
+
+
+@router.post("/crm/activities/{activity_id}/complete", dependencies=[Depends(require_business_permission("crm"))])
+def complete_activity(activity_id: str, db: Session = Depends(get_db)):
+    activity = db.get(CRMActivity, activity_id)
+    if not activity:
+        raise HTTPException(404, "Activity not found")
+    activity.completed_at = datetime.now(timezone.utc)
+    db.commit()
+    return {"id": activity.id, "completed_at": activity.completed_at}
+
+
+@router.get("/erp/overview", dependencies=[Depends(require_business_permission("erp"))])
+def erp_overview(db: Session = Depends(get_db)):
+    stock_units = db.query(func.coalesce(func.sum(ProductVariant.stock_qty), 0)).scalar() or 0
+    low_stock = db.query(func.count(ProductVariant.id)).filter(ProductVariant.stock_qty.between(1, 5)).scalar() or 0
+    out_of_stock = db.query(func.count(ProductVariant.id)).filter(ProductVariant.stock_qty <= 0).scalar() or 0
+    open_po = db.query(func.count(PurchaseOrder.id)).filter(PurchaseOrder.status.in_(["ordered", "partially_received"])).scalar() or 0
+    month_start = date.today().replace(day=1)
+    monthly_expenses = db.query(func.coalesce(func.sum(OperatingExpense.amount + OperatingExpense.tax_amount), 0)).filter(OperatingExpense.expense_date >= month_start).scalar() or 0
+    sales = db.query(func.coalesce(func.sum(Order.total_amount), 0)).filter(Order.status != "cancelled").scalar() or 0
+    return {"stock_units": int(stock_units), "low_stock_variants": low_stock, "out_of_stock_variants": out_of_stock,
+            "open_purchase_orders": open_po, "monthly_expenses": str(monthly_expenses), "order_value_booked": str(sales)}
+
+
+@router.get("/erp/inventory", dependencies=[Depends(require_business_permission("erp"))])
+def inventory_list(q: str | None = Query(default=None, max_length=120), low_stock_only: bool = False, db: Session = Depends(get_db)):
+    query = db.query(ProductVariant, Product.name.label("product_name"), Product.colour, Product.is_published).join(Product, Product.id == ProductVariant.product_id)
+    if q:
+        term = f"%{q.strip()}%"
+        query = query.filter(or_(Product.name.ilike(term), ProductVariant.sku.ilike(term), ProductVariant.size.ilike(term)))
+    if low_stock_only:
+        query = query.filter(ProductVariant.stock_qty <= 5)
+    return [{"variant_id": v.id, "product_id": v.product_id, "product_name": name, "colour": colour, "size": v.size,
+             "sku": v.sku, "stock_qty": v.stock_qty, "is_published": published}
+            for v, name, colour, published in query.order_by(Product.name, ProductVariant.size).limit(1000).all()]
+
+
+@router.get("/erp/inventory/movements", dependencies=[Depends(require_business_permission("erp"))])
+def inventory_movements(variant_id: str | None = None, db: Session = Depends(get_db)):
+    q = db.query(StockMovement)
+    if variant_id:
+        q = q.filter(StockMovement.variant_id == variant_id)
+    return q.order_by(StockMovement.created_at.desc()).limit(500).all()
+
+
+@router.post("/erp/inventory/{variant_id}/adjust", dependencies=[Depends(require_business_permission("erp"))])
+def adjust_inventory(variant_id: str, body: StockAdjustment, admin: User = Depends(require_business_permission("erp")), db: Session = Depends(get_db)):
+    if body.quantity_delta == 0:
+        raise HTTPException(422, "Adjustment must change stock")
+    variant = db.get(ProductVariant, variant_id)
+    if not variant:
+        raise HTTPException(404, "Product size variant not found")
+    before = int(variant.stock_qty or 0)
+    after = before + body.quantity_delta
+    if after < 0:
+        raise HTTPException(409, "Adjustment cannot make stock negative")
+    variant.stock_qty = after
+    db.add(StockMovement(product_id=variant.product_id, variant_id=variant.id, quantity_delta=body.quantity_delta,
+                         stock_before=before, stock_after=after, reason=body.reason, notes=body.notes, created_by=admin.id))
+    db.commit()
+    return {"variant_id": variant.id, "stock_before": before, "stock_after": after}
+
+
+@router.get("/erp/suppliers", dependencies=[Depends(require_business_permission("erp"))])
+def list_suppliers(db: Session = Depends(get_db)):
+    return db.query(Supplier).order_by(Supplier.name).all()
+
+
+@router.post("/erp/suppliers", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_business_permission("erp"))])
+def create_supplier(body: SupplierCreate, db: Session = Depends(get_db)):
+    payload = body.model_dump()
+    payload["name"] = payload["name"].strip()
+    if not payload["name"]:
+        raise HTTPException(422, "Supplier name is required")
+    supplier = Supplier(**payload)
+    db.add(supplier)
+    db.commit()
+    db.refresh(supplier)
+    return supplier
+
+
+@router.patch("/erp/suppliers/{supplier_id}", dependencies=[Depends(require_business_permission("erp"))])
+def update_supplier(supplier_id: str, body: SupplierUpdate, db: Session = Depends(get_db)):
+    supplier = db.get(Supplier, supplier_id)
+    if not supplier:
+        raise HTTPException(404, "Supplier not found")
+    updates = body.model_dump(exclude_unset=True)
+    if not updates:
+        raise HTTPException(422, "Provide at least one supplier field to update")
+    if "name" in updates:
+        if updates["name"] is None or not updates["name"].strip():
+            raise HTTPException(422, "Supplier name is required")
+        updates["name"] = updates["name"].strip()
+    if "is_active" in updates and updates["is_active"] is None:
+        raise HTTPException(422, "Supplier active state cannot be null")
+    for field, value in updates.items():
+        if isinstance(value, str):
+            value = value.strip() or None
+        setattr(supplier, field, value)
+    db.commit()
+    db.refresh(supplier)
+    return supplier
+
+
+@router.get("/erp/purchase-orders", dependencies=[Depends(require_business_permission("erp"))])
+def list_purchase_orders(db: Session = Depends(get_db)):
+    rows = db.query(PurchaseOrder, Supplier.name).join(Supplier, Supplier.id == PurchaseOrder.supplier_id).order_by(PurchaseOrder.created_at.desc()).limit(500).all()
+    output = []
+    for po, supplier_name in rows:
+        lines = db.query(PurchaseOrderLine, Product.name, ProductVariant.size).join(Product, Product.id == PurchaseOrderLine.product_id).join(ProductVariant, ProductVariant.id == PurchaseOrderLine.variant_id).filter(PurchaseOrderLine.purchase_order_id == po.id).all()
+        output.append({"id": po.id, "supplier_id": po.supplier_id, "supplier_name": supplier_name, "status": po.status,
+                       "expected_date": po.expected_date, "notes": po.notes, "created_at": po.created_at,
+                       "items": [{"id": line.id, "product_name": name, "size": size, "quantity_ordered": line.quantity_ordered,
+                                  "quantity_received": line.quantity_received, "unit_cost": str(line.unit_cost)} for line, name, size in lines]})
+    return output
+
+
+@router.post("/erp/purchase-orders", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_business_permission("erp"))])
+def create_purchase_order(body: PurchaseOrderCreate, admin: User = Depends(require_business_permission("erp")), db: Session = Depends(get_db)):
+    supplier = db.get(Supplier, body.supplier_id)
+    if not supplier or not supplier.is_active:
+        raise HTTPException(404, "Active supplier not found")
+    po = PurchaseOrder(supplier_id=supplier.id, status="ordered", expected_date=body.expected_date,
+                       notes=body.notes, created_by=admin.id)
+    db.add(po)
+    db.flush()
+    for item in body.items:
+        variant = db.get(ProductVariant, item.variant_id)
+        if not variant:
+            db.rollback()
+            raise HTTPException(404, f"Variant not found: {item.variant_id}")
+        db.add(PurchaseOrderLine(purchase_order_id=po.id, product_id=variant.product_id, variant_id=variant.id,
+                                 quantity_ordered=item.quantity, unit_cost=item.unit_cost))
+    db.commit()
+    db.refresh(po)
+    return {"id": po.id, "supplier_id": po.supplier_id, "status": po.status}
+
+
+@router.post("/erp/purchase-orders/{po_id}/receive", dependencies=[Depends(require_business_permission("erp"))])
+def receive_purchase_order(po_id: str, body: PurchaseReceipt, admin: User = Depends(require_business_permission("erp")), db: Session = Depends(get_db)):
+    po = db.query(PurchaseOrder).filter(PurchaseOrder.id == po_id).with_for_update().first()
+    if not po or po.status in ("cancelled", "received"):
+        raise HTTPException(404, "Open purchase order not found")
+    inventory_account = db.get(LedgerAccount, body.inventory_account_id)
+    payable_account = db.get(LedgerAccount, body.payable_account_id)
+    if not inventory_account or not inventory_account.is_active or inventory_account.account_type != "asset":
         raise HTTPException(422, "Choose an active asset account for received inventory")
     if not payable_account or not payable_account.is_active or payable_account.account_type != "liability":
         raise HTTPException(422, "Choose an active liability account for supplier payable")

@@ -1,5 +1,6 @@
 """Admin return authorization, receiving, and stock reconciliation endpoints."""
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -12,10 +13,14 @@ from app.middleware.auth import require_business_permission
 from app.models.business import StockMovement
 from app.models.order import Order
 from app.models.order_item import OrderItem
+from app.models.payment import Payment
+from app.models.payment_refund import PaymentRefund
 from app.models.product import Product
 from app.models.product_variant import ProductVariant
 from app.models.returns import SalesReturn, SalesReturnLine
 from app.models.user import User
+from app.schemas.payments import RefundIn
+from app.services.payment_service import PaymentService
 
 router = APIRouter(tags=["erp-returns"], dependencies=[Depends(require_business_permission("erp"))])
 
@@ -48,10 +53,26 @@ class ReturnReceipt(BaseModel):
 
 def _serialize_return(db: Session, item: SalesReturn) -> dict:
     lines = db.query(SalesReturnLine, Product.name, ProductVariant.size).join(Product, Product.id == SalesReturnLine.product_id).join(ProductVariant, ProductVariant.id == SalesReturnLine.variant_id).filter(SalesReturnLine.return_id == item.id).all()
+    payments = db.query(Payment).filter(Payment.order_id == item.order_id).order_by(Payment.created_at.desc()).all()
+    payment_rows = []
+    for payment in payments:
+        refunds = db.query(PaymentRefund).filter(
+            PaymentRefund.payment_id == payment.id,
+            PaymentRefund.return_id == item.id,
+        ).order_by(PaymentRefund.created_at.desc()).all()
+        all_refunds = db.query(PaymentRefund).filter(PaymentRefund.payment_id == payment.id).all()
+        processed = sum((Decimal(row.amount) for row in all_refunds if row.status == "processed"), Decimal("0.00"))
+        reserved = sum((Decimal(row.amount) for row in all_refunds if row.status in ("pending", "unknown")), Decimal("0.00"))
+        payment_rows.append({
+            "id": payment.id, "amount": str(payment.amount), "status": payment.status,
+            "refundable_amount": str(max(Decimal("0.00"), Decimal(payment.amount) - processed - reserved)),
+            "refunds": [{"id": row.id, "amount": str(row.amount), "status": row.status, "created_at": row.created_at} for row in refunds],
+        })
     return {
         "id": item.id, "order_id": item.order_id, "status": item.status, "reason": item.reason,
         "notes": item.notes, "requested_at": item.requested_at, "reviewed_at": item.reviewed_at,
         "received_at": item.received_at,
+        "payments": payment_rows,
         "items": [{"id": line.id, "order_item_id": line.order_item_id, "product_name": name, "size": size,
                    "quantity_requested": line.quantity_requested, "quantity_received": line.quantity_received,
                    "quantity_restocked": line.quantity_restocked, "unit_price": str(line.unit_price)}
@@ -156,3 +177,13 @@ def receive_return(return_id: str, body: ReturnReceipt, admin: User = Depends(re
     case.received_at = datetime.now(timezone.utc)
     db.commit()
     return {"id": case.id, "status": case.status}
+
+
+@router.post("/erp/returns/{return_id}/refund")
+def refund_return(return_id: str, body: RefundIn, admin: User = Depends(require_business_permission("erp")), db: Session = Depends(get_db)):
+    case = db.query(SalesReturn).filter(SalesReturn.id == return_id).first()
+    if not case:
+        raise HTTPException(404, "Return case not found")
+    if body.return_id and body.return_id != case.id:
+        raise HTTPException(422, "Return id does not match request path")
+    return PaymentService(db).process_refund(body.txn_id, body.amount, created_by_id=admin.id, return_id=case.id)
