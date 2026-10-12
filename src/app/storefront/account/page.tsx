@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { 
-  Package, MapPin, Heart, User, ChevronRight, 
+  Package, Heart, User, ChevronRight,
   Clock, CheckCircle2, Truck, ExternalLink, Plus, Trash2, Edit2, ShoppingBag, LogOut
 } from "lucide-react";
 import { Header } from "@/components/layout/Header";
@@ -13,6 +13,17 @@ import { performSignOut } from "@/lib/auth-utils";
 import { fetchApi } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
+
+type MarketingPreferences = {
+  email_marketing: boolean;
+  email_marketing_changed_at: string | null;
+  sms_marketing: boolean;
+  sms_marketing_changed_at: string | null;
+  history: Array<{ channel: string; granted: boolean; recorded_at: string }>;
+};
+
+type FavoriteItem = { id: string | number; image: string; name: string; price: string };
+type SavedAddress = { id: string | number; title: string; isDefault: boolean; name: string; street: string; city: string; state: string; zip: string };
 
 interface OrderItem {
   id: string;
@@ -60,6 +71,13 @@ function CustomerAccountContent() {
   const [is2FAEnabled, setIs2FAEnabled] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [profileError, setProfileError] = useState("");
+  const [marketing, setMarketing] = useState<MarketingPreferences>({
+    email_marketing: false, email_marketing_changed_at: null,
+    sms_marketing: false, sms_marketing_changed_at: null, history: [],
+  });
+  const [marketingError, setMarketingError] = useState("");
+  const [marketingSaved, setMarketingSaved] = useState(false);
+  const [savingMarketing, setSavingMarketing] = useState(false);
 
   useEffect(() => {
     fetchApi<{ full_name?: string; email?: string; phone_number?: string }>("/users/me")
@@ -73,21 +91,29 @@ function CustomerAccountContent() {
         setPhone(profile.phone_number || "");
       })
       .catch(() => setProfileError("Unable to load your profile."));
+    fetchApi<MarketingPreferences>("/users/me/marketing-consent")
+      .then(setMarketing)
+      .catch(() => setMarketingError("Unable to load marketing preferences."));
   }, []);
 
   // Address state
-  const [addresses, setAddresses] = useState<any[]>([]);
+  const [addresses] = useState<SavedAddress[]>([]);
   const [isAddingAddress, setIsAddingAddress] = useState(false);
 
-  const [favorites, setFavorites] = useState<any[]>([]);
+  const [favorites, setFavorites] = useState<FavoriteItem[]>([]);
 
   useEffect(() => {
-    const saved = localStorage.getItem("vastrax_favorites");
-    if (saved) {
+    const timer = window.setTimeout(() => {
+      const saved = localStorage.getItem("vastrax_favorites");
+      if (!saved) return;
       try {
-        setFavorites(JSON.parse(saved));
-      } catch (e) {}
-    }
+        const parsed: unknown = JSON.parse(saved);
+        if (Array.isArray(parsed)) setFavorites(parsed as FavoriteItem[]);
+      } catch {
+        // Ignore invalid local favorites and keep the empty list.
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   const toggleFavorite = (id: string | number) => {
@@ -110,6 +136,28 @@ function CustomerAccountContent() {
       setTimeout(() => setSavedSuccess(false), 3000);
     } catch {
       setProfileError("Profile update failed. Please try again.");
+    }
+  };
+
+  const saveMarketingPreferences = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setSavingMarketing(true);
+    setMarketingError("");
+    setMarketingSaved(false);
+    try {
+      const updated = await fetchApi<MarketingPreferences>("/users/me/marketing-consent", {
+        method: "PATCH",
+        body: JSON.stringify({
+          email_marketing: marketing.email_marketing,
+          sms_marketing: marketing.sms_marketing,
+        }),
+      });
+      setMarketing(updated);
+      setMarketingSaved(true);
+    } catch (error) {
+      setMarketingError(error instanceof Error ? error.message : "Could not save marketing preferences.");
+    } finally {
+      setSavingMarketing(false);
     }
   };
 
@@ -233,7 +281,7 @@ function CustomerAccountContent() {
               return (
                 <button
                   key={tab.id}
-                  onClick={() => setActiveTab(tab.id as any)}
+                  onClick={() => setActiveTab(tab.id as "orders" | "favorites" | "profile")}
                   className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-lg font-medium transition-all ${
                     isActive 
                       ? "bg-accent/15 text-accent border border-accent/30 shadow-[0_0_15px_rgba(224,122,63,0.15)]" 
@@ -457,6 +505,24 @@ function CustomerAccountContent() {
                       Save Changes
                     </button>
                   </div>
+                </form>
+
+                <form onSubmit={saveMarketingPreferences} className="mt-8 bg-surface/60 border border-border/80 rounded-2xl p-6 max-w-xl space-y-4">
+                  <div>
+                    <h3 className="text-xl font-bold text-foreground">Marketing preferences</h3>
+                    <p className="text-sm text-muted-foreground mt-1">Optional product and offer updates. Order and delivery messages are not affected.</p>
+                  </div>
+                  {marketingError && <p role="alert" className="text-sm text-red-400">{marketingError}</p>}
+                  {marketingSaved && <p role="status" className="text-sm text-emerald-500">Your preferences were saved.</p>}
+                  <label className="flex items-start gap-3 border-t border-border/40 pt-4">
+                    <input type="checkbox" checked={marketing.email_marketing} onChange={event => setMarketing(current => ({ ...current, email_marketing: event.target.checked }))} className="mt-1 accent-accent" />
+                    <span><span className="block text-sm font-semibold text-foreground">Email offers and product updates</span><span className="text-xs text-muted-foreground">{marketing.email_marketing ? "You have opted in." : "You have not opted in."}</span></span>
+                  </label>
+                  <label className="flex items-start gap-3">
+                    <input type="checkbox" checked={marketing.sms_marketing} onChange={event => setMarketing(current => ({ ...current, sms_marketing: event.target.checked }))} className="mt-1 accent-accent" />
+                    <span><span className="block text-sm font-semibold text-foreground">SMS offers and product updates</span><span className="text-xs text-muted-foreground">{marketing.sms_marketing ? "You have opted in." : "You have not opted in."}</span></span>
+                  </label>
+                  <button disabled={savingMarketing} className="rounded-xl bg-accent px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{savingMarketing ? "Saving…" : "Save preferences"}</button>
                 </form>
 
                 <div className="mt-12 bg-surface/60 border border-border/80 rounded-2xl p-6 max-w-xl">

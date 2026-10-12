@@ -7,10 +7,42 @@ from app.db.database import get_db
 from app.middleware.auth import get_current_user, require_admin
 from app.models.user import User
 from app.models.business_team import BusinessTeamPermission
+from app.models.marketing_consent import CRMMarketingConsentEvent
 from app.schemas.user import AddressCreate, AddressUpdate, ChangePasswordRequest, UserUpdate
 from app.services.user_service import UserService
 
 router = APIRouter(prefix="/users", tags=["users"])
+
+
+class MarketingConsentUpdate(BaseModel):
+    email_marketing: bool | None = None
+    sms_marketing: bool | None = None
+
+
+def _marketing_consent_snapshot(db: Session, customer_id: str) -> dict:
+    events = db.query(CRMMarketingConsentEvent).filter(
+        CRMMarketingConsentEvent.customer_id == customer_id
+    ).order_by(CRMMarketingConsentEvent.recorded_at.desc(), CRMMarketingConsentEvent.id.desc()).limit(500).all()
+    state = {
+        "email_marketing": {"consented": False, "changed_at": None},
+        "sms_marketing": {"consented": False, "changed_at": None},
+    }
+    seen = set()
+    for event in events:
+        key = f"{event.channel}_marketing"
+        if key in state and key not in seen:
+            state[key] = {"consented": event.granted, "changed_at": event.recorded_at}
+            seen.add(key)
+    return {
+        "email_marketing": state["email_marketing"]["consented"],
+        "email_marketing_changed_at": state["email_marketing"]["changed_at"],
+        "sms_marketing": state["sms_marketing"]["consented"],
+        "sms_marketing_changed_at": state["sms_marketing"]["changed_at"],
+        "history": [
+            {"channel": event.channel, "granted": event.granted, "source": event.source, "recorded_at": event.recorded_at}
+            for event in events
+        ],
+    }
 
 
 # ── Profile ────────────────────────────────────────────────────────────────────
@@ -18,6 +50,42 @@ router = APIRouter(prefix="/users", tags=["users"])
 @router.get("/me")
 def get_me(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     return UserService(db).get_profile(current_user)
+
+
+@router.get("/me/marketing-consent")
+def get_marketing_consent(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if current_user.role != "customer":
+        raise HTTPException(403, "Marketing preferences are managed by customer accounts")
+    return _marketing_consent_snapshot(db, current_user.id)
+
+
+@router.patch("/me/marketing-consent")
+def update_marketing_consent(
+    body: MarketingConsentUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if current_user.role != "customer":
+        raise HTTPException(403, "Marketing preferences are managed by customer accounts")
+    updates = body.model_dump(exclude_unset=True)
+    if not updates or any(value is None for value in updates.values()):
+        raise HTTPException(422, "Choose at least one marketing preference")
+    current = _marketing_consent_snapshot(db, current_user.id)
+    for key, granted in updates.items():
+        if current[key] == granted:
+            continue
+        db.add(CRMMarketingConsentEvent(
+            customer_id=current_user.id,
+            channel=key.removesuffix("_marketing"),
+            granted=granted,
+            source="customer_account",
+            actor_id=current_user.id,
+        ))
+    db.commit()
+    return _marketing_consent_snapshot(db, current_user.id)
 
 
 @router.put("/me")

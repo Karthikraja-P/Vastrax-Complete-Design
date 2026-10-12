@@ -42,3 +42,4 @@ from .returns import SalesReturn, SalesReturnLine
 
 from .ledger import LedgerAccount, JournalEntry, JournalLine
 from .business_team import BusinessTeamPermission
+from .marketing_consent import CRMMarketingConsentEvent

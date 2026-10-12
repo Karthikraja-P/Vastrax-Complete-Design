@@ -18,6 +18,7 @@ from app.models.order_item import OrderItem
 from app.models.product import Product
 from app.models.product_variant import ProductVariant
 from app.models.user import User
+from app.models.marketing_consent import CRMMarketingConsentEvent
 
 router = APIRouter(tags=["crm-erp"])
 
@@ -153,6 +154,16 @@ def crm_customer_detail(customer_id: str, db: Session = Depends(get_db)):
             "product_name": product_name, "size": size, "quantity": item.quantity,
             "unit_price": str(item.unit_price),
         })
+    consent_events = db.query(CRMMarketingConsentEvent).filter(
+        CRMMarketingConsentEvent.customer_id == customer.id
+    ).order_by(CRMMarketingConsentEvent.recorded_at.desc(), CRMMarketingConsentEvent.id.desc()).limit(100).all()
+    consent_state = {"email_marketing": False, "sms_marketing": False}
+    consent_seen = set()
+    for event in consent_events:
+        key = f"{event.channel}_marketing"
+        if key in consent_state and key not in consent_seen:
+            consent_state[key] = event.granted
+            consent_seen.add(key)
     activities = db.query(CRMActivity, User.full_name, User.email).join(
         User, User.id == CRMActivity.created_by
     ).filter(CRMActivity.customer_id == customer.id).order_by(
@@ -165,6 +176,11 @@ def crm_customer_detail(customer_id: str, db: Session = Depends(get_db)):
                      "total_amount": str(order.total_amount), "placed_at": order.placed_at,
                      "shipping_status": order.shipping_status, "items": items_by_order.get(order.id, [])}
                     for order in orders],
+        "marketing_preferences": {
+            **consent_state,
+            "history": [{"channel": event.channel, "granted": event.granted, "source": event.source,
+                         "recorded_at": event.recorded_at} for event in consent_events],
+        },
         "activities": [{"id": activity.id, "activity_type": activity.activity_type,
                          "subject": activity.subject, "description": activity.description,
                          "due_at": activity.due_at, "completed_at": activity.completed_at,

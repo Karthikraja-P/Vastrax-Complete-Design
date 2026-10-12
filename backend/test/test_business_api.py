@@ -33,9 +33,10 @@ def business_admin():
     db.commit()
     customer_id, variant_id = customer.id, variant.id
     token = create_access_token({"sub": admin.id})
+    customer_token = create_access_token({"sub": customer.id})
     account_ids = {"inventory_account_id": inventory_account.id, "payable_account_id": payable_account.id}
     db.close()
-    yield {"token": token, "customer_id": customer_id, "variant_id": variant_id, "suffix": suffix, **account_ids}
+    yield {"token": token, "customer_token": customer_token, "customer_id": customer_id, "variant_id": variant_id, "suffix": suffix, **account_ids}
 
 
 
@@ -185,6 +186,41 @@ def test_crm_leads_tasks_customer_metrics_and_admin_access(business_admin):
     assert client.post("/api/v1/crm/activities", headers=headers, json={"customer_id": business_admin["customer_id"], "lead_id": lead_id, "subject": "invalid"}).status_code == 422
     assert client.get("/api/v1/crm/customers", headers=headers, params={"q": "Beta Customer"}).json()[0]["id"] == business_admin["customer_id"]
     assert client.post(f"/api/v1/crm/activities/{task.json()['id']}/complete", headers=headers).status_code == 200
+
+
+def test_customer_marketing_consent_is_opt_in_and_audited(business_admin):
+    client = TestClient(app)
+    customer_headers = {"Authorization": f"Bearer {business_admin['customer_token']}"}
+    admin_headers = {"Authorization": f"Bearer {business_admin['token']}"}
+    path = "/api/v1/users/me/marketing-consent"
+
+    assert client.get(path).status_code == 401
+    assert client.get(path, headers=admin_headers).status_code == 403
+    initial = client.get(path, headers=customer_headers)
+    assert initial.status_code == 200
+    assert initial.json()["email_marketing"] is False
+    assert initial.json()["sms_marketing"] is False
+    assert initial.json()["history"] == []
+
+    opted_in = client.patch(path, headers=customer_headers, json={"email_marketing": True})
+    assert opted_in.status_code == 200, opted_in.text
+    assert opted_in.json()["email_marketing"] is True
+    assert opted_in.json()["sms_marketing"] is False
+    assert len(opted_in.json()["history"]) == 1
+    assert opted_in.json()["history"][0]["source"] == "customer_account"
+
+    unchanged = client.patch(path, headers=customer_headers, json={"email_marketing": True})
+    assert len(unchanged.json()["history"]) == 1
+    changed = client.patch(path, headers=customer_headers, json={"email_marketing": False, "sms_marketing": True})
+    assert changed.status_code == 200
+    assert changed.json()["email_marketing"] is False and changed.json()["sms_marketing"] is True
+    assert len(changed.json()["history"]) == 3
+
+    profile = client.get(f"/api/v1/crm/customers/{business_admin['customer_id']}", headers=admin_headers)
+    assert profile.status_code == 200
+    assert profile.json()["marketing_preferences"]["email_marketing"] is False
+    assert profile.json()["marketing_preferences"]["sms_marketing"] is True
+    assert len(profile.json()["marketing_preferences"]["history"]) == 3
 
 
 def test_crm_lead_conversion_links_existing_customer_and_logs_activity(business_admin):
