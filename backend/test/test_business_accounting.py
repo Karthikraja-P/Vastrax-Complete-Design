@@ -52,8 +52,8 @@ def test_expense_register_posts_balanced_journal_atomically():
             "input_tax_account_id": data["tax"]}
     response = client.post("/api/v1/erp/expenses", headers=headers, json=body)
     assert response.status_code == 201, response.text
-    posted = client.get("/api/v1/erp/journals", headers=headers).json()[0]
-    assert posted["id"] == response.json()["journal_entry_id"]
+    journals = client.get("/api/v1/erp/journals", headers=headers).json()
+    posted = next(entry for entry in journals if entry["id"] == response.json()["journal_entry_id"])
     assert sum(float(line["debit"]) for line in posted["lines"]) == 118
     assert sum(float(line["credit"]) for line in posted["lines"]) == 118
     assert len(posted["lines"]) == 3

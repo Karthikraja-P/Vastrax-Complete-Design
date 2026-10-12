@@ -224,6 +224,49 @@ def test_customer_marketing_consent_is_opt_in_and_audited(business_admin):
     assert len(profile.json()["marketing_preferences"]["history"]) == 3
 
 
+
+def test_multi_line_purchase_order_receipt_updates_shared_inventory_and_ledger(business_admin):
+    db = SessionLocal()
+    first = db.get(ProductVariant, business_admin["variant_id"])
+    second = ProductVariant(id=f"v2-{business_admin['suffix']}", product_id=first.product_id,
+                            sku=f"sku2-{business_admin['suffix']}", size="M", stock_qty=2)
+    db.add(second)
+    db.commit()
+    second_id = second.id
+    db.close()
+
+    client = TestClient(app)
+    headers = {"Authorization": f"Bearer {business_admin['token']}"}
+    supplier = client.post("/api/v1/erp/suppliers", headers=headers, json={"name": f"Multi-line supplier {business_admin['suffix']}"})
+    assert supplier.status_code == 201, supplier.text
+    created = client.post("/api/v1/erp/purchase-orders", headers=headers, json={
+        "supplier_id": supplier.json()["id"],
+        "items": [
+            {"variant_id": business_admin["variant_id"], "quantity": 3, "unit_cost": "220.00"},
+            {"variant_id": second_id, "quantity": 4, "unit_cost": "125.50"},
+        ],
+    })
+    assert created.status_code == 201, created.text
+    po_id = created.json()["id"]
+    po = next(row for row in client.get("/api/v1/erp/purchase-orders", headers=headers).json() if row["id"] == po_id)
+    assert len(po["items"]) == 2
+    received = client.post(f"/api/v1/erp/purchase-orders/{po_id}/receive", headers=headers, json={
+        "items": [{"line_id": item["id"], "quantity": item["quantity_ordered"]} for item in po["items"]],
+        "inventory_account_id": business_admin["inventory_account_id"],
+        "payable_account_id": business_admin["payable_account_id"],
+    })
+    assert received.status_code == 200 and received.json()["status"] == "received"
+
+    db = SessionLocal()
+    assert db.get(ProductVariant, business_admin["variant_id"]).stock_qty == 7
+    assert db.get(ProductVariant, second_id).stock_qty == 6
+    db.close()
+    journal = next(row for row in client.get("/api/v1/erp/journals", headers=headers).json()
+                   if row["id"] == received.json()["journal_entry_id"])
+    assert sum(float(line["debit"]) for line in journal["lines"]) == 1162
+    assert sum(float(line["credit"]) for line in journal["lines"]) == 1162
+
+
 def test_crm_lead_conversion_links_existing_customer_and_logs_activity(business_admin):
     client = TestClient(app)
     headers = {"Authorization": f"Bearer {business_admin['token']}"}
