@@ -12,7 +12,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.db.database import get_db
 from app.middleware.auth import require_business_permission
-from app.models.business import CRMActivity, CRMLead, OperatingExpense, PurchaseOrder, PurchaseOrderLine, StockMovement, Supplier, SupplierPayment
+from app.models.business import CRMActivity, CRMLead, OperatingExpense, PurchaseOrder, PurchaseOrderLine, StockMovement, Supplier, SupplierPayment, SupplierExpensePayment
 from app.models.ledger import JournalEntry, JournalLine, LedgerAccount
 from app.models.order import Order
 from app.models.order_item import OrderItem
@@ -641,6 +641,157 @@ def record_supplier_payment(
     }
 
 
+def _supplier_expense_payable_accounts(db: Session, expense: OperatingExpense) -> dict[str, Decimal]:
+    if not expense.journal_entry_id:
+        return {}
+    rows = db.query(JournalLine.account_id, JournalLine.credit).join(
+        LedgerAccount, LedgerAccount.id == JournalLine.account_id
+    ).filter(
+        JournalLine.journal_entry_id == expense.journal_entry_id,
+        JournalLine.credit > 0,
+        LedgerAccount.account_type == "liability",
+    ).all()
+    totals: dict[str, Decimal] = {}
+    for account_id, credit in rows:
+        totals[account_id] = totals.get(account_id, Decimal("0.00")) + Decimal(credit)
+    return totals
+
+
+@router.get("/erp/payables/expenses", dependencies=[Depends(require_business_permission("erp"))])
+def list_supplier_expense_payables(db: Session = Depends(get_db)):
+    rows = db.query(OperatingExpense, Supplier.name).join(
+        Supplier, Supplier.id == OperatingExpense.supplier_id
+    ).filter(OperatingExpense.journal_entry_id.is_not(None)).order_by(
+        OperatingExpense.expense_date.desc(), OperatingExpense.created_at.desc()
+    ).limit(500).all()
+    output = []
+    for expense, supplier_name in rows:
+        received_by_account = _supplier_expense_payable_accounts(db, expense)
+        if not received_by_account:
+            continue
+        payment_rows = db.query(
+            SupplierExpensePayment.payable_account_id, func.sum(SupplierExpensePayment.amount)
+        ).filter(SupplierExpensePayment.expense_id == expense.id).group_by(
+            SupplierExpensePayment.payable_account_id
+        ).all()
+        paid_by_account = {account_id: Decimal(amount or 0) for account_id, amount in payment_rows}
+        accounts = []
+        for account_id, received in received_by_account.items():
+            account = db.get(LedgerAccount, account_id)
+            paid = paid_by_account.get(account_id, Decimal("0.00"))
+            accounts.append({
+                "payable_account_id": account_id,
+                "payable_account_code": account.code if account else "",
+                "payable_account_name": account.name if account else "Unavailable account",
+                "received_total": str(received.quantize(Decimal("0.01"))),
+                "paid_total": str(paid.quantize(Decimal("0.01"))),
+                "outstanding_total": str((received - paid).quantize(Decimal("0.01"))),
+            })
+        received_total = sum(received_by_account.values(), Decimal("0.00"))
+        paid_total = sum(paid_by_account.values(), Decimal("0.00"))
+        output.append({
+            "expense_id": expense.id,
+            "supplier_id": expense.supplier_id,
+            "supplier_name": supplier_name,
+            "description": expense.description,
+            "category": expense.category,
+            "expense_date": expense.expense_date,
+            "reference": expense.reference,
+            "received_total": str(received_total.quantize(Decimal("0.01"))),
+            "paid_total": str(paid_total.quantize(Decimal("0.01"))),
+            "outstanding_total": str((received_total - paid_total).quantize(Decimal("0.01"))),
+            "accounts": accounts,
+            "payments": [{
+                "amount": str(payment.amount),
+                "payment_date": payment.payment_date,
+                "reference": payment.reference,
+                "journal_entry_id": payment.journal_entry_id,
+            } for payment in db.query(SupplierExpensePayment).filter(
+                SupplierExpensePayment.expense_id == expense.id
+            ).order_by(SupplierExpensePayment.payment_date.desc(), SupplierExpensePayment.created_at.desc()).all()],
+        })
+    return output
+
+
+@router.post("/erp/payables/expenses/{expense_id}/payments", status_code=status.HTTP_201_CREATED,
+             dependencies=[Depends(require_business_permission("erp"))])
+def record_supplier_expense_payment(
+    expense_id: str,
+    body: SupplierPaymentCreate,
+    admin: User = Depends(require_business_permission("erp")),
+    db: Session = Depends(get_db),
+):
+    expense = db.query(OperatingExpense).filter(OperatingExpense.id == expense_id).with_for_update().first()
+    if not expense:
+        raise HTTPException(404, "Supplier expense not found")
+    if not expense.supplier_id:
+        raise HTTPException(409, "Only expenses linked to a supplier can be settled here")
+    reference = body.reference.strip()
+    if not reference:
+        raise HTTPException(422, "A bank or payment reference is required")
+    duplicate_po = db.query(SupplierPayment.id).filter(SupplierPayment.reference == reference).first()
+    duplicate_expense = db.query(SupplierExpensePayment.id).filter(SupplierExpensePayment.reference == reference).first()
+    if duplicate_po or duplicate_expense:
+        raise HTTPException(409, "This supplier payment reference has already been recorded")
+    payable_account = db.get(LedgerAccount, body.payable_account_id)
+    payment_account = db.get(LedgerAccount, body.payment_account_id)
+    if not payable_account or not payable_account.is_active or payable_account.account_type != "liability":
+        raise HTTPException(422, "Choose an active liability account credited by this expense")
+    if not payment_account or not payment_account.is_active or payment_account.account_type != "asset":
+        raise HTTPException(422, "Choose an active cash or bank asset account")
+    received = _supplier_expense_payable_accounts(db, expense).get(payable_account.id, Decimal("0.00"))
+    if received <= 0:
+        raise HTTPException(409, "This expense has no payable balance on the selected account")
+    paid = db.query(func.coalesce(func.sum(SupplierExpensePayment.amount), 0)).filter(
+        SupplierExpensePayment.expense_id == expense.id,
+        SupplierExpensePayment.payable_account_id == payable_account.id,
+    ).scalar() or Decimal("0.00")
+    outstanding = received - Decimal(paid)
+    if body.amount > outstanding:
+        raise HTTPException(409, f"Payment exceeds the outstanding balance of {outstanding:.2f}")
+    payment_id = str(uuid.uuid4())
+    entry = JournalEntry(
+        posting_date=body.payment_date,
+        description=f"Supplier expense payment for {expense.id}",
+        reference=reference,
+        source_key=f"supplier-expense-payment:{payment_id}",
+        created_by=admin.id,
+    )
+    db.add(entry)
+    db.flush()
+    db.add_all([
+        JournalLine(journal_entry_id=entry.id, account_id=payable_account.id, debit=body.amount, credit=0),
+        JournalLine(journal_entry_id=entry.id, account_id=payment_account.id, debit=0, credit=body.amount),
+    ])
+    payment = SupplierExpensePayment(
+        id=payment_id,
+        expense_id=expense.id,
+        supplier_id=expense.supplier_id,
+        payable_account_id=payable_account.id,
+        payment_account_id=payment_account.id,
+        journal_entry_id=entry.id,
+        amount=body.amount,
+        payment_date=body.payment_date,
+        reference=reference,
+        created_by=admin.id,
+    )
+    db.add(payment)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409, "This supplier payment reference has already been recorded")
+    return {
+        "id": payment.id,
+        "expense_id": expense.id,
+        "supplier_id": expense.supplier_id,
+        "amount": str(body.amount),
+        "reference": reference,
+        "journal_entry_id": entry.id,
+        "outstanding_total": str((outstanding - body.amount).quantize(Decimal("0.01"))),
+    }
+
+
 @router.get("/erp/expenses", dependencies=[Depends(require_business_permission("erp"))])
 def list_expenses(db: Session = Depends(get_db)):
     return db.query(OperatingExpense).order_by(OperatingExpense.expense_date.desc(), OperatingExpense.created_at.desc()).limit(500).all()
@@ -664,9 +815,11 @@ def create_expense(body: ExpenseCreate, admin: User = Depends(require_business_p
     db.add(expense)
     db.flush()
     entry = JournalEntry(posting_date=body.expense_date, description=f"Expense: {body.description}",
-                         reference=body.reference or f"EXP-{expense.id}", created_by=admin.id)
+                         reference=body.reference or f"EXP-{expense.id}",
+                         source_key=f"operating-expense:{expense.id}", created_by=admin.id)
     db.add(entry)
     db.flush()
+    expense.journal_entry_id = entry.id
     journal_lines = [
         JournalLine(journal_entry_id=entry.id, account_id=expense_account.id, debit=body.amount, credit=0),
         JournalLine(journal_entry_id=entry.id, account_id=credit_account.id, debit=0, credit=body.amount + body.tax_amount),

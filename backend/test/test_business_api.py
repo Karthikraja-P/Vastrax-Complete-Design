@@ -226,6 +226,65 @@ def test_customer_marketing_consent_is_opt_in_and_audited(business_admin):
 
 
 
+
+def test_supplier_linked_expense_payable_can_be_partially_settled(business_admin):
+    suffix = business_admin["suffix"]
+    db = SessionLocal()
+    expense_account = LedgerAccount(code=f"EXPENSE-{suffix}", name="Office services", account_type="expense")
+    tax_account = LedgerAccount(code=f"TAX-{suffix}", name="Input tax asset", account_type="asset")
+    bank_account = LedgerAccount(code=f"EXP-BANK-{suffix}", name="Expense settlement bank", account_type="asset")
+    db.add_all([expense_account, tax_account, bank_account])
+    db.commit()
+    accounts = {"expense": expense_account.id, "tax": tax_account.id, "bank": bank_account.id}
+    db.close()
+
+    client = TestClient(app)
+    headers = {"Authorization": f"Bearer {business_admin['token']}"}
+    assert client.get("/api/v1/erp/payables/expenses").status_code == 401
+    supplier = client.post("/api/v1/erp/suppliers", headers=headers, json={"name": f"Expense supplier {suffix}"})
+    assert supplier.status_code == 201, supplier.text
+    expense = client.post("/api/v1/erp/expenses", headers=headers, json={
+        "category": "Operations",
+        "description": f"Supplier maintenance {suffix}",
+        "amount": "100.00",
+        "tax_amount": "18.00",
+        "supplier_id": supplier.json()["id"],
+        "reference": f"SUP-INV-{suffix}",
+        "expense_date": "2026-10-13",
+        "expense_account_id": accounts["expense"],
+        "credit_account_id": business_admin["payable_account_id"],
+        "input_tax_account_id": accounts["tax"],
+    })
+    assert expense.status_code == 201, expense.text
+    expense_id = expense.json()["expense"]["id"]
+    payable = next(row for row in client.get("/api/v1/erp/payables/expenses", headers=headers).json()
+                   if row["expense_id"] == expense_id)
+    assert payable["received_total"] == "118.00" and payable["outstanding_total"] == "118.00"
+
+    payment_body = {
+        "amount": "50.00",
+        "payment_date": "2026-10-13",
+        "reference": f"SUP-BANK-{suffix}",
+        "payable_account_id": business_admin["payable_account_id"],
+        "payment_account_id": accounts["bank"],
+    }
+    payment = client.post(f"/api/v1/erp/payables/expenses/{expense_id}/payments", headers=headers, json=payment_body)
+    assert payment.status_code == 201, payment.text
+    assert payment.json()["outstanding_total"] == "68.00"
+    assert client.post(f"/api/v1/erp/payables/expenses/{expense_id}/payments", headers=headers, json=payment_body).status_code == 409
+    assert client.post(f"/api/v1/erp/payables/expenses/{expense_id}/payments", headers=headers, json={
+        **payment_body, "amount": "69.00", "reference": f"SUP-OVER-{suffix}",
+    }).status_code == 409
+
+    payable = next(row for row in client.get("/api/v1/erp/payables/expenses", headers=headers).json()
+                   if row["expense_id"] == expense_id)
+    assert payable["paid_total"] == "50.00" and payable["outstanding_total"] == "68.00"
+    journal = next(row for row in client.get("/api/v1/erp/journals", headers=headers).json()
+                   if row["id"] == payment.json()["journal_entry_id"])
+    assert sum(float(line["debit"]) for line in journal["lines"]) == 50
+    assert sum(float(line["credit"]) for line in journal["lines"]) == 50
+
+
 def test_supplier_payables_register_records_partial_payment_and_blocks_overpayment(business_admin):
     db = SessionLocal()
     cash = LedgerAccount(code=f"BANK-{business_admin['suffix']}", name="Operating bank", account_type="asset")

@@ -107,6 +107,27 @@ class SupplierPayment(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
 
 
+
+class SupplierExpensePayment(Base):
+    __tablename__ = "erp_supplier_expense_payments"
+    __table_args__ = (
+        CheckConstraint("amount > 0", name="ck_supplier_expense_payment_positive_amount"),
+        UniqueConstraint("supplier_id", "reference", name="uq_supplier_expense_payment_reference"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    expense_id: Mapped[str] = mapped_column(ForeignKey("erp_operating_expenses.id"), nullable=False, index=True)
+    supplier_id: Mapped[str] = mapped_column(ForeignKey("erp_suppliers.id"), nullable=False, index=True)
+    payable_account_id: Mapped[str] = mapped_column(ForeignKey("erp_ledger_accounts.id"), nullable=False)
+    payment_account_id: Mapped[str] = mapped_column(ForeignKey("erp_ledger_accounts.id"), nullable=False)
+    journal_entry_id: Mapped[str] = mapped_column(ForeignKey("erp_journal_entries.id"), nullable=False, unique=True)
+    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    payment_date: Mapped[datetime] = mapped_column(Date, nullable=False)
+    reference: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
+
+
 class StockMovement(Base):
     __tablename__ = "erp_stock_movements"
 
@@ -133,6 +154,7 @@ class OperatingExpense(Base):
     tax_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=Decimal("0"))
     supplier_id: Mapped[str | None] = mapped_column(ForeignKey("erp_suppliers.id"), nullable=True)
     reference: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    journal_entry_id: Mapped[str | None] = mapped_column(ForeignKey("erp_journal_entries.id"), nullable=True, index=True)
     expense_date: Mapped[datetime] = mapped_column(Date, nullable=False)
     created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
