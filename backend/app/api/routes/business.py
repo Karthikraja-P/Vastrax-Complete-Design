@@ -562,8 +562,12 @@ def update_supplier(supplier_id: str, body: SupplierUpdate, db: Session = Depend
 
 
 @router.get("/erp/purchase-orders", dependencies=[Depends(require_business_permission("erp"))])
-def list_purchase_orders(db: Session = Depends(get_db)):
-    rows = db.query(PurchaseOrder, Supplier.name).join(Supplier, Supplier.id == PurchaseOrder.supplier_id).order_by(PurchaseOrder.created_at.desc()).limit(500).all()
+def list_purchase_orders(
+    limit: int = Query(default=100, ge=1, le=200), offset: int = Query(default=0, ge=0), db: Session = Depends(get_db)
+):
+    query = db.query(PurchaseOrder, Supplier.name).join(Supplier, Supplier.id == PurchaseOrder.supplier_id)
+    total = query.count()
+    rows = query.order_by(PurchaseOrder.created_at.desc(), PurchaseOrder.id.asc()).offset(offset).limit(limit).all()
     output = []
     for po, supplier_name in rows:
         lines = db.query(PurchaseOrderLine, Product.name, ProductVariant.size).join(Product, Product.id == PurchaseOrderLine.product_id).join(ProductVariant, ProductVariant.id == PurchaseOrderLine.variant_id).filter(PurchaseOrderLine.purchase_order_id == po.id).all()
@@ -571,7 +575,7 @@ def list_purchase_orders(db: Session = Depends(get_db)):
                        "expected_date": po.expected_date, "notes": po.notes, "created_at": po.created_at,
                        "items": [{"id": line.id, "product_name": name, "size": size, "quantity_ordered": line.quantity_ordered,
                                   "quantity_received": line.quantity_received, "unit_cost": str(line.unit_cost)} for line, name, size in lines]})
-    return output
+    return {"items": output, "total": total, "limit": limit, "offset": offset, "has_more": offset + len(output) < total}
 
 
 @router.post("/erp/purchase-orders", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_business_permission("erp"))])
@@ -736,10 +740,14 @@ def _purchase_order_payable_accounts(db: Session, purchase_order_id: str) -> dic
 
 
 @router.get("/erp/payables", dependencies=[Depends(require_business_permission("erp"))])
-def list_purchase_order_payables(db: Session = Depends(get_db)):
-    rows = db.query(PurchaseOrder, Supplier.name).join(
+def list_purchase_order_payables(
+    limit: int = Query(default=100, ge=1, le=200), offset: int = Query(default=0, ge=0), db: Session = Depends(get_db)
+):
+    query = db.query(PurchaseOrder, Supplier.name).join(
         Supplier, Supplier.id == PurchaseOrder.supplier_id
-    ).order_by(PurchaseOrder.created_at.desc()).limit(500).all()
+    ).filter(db.query(JournalEntry.id).filter(JournalEntry.description == ("Inventory receipt for " + PurchaseOrder.id)).exists())
+    total = query.count()
+    rows = query.order_by(PurchaseOrder.created_at.desc(), PurchaseOrder.id.asc()).offset(offset).limit(limit).all()
     output = []
     for po, supplier_name in rows:
         received_by_account = _purchase_order_payable_accounts(db, po.id)
@@ -781,7 +789,7 @@ def list_purchase_order_payables(db: Session = Depends(get_db)):
                 SupplierPayment.purchase_order_id == po.id
             ).order_by(SupplierPayment.payment_date.desc(), SupplierPayment.created_at.desc()).all()],
         })
-    return output
+    return {"items": output, "total": total, "limit": limit, "offset": offset, "has_more": offset + len(rows) < total}
 
 
 @router.post("/erp/payables/{purchase_order_id}/payments", status_code=status.HTTP_201_CREATED,
@@ -876,12 +884,16 @@ def _supplier_expense_payable_accounts(db: Session, expense: OperatingExpense) -
 
 
 @router.get("/erp/payables/expenses", dependencies=[Depends(require_business_permission("erp"))])
-def list_supplier_expense_payables(db: Session = Depends(get_db)):
-    rows = db.query(OperatingExpense, Supplier.name).join(
+def list_supplier_expense_payables(
+    limit: int = Query(default=100, ge=1, le=200), offset: int = Query(default=0, ge=0), db: Session = Depends(get_db)
+):
+    query = db.query(OperatingExpense, Supplier.name).join(
         Supplier, Supplier.id == OperatingExpense.supplier_id
     ).filter(OperatingExpense.journal_entry_id.is_not(None)).order_by(
         OperatingExpense.expense_date.desc(), OperatingExpense.created_at.desc()
-    ).limit(500).all()
+    )
+    total = query.count()
+    rows = query.order_by(OperatingExpense.id.asc()).offset(offset).limit(limit).all()
     output = []
     for expense, supplier_name in rows:
         received_by_account = _supplier_expense_payable_accounts(db, expense)
@@ -928,7 +940,7 @@ def list_supplier_expense_payables(db: Session = Depends(get_db)):
                 SupplierExpensePayment.expense_id == expense.id
             ).order_by(SupplierExpensePayment.payment_date.desc(), SupplierExpensePayment.created_at.desc()).all()],
         })
-    return output
+    return {"items": output, "total": total, "limit": limit, "offset": offset, "has_more": offset + len(rows) < total}
 
 
 @router.post("/erp/payables/expenses/{expense_id}/payments", status_code=status.HTTP_201_CREATED,
@@ -1011,8 +1023,13 @@ def record_supplier_expense_payment(
 
 
 @router.get("/erp/expenses", dependencies=[Depends(require_business_permission("erp"))])
-def list_expenses(db: Session = Depends(get_db)):
-    return db.query(OperatingExpense).order_by(OperatingExpense.expense_date.desc(), OperatingExpense.created_at.desc()).limit(500).all()
+def list_expenses(
+    limit: int = Query(default=100, ge=1, le=200), offset: int = Query(default=0, ge=0), db: Session = Depends(get_db)
+):
+    query = db.query(OperatingExpense)
+    total = query.count()
+    items = query.order_by(OperatingExpense.expense_date.desc(), OperatingExpense.created_at.desc(), OperatingExpense.id.asc()).offset(offset).limit(limit).all()
+    return {"items": items, "total": total, "limit": limit, "offset": offset, "has_more": offset + len(items) < total}
 
 
 @router.post("/erp/expenses", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_business_permission("erp"))])

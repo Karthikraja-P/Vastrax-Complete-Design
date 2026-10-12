@@ -137,7 +137,7 @@ def test_supplier_purchase_receipt_and_stock_audit(business_admin):
     })
     assert po.status_code == 201, po.text
     po_id = po.json()["id"]
-    line = client.get("/api/v1/erp/purchase-orders", headers=headers).json()[0]["items"][0]
+    line = client.get("/api/v1/erp/purchase-orders", headers=headers).json()["items"][0]["items"][0]
     invalid_accounts = client.post(f"/api/v1/erp/purchase-orders/{po_id}/receive", headers=headers, json={
         "items": [{"line_id": line["id"], "quantity": 1}],
         "inventory_account_id": business_admin["inventory_account_id"],
@@ -246,6 +246,7 @@ def test_crm_leads_tasks_customer_metrics_and_admin_access(business_admin):
 def test_crm_list_endpoints_page_with_stable_metadata(business_admin):
     client = TestClient(app)
     headers = {"Authorization": f"Bearer {business_admin['token']}"}
+    baseline = client.get("/api/v1/crm/leads", headers=headers).json()["total"]
     for index in range(3):
         response = client.post("/api/v1/crm/leads", headers=headers, json={"full_name": f"Paged prospect {index}"})
         assert response.status_code == 201, response.text
@@ -257,7 +258,29 @@ def test_crm_list_endpoints_page_with_stable_metadata(business_admin):
     assert first_page["has_more"] is True
     assert second_page["offset"] == 2
     assert not ({row["id"] for row in first_page["items"]} & {row["id"] for row in second_page["items"]})
-    assert first_page["total"] == second_page["total"] == 4
+    assert first_page["total"] == second_page["total"] == baseline + 3
+
+
+def test_erp_purchase_orders_support_pages(business_admin):
+    client = TestClient(app)
+    headers = {"Authorization": f"Bearer {business_admin['token']}"}
+    baseline = client.get("/api/v1/erp/purchase-orders", headers=headers).json()["total"]
+    supplier = client.post("/api/v1/erp/suppliers", headers=headers, json={"name": f"Paged supplier {business_admin['suffix']}"})
+    assert supplier.status_code == 201, supplier.text
+    for _ in range(2):
+        response = client.post("/api/v1/erp/purchase-orders", headers=headers, json={
+            "supplier_id": supplier.json()["id"],
+            "items": [{"variant_id": business_admin["variant_id"], "quantity": 1, "unit_cost": "10.00"}],
+        })
+        assert response.status_code == 201, response.text
+    first = client.get("/api/v1/erp/purchase-orders", headers=headers, params={"limit": 1, "offset": baseline})
+    second = client.get("/api/v1/erp/purchase-orders", headers=headers, params={"limit": 1, "offset": baseline + 1})
+    assert first.status_code == second.status_code == 200
+    first_page, second_page = first.json(), second.json()
+    assert first_page["total"] == second_page["total"] == baseline + 2
+    assert len(first_page["items"]) == len(second_page["items"]) == 1
+    assert first_page["items"][0]["id"] != second_page["items"][0]["id"]
+    assert first_page["has_more"] is True and second_page["has_more"] is False
 
 
 def test_customer_marketing_consent_is_opt_in_and_audited(business_admin):
@@ -328,7 +351,7 @@ def test_supplier_linked_expense_payable_can_be_partially_settled(business_admin
     })
     assert expense.status_code == 201, expense.text
     expense_id = expense.json()["expense"]["id"]
-    payable = next(row for row in client.get("/api/v1/erp/payables/expenses", headers=headers).json()
+    payable = next(row for row in client.get("/api/v1/erp/payables/expenses", headers=headers).json()["items"]
                    if row["expense_id"] == expense_id)
     assert payable["received_total"] == "118.00" and payable["outstanding_total"] == "118.00"
 
@@ -347,7 +370,7 @@ def test_supplier_linked_expense_payable_can_be_partially_settled(business_admin
         **payment_body, "amount": "69.00", "reference": f"SUP-OVER-{suffix}",
     }).status_code == 409
 
-    payable = next(row for row in client.get("/api/v1/erp/payables/expenses", headers=headers).json()
+    payable = next(row for row in client.get("/api/v1/erp/payables/expenses", headers=headers).json()["items"]
                    if row["expense_id"] == expense_id)
     assert payable["paid_total"] == "50.00" and payable["outstanding_total"] == "68.00"
     journal = next(row for row in client.get("/api/v1/erp/journals", headers=headers).json()
@@ -375,7 +398,7 @@ def test_supplier_payables_register_records_partial_payment_and_blocks_overpayme
     })
     assert po.status_code == 201, po.text
     po_id = po.json()["id"]
-    line = next(row for row in client.get("/api/v1/erp/purchase-orders", headers=headers).json() if row["id"] == po_id)["items"][0]
+    line = next(row for row in client.get("/api/v1/erp/purchase-orders", headers=headers).json()["items"] if row["id"] == po_id)["items"][0]
     receipt = client.post(f"/api/v1/erp/purchase-orders/{po_id}/receive", headers=headers, json={
         "items": [{"line_id": line["id"], "quantity": 3}],
         "inventory_account_id": business_admin["inventory_account_id"],
@@ -383,7 +406,7 @@ def test_supplier_payables_register_records_partial_payment_and_blocks_overpayme
     })
     assert receipt.status_code == 200, receipt.text
 
-    payable = next(row for row in client.get("/api/v1/erp/payables", headers=headers).json() if row["purchase_order_id"] == po_id)
+    payable = next(row for row in client.get("/api/v1/erp/payables", headers=headers).json()["items"] if row["purchase_order_id"] == po_id)
     assert payable["received_total"] == "660.00"
     assert payable["paid_total"] == "0.00" and payable["outstanding_total"] == "660.00"
     payment_body = {
@@ -399,7 +422,7 @@ def test_supplier_payables_register_records_partial_payment_and_blocks_overpayme
     assert client.post(f"/api/v1/erp/payables/{po_id}/payments", headers=headers, json=payment_body).status_code == 409
     assert client.post(f"/api/v1/erp/payables/{po_id}/payments", headers=headers, json={**payment_body, "amount": "300.00", "reference": f"BANK-OVER-{business_admin['suffix']}"}).status_code == 409
 
-    payable = next(row for row in client.get("/api/v1/erp/payables", headers=headers).json() if row["purchase_order_id"] == po_id)
+    payable = next(row for row in client.get("/api/v1/erp/payables", headers=headers).json()["items"] if row["purchase_order_id"] == po_id)
     assert payable["paid_total"] == "400.00" and payable["outstanding_total"] == "260.00"
     assert len(payable["payments"]) == 1
     journal = next(row for row in client.get("/api/v1/erp/journals", headers=headers).json() if row["id"] == payment.json()["journal_entry_id"])
@@ -432,7 +455,7 @@ def test_multi_line_purchase_order_receipt_updates_shared_inventory_and_ledger(b
     })
     assert created.status_code == 201, created.text
     po_id = created.json()["id"]
-    po = next(row for row in client.get("/api/v1/erp/purchase-orders", headers=headers).json() if row["id"] == po_id)
+    po = next(row for row in client.get("/api/v1/erp/purchase-orders", headers=headers).json()["items"] if row["id"] == po_id)
     assert len(po["items"]) == 2
     receipt_payload = {
         "items": [{"line_id": item["id"], "quantity": item["quantity_ordered"]} for item in po["items"]],

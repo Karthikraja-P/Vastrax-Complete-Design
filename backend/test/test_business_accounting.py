@@ -59,7 +59,7 @@ def test_expense_register_posts_balanced_journal_atomically():
     assert len(posted["lines"]) == 3
     missing_tax = client.post("/api/v1/erp/expenses", headers=headers, json={**body, "description": "Must not persist", "input_tax_account_id": None})
     assert missing_tax.status_code == 422
-    expenses = client.get("/api/v1/erp/expenses", headers=headers).json()
+    expenses = client.get("/api/v1/erp/expenses", headers=headers).json()["items"]
     assert len([item for item in expenses if item["description"] == "Shipping supplies"]) == 1
     assert not any(item["description"] == "Must not persist" for item in expenses)
 
