@@ -31,7 +31,7 @@ class LeadCreate(BaseModel):
 
 
 class LeadUpdate(BaseModel):
-    stage: Literal["new", "contacted", "qualified", "converted", "lost"]
+    stage: Literal["new", "contacted", "qualified", "lost"]
 
 
 class ActivityCreate(BaseModel):
@@ -183,7 +183,13 @@ def list_leads(stage: str | None = None, db: Session = Depends(get_db)):
 
 @router.post("/crm/leads", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_business_permission("crm"))])
 def create_lead(body: LeadCreate, admin: User = Depends(require_business_permission("crm")), db: Session = Depends(get_db)):
-    lead = CRMLead(**body.model_dump(), created_by=admin.id)
+    payload = body.model_dump()
+    payload["full_name"] = payload["full_name"].strip()
+    if not payload["full_name"]:
+        raise HTTPException(422, "Lead name is required")
+    payload["email"] = payload["email"].strip().casefold() if payload["email"] else None
+    payload["phone"] = payload["phone"].strip() if payload["phone"] else None
+    lead = CRMLead(**payload, created_by=admin.id)
     db.add(lead)
     db.commit()
     db.refresh(lead)
@@ -195,8 +201,55 @@ def update_lead(lead_id: str, body: LeadUpdate, db: Session = Depends(get_db)):
     lead = db.get(CRMLead, lead_id)
     if not lead:
         raise HTTPException(404, "Lead not found")
+    if lead.converted_customer_id:
+        raise HTTPException(409, "A converted lead cannot be moved back in the pipeline")
     lead.stage = body.stage
     lead.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(lead)
+    return lead
+
+
+@router.post("/crm/leads/{lead_id}/convert", dependencies=[Depends(require_business_permission("crm"))])
+def convert_lead(lead_id: str, admin: User = Depends(require_business_permission("crm")), db: Session = Depends(get_db)):
+    lead = db.get(CRMLead, lead_id)
+    if not lead:
+        raise HTTPException(404, "Lead not found")
+    if lead.converted_customer_id:
+        return lead
+    if lead.stage != "qualified":
+        raise HTTPException(409, "Only qualified leads can be converted")
+    if not lead.email and not lead.phone:
+        raise HTTPException(422, "Add an email or phone number before converting this lead")
+
+    match_conditions = []
+    if lead.email:
+        match_conditions.append(func.lower(User.email) == lead.email.casefold())
+    if lead.phone:
+        match_conditions.append(User.phone_number == lead.phone.strip())
+    matches = db.query(User).filter(User.role == "customer", or_(*match_conditions)).all()
+    if not matches:
+        raise HTTPException(404, "No existing customer account matches this lead; do not create a duplicate account")
+    if len(matches) > 1:
+        raise HTTPException(409, "Lead contact details match more than one customer account")
+    customer = matches[0]
+    duplicate = db.query(CRMLead.id).filter(
+        CRMLead.converted_customer_id == customer.id,
+        CRMLead.id != lead.id,
+    ).first()
+    if duplicate:
+        raise HTTPException(409, "This customer is already linked to another converted lead")
+
+    lead.converted_customer_id = customer.id
+    lead.stage = "converted"
+    lead.updated_at = datetime.now(timezone.utc)
+    db.add(CRMActivity(
+        customer_id=customer.id,
+        activity_type="note",
+        subject="Lead converted to customer",
+        description=f"Linked existing Vastrax customer account to CRM lead {lead.id} ({lead.full_name}).",
+        created_by=admin.id,
+    ))
     db.commit()
     db.refresh(lead)
     return lead

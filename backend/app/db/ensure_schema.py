@@ -13,6 +13,9 @@ ADDITIVE_COLUMNS = {
         "is_active": "BOOLEAN NOT NULL DEFAULT 1",
         "image_url": "TEXT",
     },
+    "crm_leads": {
+        "converted_customer_id": "VARCHAR(36) REFERENCES users(id)",
+    },
 }
 
 

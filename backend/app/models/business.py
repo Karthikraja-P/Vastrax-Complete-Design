@@ -23,6 +23,7 @@ class CRMLead(Base):
     source: Mapped[str | None] = mapped_column(String(100), nullable=True)
     stage: Mapped[str] = mapped_column(String(30), nullable=False, default="new", index=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    converted_customer_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now)
