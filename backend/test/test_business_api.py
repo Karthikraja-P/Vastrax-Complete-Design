@@ -295,6 +295,15 @@ def test_inventory_costing_status_is_read_only_and_requires_erp_access(business_
     assert status_payload["unvalued_variants"] == status_payload["positive_stock_variants"]
     assert status_payload["unvalued_units"] + status_payload["valued_units"] == status_payload["on_hand_units"]
     assert status_payload["unposted_cost_consumptions"] == 0
+    variants_path = "/api/v1/erp/inventory-costing/variants"
+    assert client.get(variants_path).status_code == 401
+    variants = client.get(variants_path, headers=headers, params={"limit": 1})
+    assert variants.status_code == 200, variants.text
+    assert variants.json()["total"] >= 1
+    assert variants.json()["has_more"] == (variants.json()["total"] > 1)
+    fixture_variant = client.get(variants_path, headers=headers, params={"limit": 200}).json()["items"]
+    row = next(item for item in fixture_variant if item["variant_id"] == business_admin["variant_id"])
+    assert row["on_hand_units"] == 4 and row["unvalued_units"] == 4
 
 
 def test_customer_marketing_consent_is_opt_in_and_audited(business_admin):

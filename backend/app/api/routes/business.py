@@ -527,6 +527,39 @@ def inventory_costing_status(db: Session = Depends(get_db)):
     }
 
 
+@router.get("/erp/inventory-costing/variants", dependencies=[Depends(require_business_permission("erp"))])
+def inventory_costing_variants(
+    limit: int = Query(default=100, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+):
+    query = db.query(
+        ProductVariant.id,
+        Product.name,
+        ProductVariant.sku,
+        ProductVariant.size,
+        ProductVariant.stock_qty,
+        func.coalesce(func.sum(ERPInventoryCostLayer.remaining_quantity), 0).label("recorded_cost_units"),
+    ).join(Product, Product.id == ProductVariant.product_id).outerjoin(
+        ERPInventoryCostLayer, ERPInventoryCostLayer.variant_id == ProductVariant.id
+    ).filter(ProductVariant.stock_qty > 0).group_by(
+        ProductVariant.id, Product.name, ProductVariant.sku, ProductVariant.size, ProductVariant.stock_qty
+    )
+    total = query.count()
+    rows = query.order_by(Product.name, ProductVariant.size, ProductVariant.id).offset(offset).limit(limit).all()
+    items = [{
+        "variant_id": row.id,
+        "product_name": row.name,
+        "sku": row.sku,
+        "size": row.size,
+        "on_hand_units": int(row.stock_qty or 0),
+        "recorded_cost_units": int(row.recorded_cost_units or 0),
+        "unvalued_units": max(0, int(row.stock_qty or 0) - int(row.recorded_cost_units or 0)),
+        "overvalued_units": max(0, int(row.recorded_cost_units or 0) - int(row.stock_qty or 0)),
+    } for row in rows]
+    return {"items": items, "total": total, "limit": limit, "offset": offset, "has_more": offset + len(items) < total}
+
+
 @router.post("/erp/inventory/{variant_id}/adjust", dependencies=[Depends(require_business_permission("erp"))])
 def adjust_inventory(variant_id: str, body: StockAdjustment, admin: User = Depends(require_business_permission("erp")), db: Session = Depends(get_db)):
     if body.quantity_delta == 0:
