@@ -36,7 +36,7 @@ __all__ = [
 ]
 
 
-from .business import CRMLead, CRMActivity, Supplier, PurchaseOrder, PurchaseOrderLine, StockMovement, OperatingExpense, SupplierPayment, SupplierExpensePayment, ERPInventoryReceipt
+from .business import CRMLead, CRMActivity, Supplier, PurchaseOrder, PurchaseOrderLine, StockMovement, OperatingExpense, SupplierPayment, SupplierExpensePayment, ERPInventoryReceipt, ERPPurchaseOrderRequest
 
 from .returns import SalesReturn, SalesReturnLine
 

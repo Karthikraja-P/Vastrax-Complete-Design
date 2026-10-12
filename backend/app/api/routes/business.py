@@ -14,7 +14,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.db.database import get_db
 from app.middleware.auth import require_business_permission
-from app.models.business import CRMActivity, CRMLead, OperatingExpense, PurchaseOrder, PurchaseOrderLine, StockMovement, Supplier, SupplierPayment, SupplierExpensePayment, ERPInventoryReceipt
+from app.models.business import CRMActivity, CRMLead, OperatingExpense, PurchaseOrder, PurchaseOrderLine, StockMovement, Supplier, SupplierPayment, SupplierExpensePayment, ERPInventoryReceipt, ERPPurchaseOrderRequest
 from app.models.ledger import JournalEntry, JournalLine, LedgerAccount
 from app.models.order import Order
 from app.models.order_item import OrderItem
@@ -86,6 +86,7 @@ class PurchaseOrderCreate(BaseModel):
     expected_date: date | None = None
     notes: str | None = None
     items: list[PurchaseLineCreate] = Field(min_length=1)
+    idempotency_key: str | None = Field(default=None, min_length=16, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
 
 
 class ReceiptLine(BaseModel):
@@ -548,18 +549,51 @@ def list_purchase_orders(db: Session = Depends(get_db)):
 
 @router.post("/erp/purchase-orders", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_business_permission("erp"))])
 def create_purchase_order(body: PurchaseOrderCreate, admin: User = Depends(require_business_permission("erp")), db: Session = Depends(get_db)):
+    idempotency_key = body.idempotency_key or uuid.uuid4().hex
+    canonical_request = {
+        "supplier_id": body.supplier_id,
+        "expected_date": body.expected_date.isoformat() if body.expected_date else None,
+        "notes": body.notes,
+        "items": sorted(({"variant_id": item.variant_id, "quantity": item.quantity, "unit_cost": str(item.unit_cost)} for item in body.items), key=lambda item: item["variant_id"]),
+    }
+    request_hash = hashlib.sha256(json.dumps(canonical_request, separators=(",", ":"), sort_keys=True).encode()).hexdigest()
+    previous = db.query(ERPPurchaseOrderRequest).filter(ERPPurchaseOrderRequest.idempotency_key == idempotency_key).first()
+    if previous:
+        if previous.request_hash != request_hash:
+            raise HTTPException(409, "This purchase-order key was already used for a different request")
+        po = db.get(PurchaseOrder, previous.purchase_order_id)
+        if not po:
+            raise HTTPException(409, "The purchase order for this request key no longer exists")
+        return {"id": po.id, "supplier_id": po.supplier_id, "status": po.status}
+
     supplier = db.get(Supplier, body.supplier_id)
     if not supplier or not supplier.is_active:
         raise HTTPException(404, "Active supplier not found")
+    variants = {item.variant_id: db.get(ProductVariant, item.variant_id) for item in body.items}
+    missing_variant = next((item.variant_id for item in body.items if not variants[item.variant_id]), None)
+    if missing_variant:
+        raise HTTPException(404, f"Variant not found: {missing_variant}")
     po = PurchaseOrder(supplier_id=supplier.id, status="ordered", expected_date=body.expected_date,
                        notes=body.notes, created_by=admin.id)
     db.add(po)
     db.flush()
+    request_record = ERPPurchaseOrderRequest(idempotency_key=idempotency_key, request_hash=request_hash,
+                                             purchase_order_id=po.id, created_by=admin.id)
+    db.add(request_record)
+    try:
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        previous = db.query(ERPPurchaseOrderRequest).filter(ERPPurchaseOrderRequest.idempotency_key == idempotency_key).first()
+        if previous and previous.request_hash == request_hash:
+            po = db.get(PurchaseOrder, previous.purchase_order_id)
+            if po:
+                return {"id": po.id, "supplier_id": po.supplier_id, "status": po.status}
+        if previous:
+            raise HTTPException(409, "This purchase-order key was already used for a different request")
+        raise HTTPException(409, "A duplicate purchase-order request is being processed; retry with the same key")
     for item in body.items:
-        variant = db.get(ProductVariant, item.variant_id)
-        if not variant:
-            db.rollback()
-            raise HTTPException(404, f"Variant not found: {item.variant_id}")
+        variant = variants[item.variant_id]
         db.add(PurchaseOrderLine(purchase_order_id=po.id, product_id=variant.product_id, variant_id=variant.id,
                                  quantity_ordered=item.quantity, unit_cost=item.unit_cost))
     db.commit()

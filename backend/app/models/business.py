@@ -145,6 +145,19 @@ class StockMovement(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
 
 
+class ERPPurchaseOrderRequest(Base):
+    """Idempotency record for purchase-order creation requests."""
+    __tablename__ = "erp_purchase_order_requests"
+    __table_args__ = (UniqueConstraint("idempotency_key", name="uq_erp_purchase_order_request_key"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    idempotency_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    request_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    purchase_order_id: Mapped[str] = mapped_column(ForeignKey("erp_purchase_orders.id"), nullable=False, unique=True)
+    created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
+
+
 class ERPInventoryReceipt(Base):
     """Idempotency record for a posted purchase-order stock receipt."""
     __tablename__ = "erp_inventory_receipts"

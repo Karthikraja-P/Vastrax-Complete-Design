@@ -9,7 +9,7 @@ from app.core.security import create_access_token, hash_password
 from app.db.database import SessionLocal
 from app.main import app
 from app.models.address import Address
-from app.models.business import CRMActivity
+from app.models.business import CRMActivity, PurchaseOrder, PurchaseOrderLine, ERPPurchaseOrderRequest
 from app.models.category import Category
 from app.models.product import Product
 from app.models.order import Order
@@ -559,3 +559,30 @@ def test_bank_statement_import_match_unmatch_audit_and_duplicate_guard(business_
     assert history.status_code == 200
     assert [event["action"] for event in history.json()] == ["unmatched", "matched"]
     assert client.get("/api/v1/erp/bank-reconciliation").status_code == 401
+
+
+def test_purchase_order_creation_is_idempotent_and_rejects_key_reuse(business_admin):
+    client = TestClient(app)
+    headers = {"Authorization": f"Bearer {business_admin['token']}"}
+    supplier = client.post("/api/v1/erp/suppliers", headers=headers, json={"name": f"Retry-safe supplier {business_admin['suffix']}"})
+    assert supplier.status_code == 201, supplier.text
+    payload = {
+        "supplier_id": supplier.json()["id"],
+        "notes": "test duplicate submit handling",
+        "items": [{"variant_id": business_admin["variant_id"], "quantity": 3, "unit_cost": "220.00"}],
+        "idempotency_key": f"po-request-{business_admin['suffix']}",
+    }
+    path = "/api/v1/erp/purchase-orders"
+    assert client.post(path, json=payload).status_code == 401
+    created = client.post(path, headers=headers, json=payload)
+    assert created.status_code == 201, created.text
+    retried = client.post(path, headers=headers, json=payload)
+    assert retried.status_code == 201 and retried.json() == created.json()
+    changed = {**payload, "items": [{"variant_id": business_admin["variant_id"], "quantity": 4, "unit_cost": "220.00"}]}
+    assert client.post(path, headers=headers, json=changed).status_code == 409
+
+    db = SessionLocal()
+    assert db.query(PurchaseOrder).filter(PurchaseOrder.id == created.json()["id"]).count() == 1
+    assert db.query(PurchaseOrderLine).filter(PurchaseOrderLine.purchase_order_id == created.json()["id"]).count() == 1
+    assert db.query(ERPPurchaseOrderRequest).filter(ERPPurchaseOrderRequest.idempotency_key == payload["idempotency_key"]).count() == 1
+    db.close()
