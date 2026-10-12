@@ -225,6 +225,60 @@ def test_customer_marketing_consent_is_opt_in_and_audited(business_admin):
 
 
 
+
+def test_supplier_payables_register_records_partial_payment_and_blocks_overpayment(business_admin):
+    db = SessionLocal()
+    cash = LedgerAccount(code=f"BANK-{business_admin['suffix']}", name="Operating bank", account_type="asset")
+    db.add(cash)
+    db.commit()
+    cash_id = cash.id
+    db.close()
+
+    client = TestClient(app)
+    headers = {"Authorization": f"Bearer {business_admin['token']}"}
+    assert client.get("/api/v1/erp/payables").status_code == 401
+    supplier = client.post("/api/v1/erp/suppliers", headers=headers, json={"name": f"Payables supplier {business_admin['suffix']}"})
+    assert supplier.status_code == 201, supplier.text
+    po = client.post("/api/v1/erp/purchase-orders", headers=headers, json={
+        "supplier_id": supplier.json()["id"],
+        "items": [{"variant_id": business_admin["variant_id"], "quantity": 5, "unit_cost": "220.00"}],
+    })
+    assert po.status_code == 201, po.text
+    po_id = po.json()["id"]
+    line = next(row for row in client.get("/api/v1/erp/purchase-orders", headers=headers).json() if row["id"] == po_id)["items"][0]
+    receipt = client.post(f"/api/v1/erp/purchase-orders/{po_id}/receive", headers=headers, json={
+        "items": [{"line_id": line["id"], "quantity": 3}],
+        "inventory_account_id": business_admin["inventory_account_id"],
+        "payable_account_id": business_admin["payable_account_id"],
+    })
+    assert receipt.status_code == 200, receipt.text
+
+    payable = next(row for row in client.get("/api/v1/erp/payables", headers=headers).json() if row["purchase_order_id"] == po_id)
+    assert payable["received_total"] == "660.00"
+    assert payable["paid_total"] == "0.00" and payable["outstanding_total"] == "660.00"
+    payment_body = {
+        "amount": "400.00",
+        "payment_date": "2026-10-13",
+        "reference": f"BANK-REF-{business_admin['suffix']}",
+        "payable_account_id": business_admin["payable_account_id"],
+        "payment_account_id": cash_id,
+    }
+    payment = client.post(f"/api/v1/erp/payables/{po_id}/payments", headers=headers, json=payment_body)
+    assert payment.status_code == 201, payment.text
+    assert payment.json()["outstanding_total"] == "260.00"
+    assert client.post(f"/api/v1/erp/payables/{po_id}/payments", headers=headers, json=payment_body).status_code == 409
+    assert client.post(f"/api/v1/erp/payables/{po_id}/payments", headers=headers, json={**payment_body, "amount": "300.00", "reference": f"BANK-OVER-{business_admin['suffix']}"}).status_code == 409
+
+    payable = next(row for row in client.get("/api/v1/erp/payables", headers=headers).json() if row["purchase_order_id"] == po_id)
+    assert payable["paid_total"] == "400.00" and payable["outstanding_total"] == "260.00"
+    assert len(payable["payments"]) == 1
+    journal = next(row for row in client.get("/api/v1/erp/journals", headers=headers).json() if row["id"] == payment.json()["journal_entry_id"])
+    assert [(line["account_id"], line["debit"], line["credit"]) for line in journal["lines"]] == [
+        (business_admin["payable_account_id"], "400.00", "0.00"),
+        (cash_id, "0.00", "400.00"),
+    ]
+
+
 def test_multi_line_purchase_order_receipt_updates_shared_inventory_and_ledger(business_admin):
     db = SessionLocal()
     first = db.get(ProductVariant, business_admin["variant_id"])

@@ -8,10 +8,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy import case, func, or_
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 
 from app.db.database import get_db
 from app.middleware.auth import require_business_permission
-from app.models.business import CRMActivity, CRMLead, OperatingExpense, PurchaseOrder, PurchaseOrderLine, StockMovement, Supplier
+from app.models.business import CRMActivity, CRMLead, OperatingExpense, PurchaseOrder, PurchaseOrderLine, StockMovement, Supplier, SupplierPayment
 from app.models.ledger import JournalEntry, JournalLine, LedgerAccount
 from app.models.order import Order
 from app.models.order_item import OrderItem
@@ -91,6 +92,14 @@ class StockAdjustment(BaseModel):
     quantity_delta: int
     reason: Literal["count_correction", "damaged", "returned", "other"]
     notes: str | None = None
+
+
+class SupplierPaymentCreate(BaseModel):
+    amount: Decimal = Field(gt=0, max_digits=12, decimal_places=2)
+    payment_date: date
+    reference: str = Field(min_length=1, max_length=100)
+    payable_account_id: str
+    payment_account_id: str
 
 
 class ExpenseCreate(BaseModel):
@@ -493,6 +502,143 @@ def cancel_purchase_order(po_id: str, admin: User = Depends(require_business_per
     po.status = "cancelled"
     db.commit()
     return {"id": po.id, "status": po.status}
+
+
+def _purchase_order_payable_accounts(db: Session, purchase_order_id: str) -> dict[str, Decimal]:
+    receipt_lines = db.query(JournalLine.account_id, JournalLine.credit).join(
+        JournalEntry, JournalEntry.id == JournalLine.journal_entry_id
+    ).filter(
+        JournalEntry.description == f"Inventory receipt for {purchase_order_id}",
+        JournalLine.credit > 0,
+    ).all()
+    totals: dict[str, Decimal] = {}
+    for account_id, credit in receipt_lines:
+        totals[account_id] = totals.get(account_id, Decimal("0.00")) + Decimal(credit)
+    return totals
+
+
+@router.get("/erp/payables", dependencies=[Depends(require_business_permission("erp"))])
+def list_purchase_order_payables(db: Session = Depends(get_db)):
+    rows = db.query(PurchaseOrder, Supplier.name).join(
+        Supplier, Supplier.id == PurchaseOrder.supplier_id
+    ).order_by(PurchaseOrder.created_at.desc()).limit(500).all()
+    output = []
+    for po, supplier_name in rows:
+        received_by_account = _purchase_order_payable_accounts(db, po.id)
+        if not received_by_account:
+            continue
+        payment_rows = db.query(SupplierPayment.payable_account_id, func.sum(SupplierPayment.amount)).filter(
+            SupplierPayment.purchase_order_id == po.id
+        ).group_by(SupplierPayment.payable_account_id).all()
+        paid_by_account = {account_id: Decimal(amount or 0) for account_id, amount in payment_rows}
+        account_rows = []
+        for account_id, received in received_by_account.items():
+            account = db.get(LedgerAccount, account_id)
+            paid = paid_by_account.get(account_id, Decimal("0.00"))
+            account_rows.append({
+                "payable_account_id": account_id,
+                "payable_account_code": account.code if account else "",
+                "payable_account_name": account.name if account else "Unavailable account",
+                "received_total": str(received.quantize(Decimal("0.01"))),
+                "paid_total": str(paid.quantize(Decimal("0.01"))),
+                "outstanding_total": str((received - paid).quantize(Decimal("0.01"))),
+            })
+        received_total = sum(received_by_account.values(), Decimal("0.00"))
+        paid_total = sum(paid_by_account.values(), Decimal("0.00"))
+        output.append({
+            "purchase_order_id": po.id,
+            "supplier_id": po.supplier_id,
+            "supplier_name": supplier_name,
+            "status": po.status,
+            "received_total": str(received_total.quantize(Decimal("0.01"))),
+            "paid_total": str(paid_total.quantize(Decimal("0.01"))),
+            "outstanding_total": str((received_total - paid_total).quantize(Decimal("0.01"))),
+            "accounts": account_rows,
+            "payments": [{
+                "amount": str(payment.amount),
+                "payment_date": payment.payment_date,
+                "reference": payment.reference,
+                "journal_entry_id": payment.journal_entry_id,
+            } for payment in db.query(SupplierPayment).filter(
+                SupplierPayment.purchase_order_id == po.id
+            ).order_by(SupplierPayment.payment_date.desc(), SupplierPayment.created_at.desc()).all()],
+        })
+    return output
+
+
+@router.post("/erp/payables/{purchase_order_id}/payments", status_code=status.HTTP_201_CREATED,
+             dependencies=[Depends(require_business_permission("erp"))])
+def record_supplier_payment(
+    purchase_order_id: str,
+    body: SupplierPaymentCreate,
+    admin: User = Depends(require_business_permission("erp")),
+    db: Session = Depends(get_db),
+):
+    po = db.query(PurchaseOrder).filter(PurchaseOrder.id == purchase_order_id).with_for_update().first()
+    if not po:
+        raise HTTPException(404, "Purchase order not found")
+    reference = body.reference.strip()
+    if not reference:
+        raise HTTPException(422, "A bank or payment reference is required")
+    if db.query(SupplierPayment.id).filter(SupplierPayment.reference == reference).first():
+        raise HTTPException(409, "This supplier payment reference has already been recorded")
+    payable_account = db.get(LedgerAccount, body.payable_account_id)
+    payment_account = db.get(LedgerAccount, body.payment_account_id)
+    if not payable_account or not payable_account.is_active or payable_account.account_type != "liability":
+        raise HTTPException(422, "Choose an active liability account used by this purchase order's receipts")
+    if not payment_account or not payment_account.is_active or payment_account.account_type != "asset":
+        raise HTTPException(422, "Choose an active cash or bank asset account")
+    received = _purchase_order_payable_accounts(db, po.id).get(payable_account.id, Decimal("0.00"))
+    if received <= 0:
+        raise HTTPException(409, "No received payable balance exists on this account for the purchase order")
+    paid = db.query(func.coalesce(func.sum(SupplierPayment.amount), 0)).filter(
+        SupplierPayment.purchase_order_id == po.id,
+        SupplierPayment.payable_account_id == payable_account.id,
+    ).scalar() or Decimal("0.00")
+    outstanding = received - Decimal(paid)
+    if body.amount > outstanding:
+        raise HTTPException(409, f"Payment exceeds the outstanding balance of {outstanding:.2f}")
+    payment_id = str(uuid.uuid4())
+    entry = JournalEntry(
+        posting_date=body.payment_date,
+        description=f"Supplier payment for {po.id}",
+        reference=reference,
+        source_key=f"supplier-payment:{payment_id}",
+        created_by=admin.id,
+    )
+    db.add(entry)
+    db.flush()
+    db.add_all([
+        JournalLine(journal_entry_id=entry.id, account_id=payable_account.id, debit=body.amount, credit=0),
+        JournalLine(journal_entry_id=entry.id, account_id=payment_account.id, debit=0, credit=body.amount),
+    ])
+    payment = SupplierPayment(
+        id=payment_id,
+        purchase_order_id=po.id,
+        supplier_id=po.supplier_id,
+        payable_account_id=payable_account.id,
+        payment_account_id=payment_account.id,
+        journal_entry_id=entry.id,
+        amount=body.amount,
+        payment_date=body.payment_date,
+        reference=reference,
+        created_by=admin.id,
+    )
+    db.add(payment)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409, "This supplier payment reference has already been recorded")
+    return {
+        "id": payment.id,
+        "purchase_order_id": po.id,
+        "supplier_id": po.supplier_id,
+        "amount": str(body.amount),
+        "reference": reference,
+        "journal_entry_id": entry.id,
+        "outstanding_total": str((outstanding - body.amount).quantize(Decimal("0.01"))),
+    }
 
 
 @router.get("/erp/expenses", dependencies=[Depends(require_business_permission("erp"))])

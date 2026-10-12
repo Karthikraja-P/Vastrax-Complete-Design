@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from sqlalchemy import CheckConstraint, Date, DateTime, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy import CheckConstraint, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -84,6 +84,27 @@ class PurchaseOrderLine(Base):
     quantity_ordered: Mapped[int] = mapped_column(Integer, nullable=False)
     quantity_received: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     unit_cost: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+
+
+
+class SupplierPayment(Base):
+    __tablename__ = "erp_supplier_payments"
+    __table_args__ = (
+        CheckConstraint("amount > 0", name="ck_supplier_payment_positive_amount"),
+        UniqueConstraint("supplier_id", "reference", name="uq_supplier_payment_reference"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    purchase_order_id: Mapped[str] = mapped_column(ForeignKey("erp_purchase_orders.id"), nullable=False, index=True)
+    supplier_id: Mapped[str] = mapped_column(ForeignKey("erp_suppliers.id"), nullable=False, index=True)
+    payable_account_id: Mapped[str] = mapped_column(ForeignKey("erp_ledger_accounts.id"), nullable=False)
+    payment_account_id: Mapped[str] = mapped_column(ForeignKey("erp_ledger_accounts.id"), nullable=False)
+    journal_entry_id: Mapped[str] = mapped_column(ForeignKey("erp_journal_entries.id"), nullable=False, unique=True)
+    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    payment_date: Mapped[datetime] = mapped_column(Date, nullable=False)
+    reference: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
 
 
 class StockMovement(Base):
