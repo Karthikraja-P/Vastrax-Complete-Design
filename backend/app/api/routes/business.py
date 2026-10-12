@@ -1,6 +1,7 @@
 """Admin CRM and commerce ERP endpoints backed by Vastrax's existing records."""
 from datetime import date, datetime, timezone
 from decimal import Decimal
+import uuid
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -71,6 +72,8 @@ class ReceiptLine(BaseModel):
 
 class PurchaseReceipt(BaseModel):
     items: list[ReceiptLine] = Field(min_length=1)
+    inventory_account_id: str
+    payable_account_id: str
 
 
 class StockAdjustment(BaseModel):
@@ -288,18 +291,31 @@ def create_purchase_order(body: PurchaseOrderCreate, admin: User = Depends(requi
 
 @router.post("/erp/purchase-orders/{po_id}/receive")
 def receive_purchase_order(po_id: str, body: PurchaseReceipt, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
-    po = db.get(PurchaseOrder, po_id)
+    po = db.query(PurchaseOrder).filter(PurchaseOrder.id == po_id).with_for_update().first()
     if not po or po.status in ("cancelled", "received"):
         raise HTTPException(404, "Open purchase order not found")
+    inventory_account = db.get(LedgerAccount, body.inventory_account_id)
+    payable_account = db.get(LedgerAccount, body.payable_account_id)
+    if not inventory_account or not inventory_account.is_active or inventory_account.account_type != "asset":
+        raise HTTPException(422, "Choose an active asset account for received inventory")
+    if not payable_account or not payable_account.is_active or payable_account.account_type != "liability":
+        raise HTTPException(422, "Choose an active liability account for supplier payable")
+    if len({receipt.line_id for receipt in body.items}) != len(body.items):
+        raise HTTPException(422, "Each purchase order line can appear once per receipt")
+    validated = []
+    total_cost = Decimal("0.00")
     for receipt in body.items:
-        line = db.get(PurchaseOrderLine, receipt.line_id)
+        line = db.query(PurchaseOrderLine).filter(PurchaseOrderLine.id == receipt.line_id).with_for_update().first()
         if not line or line.purchase_order_id != po.id:
-            db.rollback()
             raise HTTPException(404, "Purchase order line not found")
         if line.quantity_received + receipt.quantity > line.quantity_ordered:
-            db.rollback()
             raise HTTPException(409, "Received quantity exceeds the ordered quantity")
-        variant = db.get(ProductVariant, line.variant_id)
+        variant = db.query(ProductVariant).filter(ProductVariant.id == line.variant_id).with_for_update().first()
+        if not variant:
+            raise HTTPException(409, "Product variant no longer exists")
+        validated.append((receipt, line, variant))
+        total_cost += Decimal(receipt.quantity) * Decimal(line.unit_cost)
+    for receipt, line, variant in validated:
         before = int(variant.stock_qty or 0)
         variant.stock_qty = before + receipt.quantity
         line.quantity_received += receipt.quantity
@@ -308,8 +324,19 @@ def receive_purchase_order(po_id: str, body: PurchaseReceipt, admin: User = Depe
                              reference_id=po.id, created_by=admin.id))
     lines = db.query(PurchaseOrderLine).filter(PurchaseOrderLine.purchase_order_id == po.id).all()
     po.status = "received" if all(line.quantity_received == line.quantity_ordered for line in lines) else "partially_received"
+    journal_entry_id = None
+    if total_cost > 0:
+        entry = JournalEntry(posting_date=date.today(), description=f"Inventory receipt for {po.id}",
+                             reference=f"RECEIPT-{uuid.uuid4().hex[:12].upper()}", created_by=admin.id)
+        db.add(entry)
+        db.flush()
+        db.add_all([
+            JournalLine(journal_entry_id=entry.id, account_id=inventory_account.id, debit=total_cost, credit=0),
+            JournalLine(journal_entry_id=entry.id, account_id=payable_account.id, debit=0, credit=total_cost),
+        ])
+        journal_entry_id = entry.id
     db.commit()
-    return {"id": po.id, "status": po.status}
+    return {"id": po.id, "status": po.status, "journal_entry_id": journal_entry_id}
 
 
 @router.get("/erp/expenses")
