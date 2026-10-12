@@ -16,6 +16,9 @@ ADDITIVE_COLUMNS = {
     "crm_leads": {
         "converted_customer_id": "VARCHAR(36) REFERENCES users(id)",
     },
+    "erp_journal_entries": {
+        "source_key": "VARCHAR(120)",
+    },
 }
 
 
@@ -30,3 +33,6 @@ def ensure_columns(engine: Engine) -> None:
                 with engine.begin() as conn:
                     conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}"))
                 log.info("Added column %s.%s", table, name)
+    if insp.has_table("erp_journal_entries"):
+        with engine.begin() as conn:
+            conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_erp_journal_source_key ON erp_journal_entries(source_key)"))

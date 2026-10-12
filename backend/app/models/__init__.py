@@ -45,3 +45,5 @@ from .business_team import BusinessTeamPermission
 from .marketing_consent import CRMMarketingConsentEvent
 
 from .payment_refund import PaymentRefund
+
+from .erp_posting_config import ERPPostingConfig

@@ -13,6 +13,7 @@ from app.models.order import Order
 from app.models.order_item import OrderItem
 from app.models.product import Product
 from app.models.product_variant import ProductVariant
+from app.services.erp_posting_service import post_order_revenue
 from app.models.user import User
 from app.models.business import StockMovement
 from app.schemas.orders import OrderCreate, OrderResponse
@@ -198,6 +199,8 @@ class OrderService:
             order.payment_status = "refunded"
 
         order.status = new_status
+        if new_status == "delivered":
+            post_order_revenue(self.db, order)
         self.db.commit()
         self.db.refresh(order)
         logger.info("Admin updated order %s to: %s", order_id, new_status)
