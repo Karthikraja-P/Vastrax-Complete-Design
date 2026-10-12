@@ -97,6 +97,10 @@ def test_email_campaign_targets_current_consent_and_unsubscribe_is_effective(bus
     assert saved.status == "sent" and saved.sent_count == 1 and saved.failed_count == 0
     assert delivery.status == "sent"
     db.close()
+    locked_edit = client.patch(f"/api/v1/crm/campaigns/{campaign_id}", headers=headers, json={"subject": "Changed"})
+    assert locked_edit.status_code == 409
+    locked_delete = client.delete(f"/api/v1/crm/campaigns/{campaign_id}", headers=headers)
+    assert locked_delete.status_code == 409
 
 
 def test_campaign_send_requires_provider_and_fresh_consent(business_admin, monkeypatch):
@@ -111,10 +115,20 @@ def test_campaign_send_requires_provider_and_fresh_consent(business_admin, monke
     blocked = client.post(f"/api/v1/crm/campaigns/{created.json()['id']}/send", headers=headers)
     assert blocked.status_code == 503
     assert blocked.json()["detail"] == "Email campaign delivery is unavailable until RESEND_API_KEY is configured"
+    edited = client.patch(f"/api/v1/crm/campaigns/{created.json()['id']}", headers=headers, json={
+        "name": "Updated draft", "subject": "Revised offer",
+    })
+    assert edited.status_code == 200, edited.text
+    assert edited.json()["name"] == "Updated draft" and edited.json()["subject"] == "Revised offer"
+    null_edit = client.patch(f"/api/v1/crm/campaigns/{created.json()['id']}", headers=headers, json={"subject": None})
+    assert null_edit.status_code == 422
     db = SessionLocal()
     from app.models.marketing_campaign import CRMCampaign
     assert db.get(CRMCampaign, created.json()["id"]).status == "draft"
     db.close()
+    deleted = client.delete(f"/api/v1/crm/campaigns/{created.json()['id']}", headers=headers)
+    assert deleted.status_code == 204
+    assert all(row["id"] != created.json()["id"] for row in client.get("/api/v1/crm/campaigns", headers=headers).json())
 
 
 def test_queued_campaign_skips_customer_who_withdrew_consent_before_delivery(business_admin, monkeypatch):

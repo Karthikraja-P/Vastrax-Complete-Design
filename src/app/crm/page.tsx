@@ -22,6 +22,7 @@ export default function CRMPage() {
   const [campaignSegment, setCampaignSegment] = useState("all_consented");
   const [campaignSubject, setCampaignSubject] = useState("");
   const [campaignBody, setCampaignBody] = useState("");
+  const [editingCampaignId, setEditingCampaignId] = useState<string | null>(null);
   const [audienceEstimate, setAudienceEstimate] = useState<number | null>(null);
   const [overview, setOverview] = useState({ customers: 0, open_leads: 0, due_tasks: 0, logged_activities: 0 });
   const [query, setQuery] = useState("");
@@ -92,12 +93,35 @@ export default function CRMPage() {
   const createCampaign = async (event: React.FormEvent) => {
     event.preventDefault();
     try {
-      await fetchApi("/crm/campaigns", { method: "POST", body: JSON.stringify({
-        name: campaignName, segment: campaignSegment, subject: campaignSubject, body: campaignBody,
-      }) });
-      setCampaignName(""); setCampaignSubject(""); setCampaignBody(""); setAudienceEstimate(null);
+      const payload = { name: campaignName, segment: campaignSegment, subject: campaignSubject, body: campaignBody };
+      if (editingCampaignId) {
+        await fetchApi("/crm/campaigns/" + editingCampaignId, { method: "PATCH", body: JSON.stringify(payload) });
+      } else {
+        await fetchApi("/crm/campaigns", { method: "POST", body: JSON.stringify(payload) });
+      }
+      setCampaignName(""); setCampaignSubject(""); setCampaignBody(""); setAudienceEstimate(null); setEditingCampaignId(null);
       await load();
     } catch (e) { setError(e instanceof Error ? e.message : "Could not save the campaign draft."); }
+  };
+
+  const editCampaign = (campaign: Campaign) => {
+    setCampaignName(campaign.name); setCampaignSegment(campaign.segment);
+    setCampaignSubject(campaign.subject); setCampaignBody(campaign.body);
+    setEditingCampaignId(campaign.id); setAudienceEstimate(null); setError("");
+  };
+
+  const cancelCampaignEdit = () => {
+    setCampaignName(""); setCampaignSegment("all_consented");
+    setCampaignSubject(""); setCampaignBody(""); setEditingCampaignId(null); setAudienceEstimate(null);
+  };
+
+  const deleteCampaign = async (campaign: Campaign) => {
+    if (!window.confirm('Delete the draft "' + campaign.name + '"?')) return;
+    try {
+      await fetchApi("/crm/campaigns/" + campaign.id, { method: "DELETE" });
+      if (editingCampaignId === campaign.id) cancelCampaignEdit();
+      await load();
+    } catch (e) { setError(e instanceof Error ? e.message : "Could not delete the campaign draft."); }
   };
 
   const sendCampaign = async (campaign: Campaign) => {
@@ -142,7 +166,7 @@ export default function CRMPage() {
       {tab === "leads" && <div className="grid gap-5 lg:grid-cols-[360px_1fr]"><form onSubmit={addLead} className={`${card} space-y-3`}><h2 className="font-semibold text-foreground">Add prospect</h2><input required className={field} placeholder="Name" value={leadName} onChange={e => setLeadName(e.target.value)} /><input type="email" className={field} placeholder="Email" value={leadEmail} onChange={e => setLeadEmail(e.target.value)} /><input className={field} placeholder="Phone" value={leadPhone} onChange={e => setLeadPhone(e.target.value)} /><button className="w-full rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white">Save lead</button></form><section className={`${card} overflow-x-auto`}><h2 className="mb-4 font-semibold text-foreground">Lead pipeline</h2><table className="w-full min-w-[600px] text-left text-sm"><thead className="text-muted-foreground"><tr><th className="p-3">Prospect</th><th className="p-3">Source</th><th className="p-3">Stage</th><th className="p-3">Added</th><th className="p-3">Customer link</th></tr></thead><tbody>{leads.map(lead => <tr className="border-t border-border" key={lead.id}><td className="p-3"><div className="font-medium text-foreground">{lead.full_name}</div><div className="text-xs text-muted-foreground">{lead.email || lead.phone || "No contact details"}</div></td><td className="p-3">{lead.source || "—"}</td><td className="p-3"><select aria-label={`Stage for ${lead.full_name}`} className={field} value={lead.stage} disabled={Boolean(lead.converted_customer_id)} onChange={e => void updateStage(lead, e.target.value)}>{["new", "contacted", "qualified", "lost", ...(lead.stage === "converted" ? ["converted"] : [])].map(s => <option key={s}>{s}</option>)}</select></td><td className="p-3">{new Date(lead.created_at).toLocaleDateString()}</td><td className="p-3">{lead.converted_customer_id ? <span className="text-xs text-emerald-600">Linked to shared customer record</span> : lead.stage === "qualified" ? <button onClick={() => void convertLead(lead)} className="rounded-lg border border-border px-3 py-1.5 text-xs text-foreground">Link existing customer</button> : <span className="text-xs text-muted-foreground">Qualify lead first</span>}</td></tr>)}</tbody></table></section></div>}
       {tab === "campaigns" && <div className="grid gap-5 lg:grid-cols-[380px_1fr]">
         <form onSubmit={createCampaign} className={card + " space-y-3"}>
-          <h2 className="font-semibold text-foreground">Create email campaign draft</h2>
+          <h2 className="font-semibold text-foreground">{editingCampaignId ? "Edit email campaign draft" : "Create email campaign draft"}</h2>
           <p className="text-xs text-muted-foreground">Only customers with active email marketing consent are eligible. Sending requires the email service to be configured.</p>
           <input required maxLength={160} className={field} placeholder="Campaign name" value={campaignName} onChange={event => setCampaignName(event.target.value)} />
           <select className={field} value={campaignSegment} onChange={event => { setCampaignSegment(event.target.value); setAudienceEstimate(null); }}>
@@ -155,7 +179,7 @@ export default function CRMPage() {
           {audienceEstimate !== null && <p className="text-sm text-foreground">Eligible now: <strong>{audienceEstimate}{audienceEstimate > 1000 ? "+" : ""}</strong></p>}
           <input required maxLength={200} className={field} placeholder="Email subject" value={campaignSubject} onChange={event => setCampaignSubject(event.target.value)} />
           <textarea required maxLength={10000} rows={8} className={field} placeholder="Email message" value={campaignBody} onChange={event => setCampaignBody(event.target.value)} />
-          <button className="w-full rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white">Save draft</button>
+          <div className="flex gap-2"><button className="flex-1 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white">{editingCampaignId ? "Update draft" : "Save draft"}</button>{editingCampaignId && <button type="button" onClick={cancelCampaignEdit} className="rounded-lg border border-border px-4 py-2 text-sm text-foreground">Cancel</button>}</div>
         </form>
         <section className={card + " space-y-3"}>
           <h2 className="font-semibold text-foreground">Campaign history</h2>
@@ -165,7 +189,7 @@ export default function CRMPage() {
               <span className="rounded-full border border-border px-2.5 py-1 text-xs capitalize text-foreground">{campaign.status}</span>
             </div>
             <p className="mt-2 text-xs text-muted-foreground">Eligible at last send: {campaign.audience_count} · sent: {campaign.sent_count} · failed: {campaign.failed_count} · skipped: {campaign.skipped_count}</p>
-            {campaign.status === "draft" && <button onClick={() => void sendCampaign(campaign)} className="mt-3 rounded-lg border border-border px-3 py-2 text-xs font-semibold text-foreground">Send to current opted-in audience</button>}
+            {campaign.status === "draft" && <div className="mt-3 flex flex-wrap gap-2"><button onClick={() => editCampaign(campaign)} className="rounded-lg border border-border px-3 py-2 text-xs font-semibold text-foreground">Edit draft</button><button onClick={() => void deleteCampaign(campaign)} className="rounded-lg border border-border px-3 py-2 text-xs text-red-400">Delete draft</button><button onClick={() => void sendCampaign(campaign)} className="rounded-lg border border-border px-3 py-2 text-xs font-semibold text-foreground">Send to current opted-in audience</button></div>}
           </article>)}
           {campaigns.length === 0 && <p className="text-sm text-muted-foreground">No campaign drafts yet.</p>}
         </section>

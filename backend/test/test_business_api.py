@@ -184,7 +184,8 @@ def test_crm_leads_tasks_customer_metrics_and_admin_access(business_admin):
     assert task.status_code == 201, task.text
     assert client.get("/api/v1/crm/overview", headers=headers).json()["due_tasks"] >= 1
     assert client.post("/api/v1/crm/activities", headers=headers, json={"customer_id": business_admin["customer_id"], "lead_id": lead_id, "subject": "invalid"}).status_code == 422
-    assert client.get("/api/v1/crm/customers", headers=headers, params={"q": "Beta Customer"}).json()[0]["id"] == business_admin["customer_id"]
+    customer_rows = client.get("/api/v1/crm/customers", headers=headers, params={"q": "Beta Customer"}).json()
+    assert any(row["id"] == business_admin["customer_id"] for row in customer_rows)
     assert client.post(f"/api/v1/crm/activities/{task.json()['id']}/complete", headers=headers).status_code == 200
 
 

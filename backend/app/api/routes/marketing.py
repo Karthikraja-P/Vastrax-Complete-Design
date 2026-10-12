@@ -31,6 +31,13 @@ class CampaignCreate(BaseModel):
     body: str = Field(min_length=1, max_length=10000)
 
 
+class CampaignUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=160)
+    segment: Literal["all_consented", "repeat_customers", "recent_90_days", "inactive_90_days"] | None = None
+    subject: str | None = Field(default=None, min_length=1, max_length=200)
+    body: str | None = Field(default=None, min_length=1, max_length=10000)
+
+
 class UnsubscribeRequest(BaseModel):
     token: str = Field(min_length=32, max_length=128)
 
@@ -122,6 +129,41 @@ def create_campaign(body: CampaignCreate, author: User = Depends(require_busines
     db.commit()
     db.refresh(campaign)
     return _campaign_json(campaign)
+
+
+@router.patch("/crm/campaigns/{campaign_id}", dependencies=[Depends(require_business_permission("crm"))])
+def update_campaign(campaign_id: str, body: CampaignUpdate, db: Session = Depends(get_db)):
+    campaign = db.get(CRMCampaign, campaign_id)
+    if not campaign:
+        raise HTTPException(404, "Campaign not found")
+    if campaign.status != "draft":
+        raise HTTPException(409, "Only a draft campaign can be edited")
+    updates = body.model_dump(exclude_unset=True)
+    if not updates:
+        raise HTTPException(422, "Provide at least one campaign field to update")
+    for field, value in updates.items():
+        if value is None:
+            raise HTTPException(422, f"{field.replace('_', ' ').capitalize()} cannot be null")
+        if isinstance(value, str):
+            value = value.strip()
+            if not value:
+                raise HTTPException(422, f"{field.replace('_', ' ').capitalize()} cannot be blank")
+        setattr(campaign, field, value)
+    db.commit()
+    db.refresh(campaign)
+    return _campaign_json(campaign)
+
+
+@router.delete("/crm/campaigns/{campaign_id}", status_code=status.HTTP_204_NO_CONTENT,
+               dependencies=[Depends(require_business_permission("crm"))])
+def delete_campaign(campaign_id: str, db: Session = Depends(get_db)):
+    campaign = db.get(CRMCampaign, campaign_id)
+    if not campaign:
+        raise HTTPException(404, "Campaign not found")
+    if campaign.status != "draft":
+        raise HTTPException(409, "Only a draft campaign can be deleted")
+    db.delete(campaign)
+    db.commit()
 
 
 @router.post("/crm/campaigns/{campaign_id}/send", status_code=status.HTTP_202_ACCEPTED,

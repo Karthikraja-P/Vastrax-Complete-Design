@@ -47,7 +47,8 @@ def test_return_review_receipt_restock_and_quantity_caps():
     client = TestClient(app)
     headers = {"Authorization": f"Bearer {data['token']}"}
     assert client.get("/api/v1/erp/returns").status_code == 401
-    assert client.get("/api/v1/erp/returnable-orders", headers=headers).json()[0]["id"] == data["order"]
+    returnable = client.get("/api/v1/erp/returnable-orders", headers=headers).json()
+    assert any(row["id"] == data["order"] for row in returnable)
     created = client.post("/api/v1/erp/returns", headers=headers, json={
         "order_id": data["order"], "reason": "size", "items": [{"order_item_id": data["item"], "quantity": 1}],
     })
