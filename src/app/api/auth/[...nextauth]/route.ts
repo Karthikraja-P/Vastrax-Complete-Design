@@ -32,13 +32,14 @@ const handler = NextAuth({
               cache: "no-store",
             });
             if (!res.ok) return null;
-            const user = await res.json();
+            const user = (await res.json()) as { id?: string | number; email?: string; is_active?: boolean; full_name?: string; role?: string; business_permissions?: string[] };
             if (!user?.id || !user?.email || !user?.is_active) return null;
             return {
               id: String(user.id),
               name: user.full_name || user.email.split("@")[0],
               email: user.email,
-              role: user.role || "customer",
+              role: user.business_permissions?.length ? "business_staff" : user.role || "customer",
+              businessPermissions: user.business_permissions || [],
               accessToken: credentials.accessToken,
             };
           } catch {
@@ -68,12 +69,13 @@ const handler = NextAuth({
             });
 
             if (res.ok) {
-              const data = await res.json();
+              const data = (await res.json()) as { user?: { id?: string | number; full_name?: string; email?: string; role?: string; business_permissions?: string[] }; access_token?: string };
               return {
                 id: String(data.user?.id || credentials.id || "usr_1"),
                 name: data.user?.full_name || credentials.name || email.split("@")[0],
                 email: data.user?.email || email,
-                role: data.user?.role || "CUSTOMER",
+                role: data.user?.business_permissions?.length ? "business_staff" : data.user?.role || "CUSTOMER",
+                businessPermissions: data.user?.business_permissions || [],
                 accessToken: data.access_token || "",
               };
             }
@@ -90,6 +92,7 @@ const handler = NextAuth({
         token.id = user.id;
         token.role = (user as any).role || "CUSTOMER";
         token.accessToken = (user as any).accessToken;
+        token.businessPermissions = user.businessPermissions || [];
       }
       return token;
     },
@@ -98,6 +101,7 @@ const handler = NextAuth({
         (session as any).user.id = token.id;
         (session as any).user.role = token.role;
         (session as any).accessToken = token.accessToken;
+        session.businessPermissions = token.businessPermissions || [];
       }
       return session;
     }

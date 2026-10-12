@@ -41,3 +41,4 @@ from .business import CRMLead, CRMActivity, Supplier, PurchaseOrder, PurchaseOrd
 from .returns import SalesReturn, SalesReturnLine
 
 from .ledger import LedgerAccount, JournalEntry, JournalLine
+from .business_team import BusinessTeamPermission

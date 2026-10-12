@@ -27,7 +27,11 @@ export async function proxy(req: NextRequest) {
   // 3. Admin / Dashboard routes check
   const secret = process.env.NEXTAUTH_SECRET;
   const token = secret ? await getToken({ req, secret }) : null;
-  const isAdmin = token && String(token.role || "").toLowerCase() === "admin";
+  const role = String(token?.role || "").toLowerCase();
+  const isAdmin = role === "admin";
+  const businessPermissions = Array.isArray(token?.businessPermissions) ? token.businessPermissions : [];
+  const canUseBusinessPage = (pathname.startsWith("/crm") && businessPermissions.includes("crm"))
+    || (pathname.startsWith("/erp") && businessPermissions.includes("erp"));
 
   // Root route ("/")
   if (pathname === "/") {
@@ -58,7 +62,7 @@ export async function proxy(req: NextRequest) {
   );
 
   if (isProtectedAdminRoute) {
-    if (!isAdmin) {
+    if (!isAdmin && !canUseBusinessPage) {
       const url = req.nextUrl.clone();
       url.pathname = "/storefront/home";
       url.searchParams.set("error", "admin_required");

@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { LayoutDashboard, Package, Tags, ShoppingCart, Users, LayoutTemplate, UserCog, Settings, ChevronDown } from "lucide-react";
 import { useState } from "react";
+import { useSession } from "next-auth/react";
 import { motion, AnimatePresence } from "framer-motion";
 
 const navGroups = [
@@ -68,6 +69,7 @@ const navGroups = [
     title: "ADMINISTRATION",
     items: [
       { name: "Admin Management", href: "/admin/management", icon: UserCog },
+      { name: "Business Team Access", href: "/admin/team", icon: UserCog },
       { name: "Settings", href: "/settings", icon: Settings },
     ],
   },
@@ -75,6 +77,19 @@ const navGroups = [
 
 export function Sidebar({ isCollapsed = false }: { isCollapsed?: boolean }) {
   const pathname = usePathname();
+  const { data: session } = useSession();
+  const role = String(session?.user?.role || "").toLowerCase();
+  const isBusinessStaff = role === "business_staff";
+  const permissions = session?.businessPermissions || [];
+  const visibleNavGroups = isBusinessStaff
+    ? [{
+        title: "BUSINESS",
+        items: [
+          ...(permissions.includes("crm") ? [{ name: "CRM", href: "/crm", icon: Users }] : []),
+          ...(permissions.includes("erp") ? [{ name: "ERP", href: "/erp", icon: Package }] : []),
+        ],
+      }]
+    : navGroups;
   const [openMenus, setOpenMenus] = useState<Record<string, boolean>>({
     "Products": true,
     "Users": true,
@@ -94,7 +109,7 @@ export function Sidebar({ isCollapsed = false }: { isCollapsed?: boolean }) {
       )}
     >
       <div className="flex-1 overflow-y-auto py-6 px-4 space-y-8 scrollbar-thin scrollbar-thumb-border hover:scrollbar-thumb-border-hover scrollbar-track-transparent">
-        {navGroups.map((group, groupIdx) => (
+        {visibleNavGroups.map((group, groupIdx) => (
           <div key={groupIdx} className="relative">
             
             {/* Divider in collapsed mode instead of title */}

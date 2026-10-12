@@ -7,6 +7,7 @@ from app.core.exceptions import ForbiddenError, UnauthorizedError
 from app.core.security import decode_token
 from app.db.database import get_db
 from app.models.user import User
+from app.models.business_team import BusinessTeamPermission
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -62,3 +63,34 @@ def get_optional_user(
         return db.query(User).filter(User.id == user_id).first()
     except Exception:
         return None
+
+
+BUSINESS_MODULES = {"crm", "erp"}
+
+
+def business_permissions_for_user(db: Session, user_id: str) -> list[str]:
+    return [row.permission for row in db.query(BusinessTeamPermission.permission).filter(
+        BusinessTeamPermission.user_id == user_id,
+        BusinessTeamPermission.permission.in_(BUSINESS_MODULES),
+    ).order_by(BusinessTeamPermission.permission).all()]
+
+
+def require_business_permission(permission: str):
+    if permission not in BUSINESS_MODULES:
+        raise ValueError(f"Unsupported business permission: {permission}")
+
+    def _require_permission(
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db),
+    ) -> User:
+        if str(current_user.role).lower() == "admin":
+            return current_user
+        grant = db.query(BusinessTeamPermission.id).filter(
+            BusinessTeamPermission.user_id == current_user.id,
+            BusinessTeamPermission.permission == permission,
+        ).first()
+        if not grant:
+            raise ForbiddenError(f"{permission.upper()} access required")
+        return current_user
+
+    return _require_permission

@@ -40,7 +40,10 @@ async def verify_registration(req: Verify2FARequest, db: Session = Depends(get_d
 @router.get("/me")
 def get_auth_me(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     from app.services.user_service import UserService
-    return UserService(db).get_profile(current_user)
+    from app.middleware.auth import business_permissions_for_user
+    profile = UserService(db).get_profile(current_user).model_dump()
+    profile["business_permissions"] = business_permissions_for_user(db, current_user.id)
+    return profile
 
 
 @router.post("/logout")

@@ -10,7 +10,7 @@ from sqlalchemy import case, func, or_
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db
-from app.middleware.auth import require_admin
+from app.middleware.auth import require_business_permission
 from app.models.business import CRMActivity, CRMLead, OperatingExpense, PurchaseOrder, PurchaseOrderLine, StockMovement, Supplier
 from app.models.ledger import JournalEntry, JournalLine, LedgerAccount
 from app.models.order import Order
@@ -19,7 +19,7 @@ from app.models.product import Product
 from app.models.product_variant import ProductVariant
 from app.models.user import User
 
-router = APIRouter(tags=["crm-erp"], dependencies=[Depends(require_admin)])
+router = APIRouter(tags=["crm-erp"])
 
 
 class LeadCreate(BaseModel):
@@ -95,7 +95,7 @@ class ExpenseCreate(BaseModel):
     input_tax_account_id: str | None = None
 
 
-@router.get("/crm/overview")
+@router.get("/crm/overview", dependencies=[Depends(require_business_permission("crm"))])
 def crm_overview(db: Session = Depends(get_db)):
     open_leads = db.query(func.count(CRMLead.id)).filter(CRMLead.stage.notin_(["converted", "lost"])).scalar() or 0
     due_tasks = db.query(func.count(CRMActivity.id)).filter(
@@ -106,7 +106,7 @@ def crm_overview(db: Session = Depends(get_db)):
     return {"customers": customers, "open_leads": open_leads, "due_tasks": due_tasks, "logged_activities": activities}
 
 
-@router.get("/crm/customers")
+@router.get("/crm/customers", dependencies=[Depends(require_business_permission("crm"))])
 def crm_customers(q: str | None = Query(default=None, max_length=120), db: Session = Depends(get_db)):
     query = db.query(
         User.id, User.full_name, User.email, User.phone_number, User.created_at,
@@ -123,7 +123,7 @@ def crm_customers(q: str | None = Query(default=None, max_length=120), db: Sessi
              "lifetime_value": str(row.lifetime_value or 0), "last_order_at": row.last_order_at} for row in rows]
 
 
-@router.get("/crm/customers/{customer_id}")
+@router.get("/crm/customers/{customer_id}", dependencies=[Depends(require_business_permission("crm"))])
 def crm_customer_detail(customer_id: str, db: Session = Depends(get_db)):
     customer = db.query(User).filter(User.id == customer_id, User.role == "customer").first()
     if not customer:
@@ -163,7 +163,7 @@ def crm_customer_detail(customer_id: str, db: Session = Depends(get_db)):
     }
 
 
-@router.get("/crm/leads")
+@router.get("/crm/leads", dependencies=[Depends(require_business_permission("crm"))])
 def list_leads(stage: str | None = None, db: Session = Depends(get_db)):
     q = db.query(CRMLead)
     if stage:
@@ -171,8 +171,8 @@ def list_leads(stage: str | None = None, db: Session = Depends(get_db)):
     return q.order_by(CRMLead.created_at.desc()).limit(500).all()
 
 
-@router.post("/crm/leads", status_code=status.HTTP_201_CREATED)
-def create_lead(body: LeadCreate, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+@router.post("/crm/leads", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_business_permission("crm"))])
+def create_lead(body: LeadCreate, admin: User = Depends(require_business_permission("crm")), db: Session = Depends(get_db)):
     lead = CRMLead(**body.model_dump(), created_by=admin.id)
     db.add(lead)
     db.commit()
@@ -180,7 +180,7 @@ def create_lead(body: LeadCreate, admin: User = Depends(require_admin), db: Sess
     return lead
 
 
-@router.patch("/crm/leads/{lead_id}")
+@router.patch("/crm/leads/{lead_id}", dependencies=[Depends(require_business_permission("crm"))])
 def update_lead(lead_id: str, body: LeadUpdate, db: Session = Depends(get_db)):
     lead = db.get(CRMLead, lead_id)
     if not lead:
@@ -192,7 +192,7 @@ def update_lead(lead_id: str, body: LeadUpdate, db: Session = Depends(get_db)):
     return lead
 
 
-@router.get("/crm/activities")
+@router.get("/crm/activities", dependencies=[Depends(require_business_permission("crm"))])
 def list_activities(customer_id: str | None = None, lead_id: str | None = None, upcoming: bool = False, db: Session = Depends(get_db)):
     q = db.query(CRMActivity)
     if customer_id:
@@ -204,8 +204,8 @@ def list_activities(customer_id: str | None = None, lead_id: str | None = None, 
     return q.order_by(CRMActivity.due_at.asc().nullslast(), CRMActivity.created_at.desc()).limit(500).all()
 
 
-@router.post("/crm/activities", status_code=status.HTTP_201_CREATED)
-def create_activity(body: ActivityCreate, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+@router.post("/crm/activities", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_business_permission("crm"))])
+def create_activity(body: ActivityCreate, admin: User = Depends(require_business_permission("crm")), db: Session = Depends(get_db)):
     if bool(body.customer_id) == bool(body.lead_id):
         raise HTTPException(422, "Choose exactly one customer or lead")
     if body.customer_id and not db.query(User.id).filter(User.id == body.customer_id, User.role == "customer").first():
@@ -219,7 +219,7 @@ def create_activity(body: ActivityCreate, admin: User = Depends(require_admin), 
     return activity
 
 
-@router.post("/crm/activities/{activity_id}/complete")
+@router.post("/crm/activities/{activity_id}/complete", dependencies=[Depends(require_business_permission("crm"))])
 def complete_activity(activity_id: str, db: Session = Depends(get_db)):
     activity = db.get(CRMActivity, activity_id)
     if not activity:
@@ -229,7 +229,7 @@ def complete_activity(activity_id: str, db: Session = Depends(get_db)):
     return {"id": activity.id, "completed_at": activity.completed_at}
 
 
-@router.get("/erp/overview")
+@router.get("/erp/overview", dependencies=[Depends(require_business_permission("erp"))])
 def erp_overview(db: Session = Depends(get_db)):
     stock_units = db.query(func.coalesce(func.sum(ProductVariant.stock_qty), 0)).scalar() or 0
     low_stock = db.query(func.count(ProductVariant.id)).filter(ProductVariant.stock_qty.between(1, 5)).scalar() or 0
@@ -242,7 +242,7 @@ def erp_overview(db: Session = Depends(get_db)):
             "open_purchase_orders": open_po, "monthly_expenses": str(monthly_expenses), "order_value_booked": str(sales)}
 
 
-@router.get("/erp/inventory")
+@router.get("/erp/inventory", dependencies=[Depends(require_business_permission("erp"))])
 def inventory_list(q: str | None = Query(default=None, max_length=120), low_stock_only: bool = False, db: Session = Depends(get_db)):
     query = db.query(ProductVariant, Product.name.label("product_name"), Product.colour, Product.is_published).join(Product, Product.id == ProductVariant.product_id)
     if q:
@@ -255,7 +255,7 @@ def inventory_list(q: str | None = Query(default=None, max_length=120), low_stoc
             for v, name, colour, published in query.order_by(Product.name, ProductVariant.size).limit(1000).all()]
 
 
-@router.get("/erp/inventory/movements")
+@router.get("/erp/inventory/movements", dependencies=[Depends(require_business_permission("erp"))])
 def inventory_movements(variant_id: str | None = None, db: Session = Depends(get_db)):
     q = db.query(StockMovement)
     if variant_id:
@@ -263,8 +263,8 @@ def inventory_movements(variant_id: str | None = None, db: Session = Depends(get
     return q.order_by(StockMovement.created_at.desc()).limit(500).all()
 
 
-@router.post("/erp/inventory/{variant_id}/adjust")
-def adjust_inventory(variant_id: str, body: StockAdjustment, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+@router.post("/erp/inventory/{variant_id}/adjust", dependencies=[Depends(require_business_permission("erp"))])
+def adjust_inventory(variant_id: str, body: StockAdjustment, admin: User = Depends(require_business_permission("erp")), db: Session = Depends(get_db)):
     if body.quantity_delta == 0:
         raise HTTPException(422, "Adjustment must change stock")
     variant = db.get(ProductVariant, variant_id)
@@ -281,12 +281,12 @@ def adjust_inventory(variant_id: str, body: StockAdjustment, admin: User = Depen
     return {"variant_id": variant.id, "stock_before": before, "stock_after": after}
 
 
-@router.get("/erp/suppliers")
+@router.get("/erp/suppliers", dependencies=[Depends(require_business_permission("erp"))])
 def list_suppliers(db: Session = Depends(get_db)):
     return db.query(Supplier).order_by(Supplier.name).all()
 
 
-@router.post("/erp/suppliers", status_code=status.HTTP_201_CREATED)
+@router.post("/erp/suppliers", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_business_permission("erp"))])
 def create_supplier(body: SupplierCreate, db: Session = Depends(get_db)):
     supplier = Supplier(**body.model_dump())
     db.add(supplier)
@@ -295,7 +295,7 @@ def create_supplier(body: SupplierCreate, db: Session = Depends(get_db)):
     return supplier
 
 
-@router.get("/erp/purchase-orders")
+@router.get("/erp/purchase-orders", dependencies=[Depends(require_business_permission("erp"))])
 def list_purchase_orders(db: Session = Depends(get_db)):
     rows = db.query(PurchaseOrder, Supplier.name).join(Supplier, Supplier.id == PurchaseOrder.supplier_id).order_by(PurchaseOrder.created_at.desc()).limit(500).all()
     output = []
@@ -308,8 +308,8 @@ def list_purchase_orders(db: Session = Depends(get_db)):
     return output
 
 
-@router.post("/erp/purchase-orders", status_code=status.HTTP_201_CREATED)
-def create_purchase_order(body: PurchaseOrderCreate, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+@router.post("/erp/purchase-orders", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_business_permission("erp"))])
+def create_purchase_order(body: PurchaseOrderCreate, admin: User = Depends(require_business_permission("erp")), db: Session = Depends(get_db)):
     supplier = db.get(Supplier, body.supplier_id)
     if not supplier or not supplier.is_active:
         raise HTTPException(404, "Active supplier not found")
@@ -329,8 +329,8 @@ def create_purchase_order(body: PurchaseOrderCreate, admin: User = Depends(requi
     return {"id": po.id, "supplier_id": po.supplier_id, "status": po.status}
 
 
-@router.post("/erp/purchase-orders/{po_id}/receive")
-def receive_purchase_order(po_id: str, body: PurchaseReceipt, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+@router.post("/erp/purchase-orders/{po_id}/receive", dependencies=[Depends(require_business_permission("erp"))])
+def receive_purchase_order(po_id: str, body: PurchaseReceipt, admin: User = Depends(require_business_permission("erp")), db: Session = Depends(get_db)):
     po = db.query(PurchaseOrder).filter(PurchaseOrder.id == po_id).with_for_update().first()
     if not po or po.status in ("cancelled", "received"):
         raise HTTPException(404, "Open purchase order not found")
@@ -379,8 +379,8 @@ def receive_purchase_order(po_id: str, body: PurchaseReceipt, admin: User = Depe
     return {"id": po.id, "status": po.status, "journal_entry_id": journal_entry_id}
 
 
-@router.post("/erp/purchase-orders/{po_id}/cancel")
-def cancel_purchase_order(po_id: str, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+@router.post("/erp/purchase-orders/{po_id}/cancel", dependencies=[Depends(require_business_permission("erp"))])
+def cancel_purchase_order(po_id: str, admin: User = Depends(require_business_permission("erp")), db: Session = Depends(get_db)):
     po = db.query(PurchaseOrder).filter(PurchaseOrder.id == po_id).with_for_update().first()
     if not po or po.status not in ("ordered", "partially_received"):
         raise HTTPException(409, "Only an open purchase order can be cancelled")
@@ -389,13 +389,13 @@ def cancel_purchase_order(po_id: str, admin: User = Depends(require_admin), db: 
     return {"id": po.id, "status": po.status}
 
 
-@router.get("/erp/expenses")
+@router.get("/erp/expenses", dependencies=[Depends(require_business_permission("erp"))])
 def list_expenses(db: Session = Depends(get_db)):
     return db.query(OperatingExpense).order_by(OperatingExpense.expense_date.desc(), OperatingExpense.created_at.desc()).limit(500).all()
 
 
-@router.post("/erp/expenses", status_code=status.HTTP_201_CREATED)
-def create_expense(body: ExpenseCreate, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+@router.post("/erp/expenses", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_business_permission("erp"))])
+def create_expense(body: ExpenseCreate, admin: User = Depends(require_business_permission("erp")), db: Session = Depends(get_db)):
     if body.supplier_id and not db.get(Supplier, body.supplier_id):
         raise HTTPException(404, "Supplier not found")
     expense_account = db.get(LedgerAccount, body.expense_account_id)
