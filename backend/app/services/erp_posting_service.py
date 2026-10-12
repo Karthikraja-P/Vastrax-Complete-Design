@@ -120,6 +120,7 @@ def post_order_cogs(db: Session, order: Order) -> bool:
             layers = db.query(ERPInventoryCostLayer).filter(
                 ERPInventoryCostLayer.variant_id == item.variant_id,
                 ERPInventoryCostLayer.remaining_quantity > 0,
+                ERPInventoryCostLayer.unit_cost > 0,
             ).order_by(ERPInventoryCostLayer.created_at, ERPInventoryCostLayer.id).with_for_update().all()
             layers_by_variant[item.variant_id] = layers
             for layer in layers:
