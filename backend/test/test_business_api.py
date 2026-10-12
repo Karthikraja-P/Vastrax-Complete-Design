@@ -11,6 +11,7 @@ from app.models.category import Category
 from app.models.product import Product
 from app.models.product_variant import ProductVariant
 from app.models.user import User
+from app.models.ledger import LedgerAccount
 
 
 @pytest.fixture()
@@ -22,12 +23,15 @@ def business_admin():
     category = Category(id=f"cat-{suffix}", name=f"Business {suffix}", slug=f"business-{suffix}")
     product = Product(id=f"p-{suffix}", category_id=category.id, name="Test Dress", price_mrp=100, price_selling=90)
     variant = ProductVariant(id=f"v-{suffix}", product_id=product.id, sku=f"sku-{suffix}", size="S", stock_qty=4)
-    db.add_all([admin, customer, category, product, variant])
+    inventory_account = LedgerAccount(code=f"INV-{suffix}", name="Inventory", account_type="asset")
+    payable_account = LedgerAccount(code=f"AP-{suffix}", name="Supplier payable", account_type="liability")
+    db.add_all([admin, customer, category, product, variant, inventory_account, payable_account])
     db.commit()
     customer_id, variant_id = customer.id, variant.id
     token = create_access_token({"sub": admin.id})
+    account_ids = {"inventory_account_id": inventory_account.id, "payable_account_id": payable_account.id}
     db.close()
-    yield {"token": token, "customer_id": customer_id, "variant_id": variant_id, "suffix": suffix}
+    yield {"token": token, "customer_id": customer_id, "variant_id": variant_id, "suffix": suffix, **account_ids}
 
 
 def test_supplier_purchase_receipt_and_stock_audit(business_admin):
@@ -42,12 +46,25 @@ def test_supplier_purchase_receipt_and_stock_audit(business_admin):
     assert po.status_code == 201, po.text
     po_id = po.json()["id"]
     line = client.get("/api/v1/erp/purchase-orders", headers=headers).json()[0]["items"][0]
-    received = client.post(f"/api/v1/erp/purchase-orders/{po_id}/receive", headers=headers, json={"items": [{"line_id": line["id"], "quantity": 3}]})
+    invalid_accounts = client.post(f"/api/v1/erp/purchase-orders/{po_id}/receive", headers=headers, json={
+        "items": [{"line_id": line["id"], "quantity": 1}],
+        "inventory_account_id": business_admin["inventory_account_id"],
+        "payable_account_id": business_admin["inventory_account_id"],
+    })
+    assert invalid_accounts.status_code == 422
+    db = SessionLocal()
+    assert db.get(ProductVariant, business_admin["variant_id"]).stock_qty == 4
+    db.close()
+    received = client.post(f"/api/v1/erp/purchase-orders/{po_id}/receive", headers=headers, json={"items": [{"line_id": line["id"], "quantity": 3}], "inventory_account_id": business_admin["inventory_account_id"], "payable_account_id": business_admin["payable_account_id"]})
     assert received.status_code == 200 and received.json()["status"] == "partially_received"
     db = SessionLocal()
     assert db.get(ProductVariant, business_admin["variant_id"]).stock_qty == 7
     db.close()
-    over = client.post(f"/api/v1/erp/purchase-orders/{po_id}/receive", headers=headers, json={"items": [{"line_id": line["id"], "quantity": 3}]})
+    journals = client.get("/api/v1/erp/journals", headers=headers).json()
+    receipt_journal = next(entry for entry in journals if entry["description"].startswith("Inventory receipt for "))
+    assert sum(float(line["debit"]) for line in receipt_journal["lines"]) == 660
+    assert sum(float(line["credit"]) for line in receipt_journal["lines"]) == 660
+    over = client.post(f"/api/v1/erp/purchase-orders/{po_id}/receive", headers=headers, json={"items": [{"line_id": line["id"], "quantity": 3}], "inventory_account_id": business_admin["inventory_account_id"], "payable_account_id": business_admin["payable_account_id"]})
     assert over.status_code == 409
     adjust = client.post(f"/api/v1/erp/inventory/{business_admin['variant_id']}/adjust", headers=headers, json={"quantity_delta": -1, "reason": "damaged"})
     assert adjust.status_code == 200 and adjust.json()["stock_after"] == 6
