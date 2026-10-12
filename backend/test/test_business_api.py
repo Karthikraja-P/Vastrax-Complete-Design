@@ -64,6 +64,15 @@ def test_crm_customer_detail_reads_shared_orders_and_activities(business_admin):
     assert payload["orders"][0]["id"] == order_id
     assert payload["orders"][0]["items"] == [{"product_name": "Test Dress", "size": "S", "quantity": 2, "unit_price": "90.00"}]
     assert payload["activities"][0]["subject"] == "Prefers phone contact"
+    note = client.post("/api/v1/crm/activities", headers=headers, json={
+        "customer_id": business_admin["customer_id"],
+        "activity_type": "note",
+        "subject": "Customer note",
+        "description": "Asked for a call next week",
+    })
+    assert note.status_code == 201, note.text
+    updated = client.get(f"/api/v1/crm/customers/{business_admin['customer_id']}", headers=headers).json()
+    assert any(activity["description"] == "Asked for a call next week" for activity in updated["activities"])
 
 
 def test_supplier_purchase_receipt_and_stock_audit(business_admin):
