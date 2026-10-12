@@ -66,6 +66,16 @@ def test_supplier_purchase_receipt_and_stock_audit(business_admin):
     assert sum(float(line["credit"]) for line in receipt_journal["lines"]) == 660
     over = client.post(f"/api/v1/erp/purchase-orders/{po_id}/receive", headers=headers, json={"items": [{"line_id": line["id"], "quantity": 3}], "inventory_account_id": business_admin["inventory_account_id"], "payable_account_id": business_admin["payable_account_id"]})
     assert over.status_code == 409
+    unauthorized_cancel = client.post(f"/api/v1/erp/purchase-orders/{po_id}/cancel")
+    assert unauthorized_cancel.status_code == 401
+    cancelled = client.post(f"/api/v1/erp/purchase-orders/{po_id}/cancel", headers=headers)
+    assert cancelled.status_code == 200 and cancelled.json()["status"] == "cancelled"
+    after_cancel = client.post(f"/api/v1/erp/purchase-orders/{po_id}/receive", headers=headers, json={
+        "items": [{"line_id": line["id"], "quantity": 1}],
+        "inventory_account_id": business_admin["inventory_account_id"],
+        "payable_account_id": business_admin["payable_account_id"],
+    })
+    assert after_cancel.status_code == 404
     adjust = client.post(f"/api/v1/erp/inventory/{business_admin['variant_id']}/adjust", headers=headers, json={"quantity_delta": -1, "reason": "damaged"})
     assert adjust.status_code == 200 and adjust.json()["stock_after"] == 6
     movements = client.get("/api/v1/erp/inventory/movements", headers=headers, params={"variant_id": business_admin["variant_id"]}).json()

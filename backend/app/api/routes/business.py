@@ -339,6 +339,16 @@ def receive_purchase_order(po_id: str, body: PurchaseReceipt, admin: User = Depe
     return {"id": po.id, "status": po.status, "journal_entry_id": journal_entry_id}
 
 
+@router.post("/erp/purchase-orders/{po_id}/cancel")
+def cancel_purchase_order(po_id: str, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    po = db.query(PurchaseOrder).filter(PurchaseOrder.id == po_id).with_for_update().first()
+    if not po or po.status not in ("ordered", "partially_received"):
+        raise HTTPException(409, "Only an open purchase order can be cancelled")
+    po.status = "cancelled"
+    db.commit()
+    return {"id": po.id, "status": po.status}
+
+
 @router.get("/erp/expenses")
 def list_expenses(db: Session = Depends(get_db)):
     return db.query(OperatingExpense).order_by(OperatingExpense.expense_date.desc(), OperatingExpense.created_at.desc()).limit(500).all()
