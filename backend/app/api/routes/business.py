@@ -152,7 +152,12 @@ def crm_team_members(db: Session = Depends(get_db)):
 
 
 @router.get("/crm/customers", dependencies=[Depends(require_business_permission("crm"))])
-def crm_customers(q: str | None = Query(default=None, max_length=120), db: Session = Depends(get_db)):
+def crm_customers(
+    q: str | None = Query(default=None, max_length=120),
+    limit: int = Query(default=100, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+):
     query = db.query(
         User.id, User.full_name, User.email, User.phone_number, User.created_at,
         func.count(func.distinct(Order.id)).label("order_count"),
@@ -162,10 +167,12 @@ def crm_customers(q: str | None = Query(default=None, max_length=120), db: Sessi
     if q:
         term = f"%{q.strip()}%"
         query = query.filter(or_(User.full_name.ilike(term), User.email.ilike(term), User.phone_number.ilike(term)))
-    rows = query.order_by(User.created_at.desc()).limit(500).all()
-    return [{"id": row.id, "full_name": row.full_name, "email": row.email, "phone": row.phone_number,
+    total = query.count()
+    rows = query.order_by(User.created_at.desc(), User.id.asc()).offset(offset).limit(limit).all()
+    items = [{"id": row.id, "full_name": row.full_name, "email": row.email, "phone": row.phone_number,
              "created_at": row.created_at, "order_count": row.order_count,
              "lifetime_value": str(row.lifetime_value or 0), "last_order_at": row.last_order_at} for row in rows]
+    return {"items": items, "total": total, "limit": limit, "offset": offset, "has_more": offset + len(items) < total}
 
 
 @router.get("/crm/customers/{customer_id}", dependencies=[Depends(require_business_permission("crm"))])
@@ -242,6 +249,8 @@ def crm_customer_detail(customer_id: str, db: Session = Depends(get_db)):
 def list_crm_support_tickets(
     ticket_status: Literal["OPEN", "IN_PROGRESS", "RESOLVED", "CLOSED"] | None = Query(default=None, alias="status"),
     priority: Literal["LOW", "MEDIUM", "HIGH", "URGENT"] | None = None,
+    limit: int = Query(default=100, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
 ):
     query = db.query(SupportTicket, User.full_name, User.email).outerjoin(
@@ -251,14 +260,15 @@ def list_crm_support_tickets(
         query = query.filter(SupportTicket.status == ticket_status)
     if priority:
         query = query.filter(SupportTicket.priority == priority)
+    total = query.count()
     rows = query.order_by(
         case((SupportTicket.status == "OPEN", 0), (SupportTicket.status == "IN_PROGRESS", 1), else_=2),
         case((SupportTicket.priority == "URGENT", 0), (SupportTicket.priority == "HIGH", 1), (SupportTicket.priority == "MEDIUM", 2), else_=3),
-        SupportTicket.created_at.desc(),
-    ).limit(1000).all()
+        SupportTicket.created_at.desc(), SupportTicket.id.asc(),
+    ).offset(offset).limit(limit).all()
     assignee_ids = {ticket.assigned_to for ticket, _, _ in rows if ticket.assigned_to}
     assignees = {user.id: user for user in db.query(User).filter(User.id.in_(assignee_ids)).all()} if assignee_ids else {}
-    return [{
+    items = [{
         "id": ticket.id, "customer_id": ticket.user_id, "customer_name": customer_name or customer_email,
         "customer_email": customer_email, "order_id": ticket.order_id,
         "subject": ticket.subject, "description": ticket.description, "status": ticket.status,
@@ -266,6 +276,7 @@ def list_crm_support_tickets(
         "assigned_to_name": ((assignees[ticket.assigned_to].full_name or assignees[ticket.assigned_to].email) if ticket.assigned_to in assignees else None),
         "created_at": ticket.created_at, "updated_at": ticket.updated_at,
     } for ticket, customer_name, customer_email in rows]
+    return {"items": items, "total": total, "limit": limit, "offset": offset, "has_more": offset + len(items) < total}
 
 
 @router.patch("/crm/support-tickets/{ticket_id}", dependencies=[Depends(require_business_permission("crm"))])
@@ -313,11 +324,18 @@ def update_crm_support_ticket(
 
 
 @router.get("/crm/leads", dependencies=[Depends(require_business_permission("crm"))])
-def list_leads(stage: str | None = None, db: Session = Depends(get_db)):
+def list_leads(
+    stage: str | None = None,
+    limit: int = Query(default=100, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+):
     q = db.query(CRMLead)
     if stage:
         q = q.filter(CRMLead.stage == stage)
-    return q.order_by(CRMLead.created_at.desc()).limit(500).all()
+    total = q.count()
+    items = q.order_by(CRMLead.created_at.desc(), CRMLead.id.asc()).offset(offset).limit(limit).all()
+    return {"items": items, "total": total, "limit": limit, "offset": offset, "has_more": offset + len(items) < total}
 
 
 @router.post("/crm/leads", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_business_permission("crm"))])
@@ -395,7 +413,14 @@ def convert_lead(lead_id: str, admin: User = Depends(require_business_permission
 
 
 @router.get("/crm/activities", dependencies=[Depends(require_business_permission("crm"))])
-def list_activities(customer_id: str | None = None, lead_id: str | None = None, upcoming: bool = False, db: Session = Depends(get_db)):
+def list_activities(
+    customer_id: str | None = None,
+    lead_id: str | None = None,
+    upcoming: bool = False,
+    limit: int = Query(default=100, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+):
     q = db.query(CRMActivity)
     if customer_id:
         q = q.filter(CRMActivity.customer_id == customer_id)
@@ -403,7 +428,9 @@ def list_activities(customer_id: str | None = None, lead_id: str | None = None, 
         q = q.filter(CRMActivity.lead_id == lead_id)
     if upcoming:
         q = q.filter(CRMActivity.completed_at.is_(None), CRMActivity.due_at.isnot(None))
-    return q.order_by(CRMActivity.due_at.asc().nullslast(), CRMActivity.created_at.desc()).limit(500).all()
+    total = q.count()
+    items = q.order_by(CRMActivity.due_at.asc().nullslast(), CRMActivity.created_at.desc(), CRMActivity.id.asc()).offset(offset).limit(limit).all()
+    return {"items": items, "total": total, "limit": limit, "offset": offset, "has_more": offset + len(items) < total}
 
 
 @router.post("/crm/activities", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_business_permission("crm"))])

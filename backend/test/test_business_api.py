@@ -191,7 +191,7 @@ def test_crm_support_queue_updates_customer_ticket_and_audit(business_admin):
     assert client.get("/api/v1/crm/support-tickets").status_code == 401
     rows = client.get("/api/v1/crm/support-tickets", headers=headers, params={"status": "OPEN", "priority": "HIGH"})
     assert rows.status_code == 200
-    assert any(row["id"] == ticket_id and row["customer_name"] == "Beta Customer" for row in rows.json())
+    assert any(row["id"] == ticket_id and row["customer_name"] == "Beta Customer" for row in rows.json()["items"])
     updated = client.patch(f"/api/v1/crm/support-tickets/{ticket_id}", headers=headers, json={
         "status": "IN_PROGRESS", "priority": "URGENT", "assigned_to": f"admin-{business_admin['suffix']}",
     })
@@ -232,13 +232,32 @@ def test_crm_leads_tasks_customer_metrics_and_admin_access(business_admin):
     assert assigned.status_code == 201, assigned.text
     assert assigned.json()["assigned_to"] == business_admin["customer_id"]
     open_tasks = client.get("/api/v1/crm/activities", headers=headers, params={"upcoming": True}).json()
-    assert any(row["id"] == assigned.json()["id"] and row["assigned_to"] == business_admin["customer_id"] for row in open_tasks)
+    assert any(row["id"] == assigned.json()["id"] and row["assigned_to"] == business_admin["customer_id"] for row in open_tasks["items"])
     customer_detail = client.get(f"/api/v1/crm/customers/{business_admin['customer_id']}", headers=headers).json()
     assert any(row["assigned_to_name"] == "Beta Customer" for row in customer_detail["activities"])
     assert client.post("/api/v1/crm/activities", headers=headers, json={"customer_id": business_admin["customer_id"], "lead_id": lead_id, "subject": "invalid"}).status_code == 422
     customer_rows = client.get("/api/v1/crm/customers", headers=headers, params={"q": "Beta Customer"}).json()
-    assert any(row["id"] == business_admin["customer_id"] for row in customer_rows)
+    assert any(row["id"] == business_admin["customer_id"] for row in customer_rows["items"])
+    assert customer_rows["total"] >= 1 and customer_rows["offset"] == 0
+    assert client.get("/api/v1/crm/customers", headers=headers, params={"limit": 201}).status_code == 422
     assert client.post(f"/api/v1/crm/activities/{task.json()['id']}/complete", headers=headers).status_code == 200
+
+
+def test_crm_list_endpoints_page_with_stable_metadata(business_admin):
+    client = TestClient(app)
+    headers = {"Authorization": f"Bearer {business_admin['token']}"}
+    for index in range(3):
+        response = client.post("/api/v1/crm/leads", headers=headers, json={"full_name": f"Paged prospect {index}"})
+        assert response.status_code == 201, response.text
+    first = client.get("/api/v1/crm/leads", headers=headers, params={"limit": 2})
+    second = client.get("/api/v1/crm/leads", headers=headers, params={"limit": 2, "offset": 2})
+    assert first.status_code == second.status_code == 200
+    first_page, second_page = first.json(), second.json()
+    assert len(first_page["items"]) == 2
+    assert first_page["has_more"] is True
+    assert second_page["offset"] == 2
+    assert not ({row["id"] for row in first_page["items"]} & {row["id"] for row in second_page["items"]})
+    assert first_page["total"] == second_page["total"] == 4
 
 
 def test_customer_marketing_consent_is_opt_in_and_audited(business_admin):
