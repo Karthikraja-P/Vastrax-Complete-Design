@@ -86,7 +86,7 @@ def test_payment_delivery_and_refund_post_once_and_reconcile(monkeypatch):
     assert payment.status == "partially_refunded"
     result = client.post("/api/v1/erp/postings/reconcile", headers=headers)
     assert result.status_code == 200, result.text
-    assert result.json()["posted"] == {"receipts": 0, "sales": 0, "refunds": 0}
+    assert result.json()["posted"] == {"receipts": 0, "sales": 0, "refunds": 0, "cogs": 0}
     assert db.query(JournalEntry).filter_by(source_key=f"payment-refund:{refund['refund_id']}").count() == 1
     lines = db.query(JournalLine).join(JournalEntry, JournalEntry.id == JournalLine.journal_entry_id).filter(
         JournalEntry.source_key == f"payment-refund:{refund['refund_id']}"

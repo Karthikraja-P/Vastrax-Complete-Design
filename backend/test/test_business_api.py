@@ -1,6 +1,7 @@
 """Integration tests for Vastrax CRM and purchasing/inventory workflows."""
 import uuid
 import hashlib
+from decimal import Decimal
 
 import pytest
 from fastapi.testclient import TestClient
@@ -9,7 +10,7 @@ from app.core.security import create_access_token, hash_password
 from app.db.database import SessionLocal
 from app.main import app
 from app.models.address import Address
-from app.models.business import CRMActivity, PurchaseOrder, PurchaseOrderLine, ERPPurchaseOrderRequest, ERPInventoryCostLayer
+from app.models.business import CRMActivity, PurchaseOrder, PurchaseOrderLine, ERPPurchaseOrderRequest, ERPInventoryCostingConfig, ERPInventoryCostLayer, ERPInventoryCostConsumption
 from app.models.category import Category
 from app.models.product import Product
 from app.models.order import Order
@@ -141,6 +142,65 @@ def test_store_order_syncs_to_crm_customer_history_and_erp_stock_audit(business_
 
     assert client.get(f"/api/v1/crm/customers/{business_admin['customer_id']}", headers=customer_headers).status_code == 403
     assert client.get("/api/v1/erp/inventory", headers=customer_headers).status_code == 403
+
+
+@pytest.mark.parametrize(("cost_method", "expected_cost"), [("fifo", "200.00"), ("moving_average", "250.00")])
+def test_delivered_order_posts_idempotent_cogs_using_configured_method(business_admin, cost_method, expected_cost):
+    db = SessionLocal()
+    variant = db.get(ProductVariant, business_admin["variant_id"])
+    product_id = variant.product_id
+    address = Address(user_id=business_admin["customer_id"], label="Home", address_line1="1 COGS Test St",
+                      city="Mumbai", state="Maharashtra", pincode="400001")
+    cogs_account = LedgerAccount(code=f"COGS-{business_admin['suffix']}", name="Cost of goods sold", account_type="expense")
+    equity_account = LedgerAccount(code=f"OPEN-{business_admin['suffix']}", name="Opening equity", account_type="equity")
+    db.add_all([address, cogs_account, equity_account])
+    db.flush()
+    db.query(ERPInventoryCostingConfig).delete()
+    db.add(ERPInventoryCostingConfig(
+        id="default", cost_method=cost_method, inventory_account_id=business_admin["inventory_account_id"],
+        cogs_account_id=cogs_account.id, opening_equity_account_id=equity_account.id,
+        updated_by=f"admin-{business_admin['suffix']}",
+    ))
+    db.add_all([
+        ERPInventoryCostLayer(variant_id=variant.id, original_quantity=2, remaining_quantity=2, unit_cost="100.00",
+                             source_type="opening_balance", source_key=f"opening-1-{business_admin['suffix']}"),
+        ERPInventoryCostLayer(variant_id=variant.id, original_quantity=2, remaining_quantity=2, unit_cost="150.00",
+                             source_type="opening_balance", source_key=f"opening-2-{business_admin['suffix']}"),
+    ])
+    db.commit()
+    address_id = address.id
+    db.close()
+
+    client = TestClient(app)
+    admin_headers = {"Authorization": f"Bearer {business_admin['token']}"}
+    customer_headers = {"Authorization": f"Bearer {business_admin['customer_token']}"}
+    order = client.post("/api/v1/orders", headers=customer_headers, json={
+        "address_id": address_id,
+        "payment_method": "UPI",
+        "items": [{"product_id": product_id, "variant_id": business_admin["variant_id"], "size": "S", "quantity": 2}],
+    })
+    assert order.status_code == 201, order.text
+    order_id = order.json()["id"]
+    delivered = client.put(f"/api/v1/orders/admin/{order_id}/status", headers=admin_headers, json={"status": "delivered"})
+    assert delivered.status_code == 200, delivered.text
+    retried = client.put(f"/api/v1/orders/admin/{order_id}/status", headers=admin_headers, json={"status": "delivered"})
+    assert retried.status_code == 200, retried.text
+
+    db = SessionLocal()
+    from app.models.ledger import JournalEntry, JournalLine
+    entry = db.query(JournalEntry).filter(JournalEntry.source_key == f"order-cogs:{order_id}").one()
+    lines = db.query(JournalLine).filter(JournalLine.journal_entry_id == entry.id).all()
+    assert sum((Decimal(row.debit) for row in lines), Decimal("0")) == Decimal(expected_cost)
+    assert sum((Decimal(row.credit) for row in lines), Decimal("0")) == Decimal(expected_cost)
+    consumptions = db.query(ERPInventoryCostConsumption).join(OrderItem).filter(OrderItem.order_id == order_id).all()
+    assert sum(row.quantity for row in consumptions) == 2
+    assert sum((Decimal(row.total_cost) for row in consumptions), Decimal("0")) == Decimal(expected_cost)
+    assert db.query(JournalEntry).filter(JournalEntry.source_key == f"order-cogs:{order_id}").count() == 1
+    db.query(ERPInventoryCostConsumption).delete()
+    db.query(ERPInventoryCostLayer).delete()
+    db.query(ERPInventoryCostingConfig).delete()
+    db.commit()
+    db.close()
 
 
 

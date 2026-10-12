@@ -522,7 +522,8 @@ def inventory_costing_status(db: Session = Depends(get_db)):
         "unvalued_units": sum(max(0, stock - costed) for stock, costed in positive_rows),
         "overvalued_units": sum(max(0, costed - stock) for stock, costed in positive_rows),
         "unposted_cost_consumptions": db.query(func.count(ERPInventoryCostConsumption.id)).filter(
-            ERPInventoryCostConsumption.journal_entry_id.is_(None)
+            ERPInventoryCostConsumption.journal_entry_id.is_(None),
+            ERPInventoryCostConsumption.total_cost > 0,
         ).scalar() or 0,
     }
 

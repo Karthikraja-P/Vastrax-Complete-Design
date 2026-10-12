@@ -14,7 +14,7 @@ from app.models.order_item import OrderItem
 from app.models.payment import Payment
 from app.models.product import Product
 from app.models.product_variant import ProductVariant
-from app.services.erp_posting_service import post_order_revenue
+from app.services.erp_posting_service import post_order_cogs, post_order_revenue
 from app.models.user import User
 from app.models.business import StockMovement
 from app.schemas.orders import OrderCreate, OrderResponse
@@ -216,9 +216,10 @@ class OrderService:
         already_collected = payment.status == "success"
         payment.status = "success"
         order.payment_status = "paid"
-        from app.services.erp_posting_service import post_order_revenue, post_payment_receipt
+        from app.services.erp_posting_service import post_order_cogs, post_order_revenue, post_payment_receipt
         post_payment_receipt(self.db, payment)
         post_order_revenue(self.db, order)
+        post_order_cogs(self.db, order)
         self.db.commit()
         self.db.refresh(payment)
         return {"order_id": order.id, "payment_id": payment.id, "payment_status": order.payment_status,
@@ -246,6 +247,7 @@ class OrderService:
         order.status = new_status
         if new_status == "delivered":
             post_order_revenue(self.db, order)
+            post_order_cogs(self.db, order)
         self.db.commit()
         self.db.refresh(order)
         logger.info("Admin updated order %s to: %s", order_id, new_status)
