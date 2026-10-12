@@ -16,6 +16,8 @@ interface GarmentViewer3DProps {
   autoRotate?: boolean;
   className?: string;
   badgeTitle?: string;
+  showBadge?: boolean;
+  showInteractionHint?: boolean;
   showControls?: boolean;
   onClose?: () => void;
 }
@@ -27,6 +29,8 @@ export function GarmentViewer3D({
   autoRotate = true,
   className = "",
   badgeTitle = "Garment Preview",
+  showBadge = true,
+  showInteractionHint = true,
   showControls = true,
 }: GarmentViewer3DProps) {
   const viewerRef = useRef<any>(null);
@@ -134,21 +138,19 @@ export function GarmentViewer3D({
       className={`relative w-full h-full rounded-[2rem] overflow-hidden flex flex-col items-center justify-center select-none transition-all duration-300 ${className}`}
       style={{ background: backdrops[backdropIndex].bg }}
     >
-      {/* Top Header Badge */}
-      <div className="absolute top-4 left-4 z-20 flex items-center gap-2.5 bg-black/60 dark:bg-white/10 backdrop-blur-xl border border-white/10 px-3.5 py-1.5 rounded-full shadow-lg pointer-events-none">
-        <div className="w-2 h-2 rounded-full bg-[#38bdf8] animate-pulse" />
-        <span className="text-[11px] font-bold tracking-wider uppercase text-white/90">
-          3D Interactive
-        </span>
-        <span className="text-[10px] text-white/50 border-l border-white/20 pl-2">
-          {badgeTitle}
-        </span>
-      </div>
+      {showBadge && (
+        <div className="absolute top-4 left-4 z-20 flex items-center gap-2.5 bg-black/60 dark:bg-white/10 backdrop-blur-xl border border-white/10 px-3.5 py-1.5 rounded-full shadow-lg pointer-events-none">
+          <div className="w-2 h-2 rounded-full bg-[#38bdf8] animate-pulse" />
+          <span className="text-[11px] font-bold tracking-wider uppercase text-white/90">3D Interactive</span>
+          <span className="text-[10px] text-white/50 border-l border-white/20 pl-2">{badgeTitle}</span>
+        </div>
+      )}
 
-      {/* Stats Pill (Top Right) */}
-      <div className="absolute top-4 right-4 z-20 hidden sm:flex items-center gap-3 bg-black/60 dark:bg-white/10 backdrop-blur-xl border border-white/10 px-3 py-1.5 rounded-xl shadow-lg pointer-events-none text-[11px] text-white/80">
-        <span className="text-white/70">Drag to rotate • Scroll to zoom</span>
-      </div>
+      {showInteractionHint && (
+        <div className="absolute top-4 right-4 z-20 hidden sm:flex items-center gap-3 bg-black/60 dark:bg-white/10 backdrop-blur-xl border border-white/10 px-3 py-1.5 rounded-xl shadow-lg pointer-events-none text-[11px] text-white/80">
+          <span className="text-white/70">Drag to rotate • Scroll to zoom</span>
+        </div>
+      )}
 
       {/* Model Viewer Web Component */}
       {isScriptLoaded ? (
