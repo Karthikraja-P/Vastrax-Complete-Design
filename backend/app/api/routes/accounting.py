@@ -11,6 +11,10 @@ from sqlalchemy.orm import Session
 from app.db.database import get_db
 from app.middleware.auth import require_business_permission
 from app.models.ledger import JournalEntry, JournalLine, LedgerAccount
+from app.models.erp_posting_config import ERPPostingConfig
+from app.models.payment import Payment
+from app.models.payment_refund import PaymentRefund
+from app.services.erp_posting_service import reconcile_postings
 from app.models.user import User
 
 router = APIRouter(tags=["erp-accounting"], dependencies=[Depends(require_business_permission("erp"))])
@@ -43,6 +47,98 @@ def _entry_payload(db: Session, entry: JournalEntry) -> dict:
             "lines": [{"account_id": line.account_id, "account_code": code, "account_name": name,
                        "debit": str(line.debit), "credit": str(line.credit), "memo": line.memo} for line, code, name in rows]}
 
+
+
+
+class PostingSettingsIn(BaseModel):
+    payment_clearing_account_id: str
+    customer_advances_account_id: str
+    sales_revenue_account_id: str
+    sales_returns_account_id: str
+
+
+def _entry_exists(db: Session, source_key: str) -> bool:
+    return db.query(JournalEntry.id).filter(JournalEntry.source_key == source_key).first() is not None
+
+
+def _processed_refunds_total(db: Session, payment_id: str) -> Decimal:
+    rows = db.query(PaymentRefund.amount).filter(
+        PaymentRefund.payment_id == payment_id, PaymentRefund.status == "processed"
+    ).all()
+    return sum((Decimal(row[0]) for row in rows), Decimal("0.00"))
+
+
+def posting_status(db: Session) -> dict:
+    configured = db.get(ERPPostingConfig, "default") is not None
+    captured = db.query(Payment).filter(Payment.status.in_(("success", "partially_refunded", "refunded"))).all()
+    unposted_receipts = sum(1 for payment in captured if not _entry_exists(db, f"payment-receipt:{payment.id}"))
+    delivered = [payment for payment in captured if payment.order and payment.order.status == "delivered"]
+    unposted_sales = sum(1 for payment in delivered if not _entry_exists(db, f"order-revenue:{payment.id}")
+                         and Decimal(payment.amount) > _processed_refunds_total(db, payment.id))
+    processed_refunds = db.query(PaymentRefund).filter(PaymentRefund.status == "processed").all()
+    unposted_refunds = sum(1 for refund in processed_refunds if not _entry_exists(db, f"payment-refund:{refund.id}"))
+    return {"configured": configured, "unposted_receipts": unposted_receipts,
+            "unposted_sales": unposted_sales, "unposted_refunds": unposted_refunds}
+
+
+@router.get("/erp/posting-settings")
+def get_posting_settings(db: Session = Depends(get_db)):
+    config = db.get(ERPPostingConfig, "default")
+    settings_payload = None
+    if config:
+        settings_payload = {
+            "payment_clearing_account_id": config.payment_clearing_account_id,
+            "customer_advances_account_id": config.customer_advances_account_id,
+            "sales_revenue_account_id": config.sales_revenue_account_id,
+            "sales_returns_account_id": config.sales_returns_account_id,
+            "updated_at": config.updated_at,
+        }
+    accounts = db.query(LedgerAccount).filter(LedgerAccount.is_active.is_(True)).order_by(LedgerAccount.code).all()
+    return {"settings": settings_payload,
+            "accounts": [{"id": a.id, "code": a.code, "name": a.name, "account_type": a.account_type} for a in accounts],
+            "status": posting_status(db)}
+
+
+@router.put("/erp/posting-settings")
+def save_posting_settings(body: PostingSettingsIn, admin: User = Depends(require_business_permission("erp")), db: Session = Depends(get_db)):
+    expected = {
+        body.payment_clearing_account_id: "asset",
+        body.customer_advances_account_id: "liability",
+        body.sales_revenue_account_id: "revenue",
+        body.sales_returns_account_id: "expense",
+    }
+    if len(expected) != 4:
+        raise HTTPException(422, "Choose a different ledger account for each posting role")
+    accounts = db.query(LedgerAccount).filter(
+        LedgerAccount.id.in_(expected), LedgerAccount.is_active.is_(True)
+    ).all()
+    by_id = {account.id: account for account in accounts}
+    if len(by_id) != 4 or any(by_id[key].account_type != value for key, value in expected.items()):
+        raise HTTPException(422, "Select active accounts with the required asset, liability, revenue, and expense types")
+    config = db.get(ERPPostingConfig, "default")
+    values = body.model_dump()
+    if config:
+        for key, value in values.items():
+            setattr(config, key, value)
+        config.updated_by = admin.id
+    else:
+        db.add(ERPPostingConfig(id="default", **values, updated_by=admin.id))
+    db.commit()
+    return get_posting_settings(db)
+
+
+@router.get("/erp/postings/status")
+def get_posting_status(db: Session = Depends(get_db)):
+    return posting_status(db)
+
+
+@router.post("/erp/postings/reconcile")
+def reconcile_erp_postings(_: User = Depends(require_business_permission("erp")), db: Session = Depends(get_db)):
+    if not db.get(ERPPostingConfig, "default"):
+        raise HTTPException(409, "Configure automatic posting accounts before reconciling")
+    counts = reconcile_postings(db)
+    db.commit()
+    return {"posted": counts, "status": posting_status(db)}
 
 @router.get("/erp/accounts")
 def list_accounts(db: Session = Depends(get_db)):

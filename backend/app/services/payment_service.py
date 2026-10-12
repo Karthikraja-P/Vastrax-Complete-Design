@@ -17,6 +17,7 @@ from app.models.returns import SalesReturn
 from app.models.product_variant import ProductVariant
 from app.models.user import User
 from app.schemas.payments import PaymentCreate, PaymentResponse, PaymentVerify
+from app.services.erp_posting_service import post_payment_receipt, post_refund
 
 logger = get_logger(__name__)
 
@@ -150,7 +151,7 @@ class PaymentService:
         return {"status": "ok", "txn_id": payment.id}
 
     def _mark_payment_success(self, payment: Payment) -> None:
-        if payment.status == "success":
+        if payment.status in ("success", "partially_refunded", "refunded"):
             self.db.commit()
             return
 
@@ -167,6 +168,7 @@ class PaymentService:
             except Exception as exc:
                 logger.error("Failed post-payment hooks: %s", exc)
 
+        post_payment_receipt(self.db, payment)
         self.db.commit()
         logger.info("Payment success: %s for order: %s", payment.id, payment.order_id)
 
@@ -219,6 +221,7 @@ class PaymentService:
             if refund.status not in ("processed", "failed"):
                 refund.status = "processed" if event == "refund.processed" else "failed"
                 self._sync_refund_totals(payment)
+                post_refund(self.db, refund)
                 self.db.commit()
             return {"status": "ok"}
 
@@ -322,6 +325,7 @@ class PaymentService:
         self.db.flush()
         if _is_mock_mode():
             processed, _ = self._sync_refund_totals(payment)
+            post_refund(self.db, refund)
             self.db.commit()
             return {"status": "refunded" if processed >= Decimal(payment.amount) else "partially_refunded",
                     "txn_id": payment.id, "refund_id": refund.id, "amount": str(refund.amount),
@@ -365,6 +369,8 @@ class PaymentService:
             gateway_status = data.get("status")
             refund.status = gateway_status if gateway_status in ("processed", "failed") else "pending"
             self._sync_refund_totals(payment)
+            if refund.status == "processed":
+                post_refund(self.db, refund)
             self.db.commit()
             self.db.refresh(refund)
             return {"status": refund.status, "txn_id": payment.id, "refund_id": refund.id,

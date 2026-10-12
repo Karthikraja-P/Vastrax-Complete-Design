@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from sqlalchemy import CheckConstraint, Date, DateTime, ForeignKey, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import CheckConstraint, Date, DateTime, ForeignKey, Index, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -23,11 +23,13 @@ class LedgerAccount(Base):
 
 class JournalEntry(Base):
     __tablename__ = "erp_journal_entries"
+    __table_args__ = (Index("uq_erp_journal_source_key", "source_key", unique=True),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: f"JE-{uuid.uuid4().hex[:12].upper()}")
     posting_date: Mapped[datetime] = mapped_column(Date, nullable=False)
     description: Mapped[str] = mapped_column(String(255), nullable=False)
     reference: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    source_key: Mapped[str | None] = mapped_column(String(120), nullable=True)
     created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
 
