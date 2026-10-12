@@ -123,6 +123,46 @@ def crm_customers(q: str | None = Query(default=None, max_length=120), db: Sessi
              "lifetime_value": str(row.lifetime_value or 0), "last_order_at": row.last_order_at} for row in rows]
 
 
+@router.get("/crm/customers/{customer_id}")
+def crm_customer_detail(customer_id: str, db: Session = Depends(get_db)):
+    customer = db.query(User).filter(User.id == customer_id, User.role == "customer").first()
+    if not customer:
+        raise HTTPException(404, "Customer not found")
+    orders = db.query(Order).filter(Order.user_id == customer.id).order_by(Order.placed_at.desc()).limit(100).all()
+    order_ids = [order.id for order in orders]
+    item_rows = []
+    if order_ids:
+        item_rows = db.query(OrderItem, Product.name, ProductVariant.size).join(
+            Product, Product.id == OrderItem.product_id
+        ).join(ProductVariant, ProductVariant.id == OrderItem.variant_id).filter(
+            OrderItem.order_id.in_(order_ids)
+        ).all()
+    items_by_order: dict[str, list[dict]] = {}
+    for item, product_name, size in item_rows:
+        items_by_order.setdefault(item.order_id, []).append({
+            "product_name": product_name, "size": size, "quantity": item.quantity,
+            "unit_price": str(item.unit_price),
+        })
+    activities = db.query(CRMActivity, User.full_name, User.email).join(
+        User, User.id == CRMActivity.created_by
+    ).filter(CRMActivity.customer_id == customer.id).order_by(
+        CRMActivity.created_at.desc()
+    ).limit(100).all()
+    return {
+        "customer": {"id": customer.id, "full_name": customer.full_name, "email": customer.email,
+                      "phone": customer.phone_number, "created_at": customer.created_at},
+        "orders": [{"id": order.id, "status": order.status, "payment_status": order.payment_status,
+                     "total_amount": str(order.total_amount), "placed_at": order.placed_at,
+                     "shipping_status": order.shipping_status, "items": items_by_order.get(order.id, [])}
+                    for order in orders],
+        "activities": [{"id": activity.id, "activity_type": activity.activity_type,
+                         "subject": activity.subject, "description": activity.description,
+                         "due_at": activity.due_at, "completed_at": activity.completed_at,
+                         "created_at": activity.created_at,
+                         "created_by": name or email} for activity, name, email in activities],
+    }
+
+
 @router.get("/crm/leads")
 def list_leads(stage: str | None = None, db: Session = Depends(get_db)):
     q = db.query(CRMLead)
