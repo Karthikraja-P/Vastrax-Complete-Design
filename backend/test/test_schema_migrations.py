@@ -35,3 +35,26 @@ def test_legacy_supplier_expense_journal_links_are_backfilled():
         )).scalar_one()
         assert linked == "JE-LEGACY"
     engine.dispose()
+
+
+def test_legacy_crm_activities_get_nullable_assignee_column():
+    engine = create_engine("sqlite:///:memory:")
+    with engine.begin() as conn:
+        conn.execute(text("""CREATE TABLE crm_activities (
+            id VARCHAR(36) PRIMARY KEY,
+            customer_id VARCHAR(36),
+            lead_id VARCHAR(36),
+            activity_type VARCHAR(30),
+            subject VARCHAR(255),
+            created_by VARCHAR(36),
+            created_at DATETIME
+        )"""))
+        conn.execute(text("INSERT INTO crm_activities (id, activity_type, subject) VALUES ('OLD', 'task', 'Existing follow-up')"))
+
+    ensure_columns(engine)
+
+    with engine.connect() as conn:
+        columns = {row["name"] for row in conn.execute(text("PRAGMA table_info(crm_activities)")).mappings()}
+        assert "assigned_to" in columns
+        assert conn.execute(text("SELECT assigned_to FROM crm_activities WHERE id = 'OLD'")).scalar_one() is None
+    engine.dispose()

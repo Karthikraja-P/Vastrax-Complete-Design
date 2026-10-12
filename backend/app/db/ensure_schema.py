@@ -16,6 +16,9 @@ ADDITIVE_COLUMNS = {
     "crm_leads": {
         "converted_customer_id": "VARCHAR(36) REFERENCES users(id)",
     },
+    "crm_activities": {
+        "assigned_to": "VARCHAR(36) REFERENCES users(id) ON DELETE SET NULL",
+    },
     "erp_journal_entries": {
         "source_key": "VARCHAR(120)",
     },

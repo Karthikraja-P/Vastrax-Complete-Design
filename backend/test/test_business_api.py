@@ -183,6 +183,25 @@ def test_crm_leads_tasks_customer_metrics_and_admin_access(business_admin):
     task = client.post("/api/v1/crm/activities", headers=headers, json={"lead_id": lead_id, "activity_type": "task", "subject": "Call about sizing", "due_at": "2020-01-01T00:00:00Z"})
     assert task.status_code == 201, task.text
     assert client.get("/api/v1/crm/overview", headers=headers).json()["due_tasks"] >= 1
+    assert client.post("/api/v1/crm/activities", headers=headers, json={"lead_id": lead_id, "activity_type": "task", "subject": "Bad assignee", "assigned_to": "missing-user"}).status_code == 422
+    roster = client.get("/api/v1/crm/team-members", headers=headers)
+    assert roster.status_code == 200 and any(member["id"] == f"admin-{business_admin['suffix']}" for member in roster.json())
+    grant = client.put("/api/v1/users/admin/business-team", headers=headers, json={
+        "email": f"customer-{business_admin['suffix']}@example.com", "permissions": ["crm"],
+    })
+    assert grant.status_code == 200, grant.text
+    roster = client.get("/api/v1/crm/team-members", headers=headers).json()
+    assert any(member["id"] == business_admin["customer_id"] for member in roster)
+    assigned = client.post("/api/v1/crm/activities", headers=headers, json={
+        "customer_id": business_admin["customer_id"], "activity_type": "task", "subject": "Assigned sizing follow-up",
+        "due_at": "2030-01-01T00:00:00Z", "assigned_to": business_admin["customer_id"],
+    })
+    assert assigned.status_code == 201, assigned.text
+    assert assigned.json()["assigned_to"] == business_admin["customer_id"]
+    open_tasks = client.get("/api/v1/crm/activities", headers=headers, params={"upcoming": True}).json()
+    assert any(row["id"] == assigned.json()["id"] and row["assigned_to"] == business_admin["customer_id"] for row in open_tasks)
+    customer_detail = client.get(f"/api/v1/crm/customers/{business_admin['customer_id']}", headers=headers).json()
+    assert any(row["assigned_to_name"] == "Beta Customer" for row in customer_detail["activities"])
     assert client.post("/api/v1/crm/activities", headers=headers, json={"customer_id": business_admin["customer_id"], "lead_id": lead_id, "subject": "invalid"}).status_code == 422
     customer_rows = client.get("/api/v1/crm/customers", headers=headers, params={"q": "Beta Customer"}).json()
     assert any(row["id"] == business_admin["customer_id"] for row in customer_rows)

@@ -6,7 +6,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
-from sqlalchemy import case, func, or_
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
@@ -20,6 +20,7 @@ from app.models.product import Product
 from app.models.product_variant import ProductVariant
 from app.models.user import User
 from app.models.marketing_consent import CRMMarketingConsentEvent
+from app.models.business_team import BusinessTeamPermission
 
 router = APIRouter(tags=["crm-erp"])
 
@@ -43,6 +44,7 @@ class ActivityCreate(BaseModel):
     subject: str = Field(min_length=1, max_length=255)
     description: str | None = None
     due_at: datetime | None = None
+    assigned_to: str | None = None
 
 
 class SupplierCreate(BaseModel):
@@ -126,6 +128,18 @@ def crm_overview(db: Session = Depends(get_db)):
     return {"customers": customers, "open_leads": open_leads, "due_tasks": due_tasks, "logged_activities": activities}
 
 
+@router.get("/crm/team-members", dependencies=[Depends(require_business_permission("crm"))])
+def crm_team_members(db: Session = Depends(get_db)):
+    crm_user_ids = select(BusinessTeamPermission.user_id).where(
+        BusinessTeamPermission.permission == "crm"
+    )
+    users = db.query(User).filter(
+        User.is_active.is_(True),
+        or_(func.lower(User.role) == "admin", User.id.in_(crm_user_ids)),
+    ).order_by(User.full_name, User.email).all()
+    return [{"id": user.id, "full_name": user.full_name, "email": user.email} for user in users]
+
+
 @router.get("/crm/customers", dependencies=[Depends(require_business_permission("crm"))])
 def crm_customers(q: str | None = Query(default=None, max_length=120), db: Session = Depends(get_db)):
     query = db.query(
@@ -173,11 +187,12 @@ def crm_customer_detail(customer_id: str, db: Session = Depends(get_db)):
         if key in consent_state and key not in consent_seen:
             consent_state[key] = event.granted
             consent_seen.add(key)
-    activities = db.query(CRMActivity, User.full_name, User.email).join(
-        User, User.id == CRMActivity.created_by
-    ).filter(CRMActivity.customer_id == customer.id).order_by(
-        CRMActivity.created_at.desc()
-    ).limit(100).all()
+    activities = db.query(CRMActivity).filter(
+        CRMActivity.customer_id == customer.id
+    ).order_by(CRMActivity.created_at.desc()).limit(100).all()
+    activity_user_ids = {activity.created_by for activity in activities}
+    activity_user_ids.update(activity.assigned_to for activity in activities if activity.assigned_to)
+    activity_users = {user.id: user for user in db.query(User).filter(User.id.in_(activity_user_ids)).all()} if activity_user_ids else {}
     return {
         "customer": {"id": customer.id, "full_name": customer.full_name, "email": customer.email,
                       "phone": customer.phone_number, "created_at": customer.created_at},
@@ -194,7 +209,9 @@ def crm_customer_detail(customer_id: str, db: Session = Depends(get_db)):
                          "subject": activity.subject, "description": activity.description,
                          "due_at": activity.due_at, "completed_at": activity.completed_at,
                          "created_at": activity.created_at,
-                         "created_by": name or email} for activity, name, email in activities],
+                         "created_by": (activity_users[activity.created_by].full_name or activity_users[activity.created_by].email) if activity.created_by in activity_users else activity.created_by,
+                         "assigned_to": activity.assigned_to,
+                         "assigned_to_name": ((activity_users[activity.assigned_to].full_name or activity_users[activity.assigned_to].email) if activity.assigned_to in activity_users else None)} for activity in activities],
     }
 
 
@@ -300,6 +317,16 @@ def create_activity(body: ActivityCreate, admin: User = Depends(require_business
         raise HTTPException(404, "Customer not found")
     if body.lead_id and not db.get(CRMLead, body.lead_id):
         raise HTTPException(404, "Lead not found")
+    if body.assigned_to:
+        assignee = db.query(User).filter(User.id == body.assigned_to, User.is_active.is_(True)).first()
+        has_crm_access = assignee and (
+            str(assignee.role).lower() == "admin" or db.query(BusinessTeamPermission.id).filter(
+                BusinessTeamPermission.user_id == assignee.id,
+                BusinessTeamPermission.permission == "crm",
+            ).first()
+        )
+        if not has_crm_access:
+            raise HTTPException(422, "Choose an active admin or CRM team member")
     activity = CRMActivity(**body.model_dump(), created_by=admin.id)
     db.add(activity)
     db.commit()
