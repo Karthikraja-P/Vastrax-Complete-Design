@@ -19,6 +19,9 @@ ADDITIVE_COLUMNS = {
     "crm_activities": {
         "assigned_to": "VARCHAR(36) REFERENCES users(id) ON DELETE SET NULL",
     },
+    "support_tickets": {
+        "assigned_to": "VARCHAR(36) REFERENCES users(id) ON DELETE SET NULL",
+    },
     "erp_journal_entries": {
         "source_key": "VARCHAR(120)",
     },

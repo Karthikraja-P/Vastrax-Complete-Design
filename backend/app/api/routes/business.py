@@ -19,6 +19,7 @@ from app.models.order_item import OrderItem
 from app.models.product import Product
 from app.models.product_variant import ProductVariant
 from app.models.user import User
+from app.models.support_ticket import SupportTicket
 from app.models.marketing_consent import CRMMarketingConsentEvent
 from app.models.business_team import BusinessTeamPermission
 
@@ -44,6 +45,12 @@ class ActivityCreate(BaseModel):
     subject: str = Field(min_length=1, max_length=255)
     description: str | None = None
     due_at: datetime | None = None
+    assigned_to: str | None = None
+
+
+class SupportTicketUpdate(BaseModel):
+    status: Literal["OPEN", "IN_PROGRESS", "RESOLVED", "CLOSED"] | None = None
+    priority: Literal["LOW", "MEDIUM", "HIGH", "URGENT"] | None = None
     assigned_to: str | None = None
 
 
@@ -177,6 +184,11 @@ def crm_customer_detail(customer_id: str, db: Session = Depends(get_db)):
             "product_name": product_name, "size": size, "quantity": item.quantity,
             "unit_price": str(item.unit_price),
         })
+    support_tickets = db.query(SupportTicket).filter(
+        SupportTicket.user_id == customer.id
+    ).order_by(SupportTicket.created_at.desc()).limit(100).all()
+    support_assignee_ids = {ticket.assigned_to for ticket in support_tickets if ticket.assigned_to}
+    support_assignees = {user.id: user for user in db.query(User).filter(User.id.in_(support_assignee_ids)).all()} if support_assignee_ids else {}
     consent_events = db.query(CRMMarketingConsentEvent).filter(
         CRMMarketingConsentEvent.customer_id == customer.id
     ).order_by(CRMMarketingConsentEvent.recorded_at.desc(), CRMMarketingConsentEvent.id.desc()).limit(100).all()
@@ -200,6 +212,13 @@ def crm_customer_detail(customer_id: str, db: Session = Depends(get_db)):
                      "total_amount": str(order.total_amount), "placed_at": order.placed_at,
                      "shipping_status": order.shipping_status, "items": items_by_order.get(order.id, [])}
                     for order in orders],
+        "support_tickets": [{
+            "id": ticket.id, "order_id": ticket.order_id, "subject": ticket.subject,
+            "description": ticket.description, "status": ticket.status, "priority": ticket.priority,
+            "assigned_to": ticket.assigned_to,
+            "assigned_to_name": ((support_assignees[ticket.assigned_to].full_name or support_assignees[ticket.assigned_to].email) if ticket.assigned_to in support_assignees else None),
+            "created_at": ticket.created_at, "updated_at": ticket.updated_at,
+        } for ticket in support_tickets],
         "marketing_preferences": {
             **consent_state,
             "history": [{"channel": event.channel, "granted": event.granted, "source": event.source,
@@ -213,6 +232,80 @@ def crm_customer_detail(customer_id: str, db: Session = Depends(get_db)):
                          "assigned_to": activity.assigned_to,
                          "assigned_to_name": ((activity_users[activity.assigned_to].full_name or activity_users[activity.assigned_to].email) if activity.assigned_to in activity_users else None)} for activity in activities],
     }
+
+
+@router.get("/crm/support-tickets", dependencies=[Depends(require_business_permission("crm"))])
+def list_crm_support_tickets(
+    ticket_status: Literal["OPEN", "IN_PROGRESS", "RESOLVED", "CLOSED"] | None = Query(default=None, alias="status"),
+    priority: Literal["LOW", "MEDIUM", "HIGH", "URGENT"] | None = None,
+    db: Session = Depends(get_db),
+):
+    query = db.query(SupportTicket, User.full_name, User.email).outerjoin(
+        User, User.id == SupportTicket.user_id
+    )
+    if ticket_status:
+        query = query.filter(SupportTicket.status == ticket_status)
+    if priority:
+        query = query.filter(SupportTicket.priority == priority)
+    rows = query.order_by(
+        case((SupportTicket.status == "OPEN", 0), (SupportTicket.status == "IN_PROGRESS", 1), else_=2),
+        case((SupportTicket.priority == "URGENT", 0), (SupportTicket.priority == "HIGH", 1), (SupportTicket.priority == "MEDIUM", 2), else_=3),
+        SupportTicket.created_at.desc(),
+    ).limit(1000).all()
+    assignee_ids = {ticket.assigned_to for ticket, _, _ in rows if ticket.assigned_to}
+    assignees = {user.id: user for user in db.query(User).filter(User.id.in_(assignee_ids)).all()} if assignee_ids else {}
+    return [{
+        "id": ticket.id, "customer_id": ticket.user_id, "customer_name": customer_name or customer_email,
+        "customer_email": customer_email, "order_id": ticket.order_id,
+        "subject": ticket.subject, "description": ticket.description, "status": ticket.status,
+        "priority": ticket.priority, "assigned_to": ticket.assigned_to,
+        "assigned_to_name": ((assignees[ticket.assigned_to].full_name or assignees[ticket.assigned_to].email) if ticket.assigned_to in assignees else None),
+        "created_at": ticket.created_at, "updated_at": ticket.updated_at,
+    } for ticket, customer_name, customer_email in rows]
+
+
+@router.patch("/crm/support-tickets/{ticket_id}", dependencies=[Depends(require_business_permission("crm"))])
+def update_crm_support_ticket(
+    ticket_id: str,
+    body: SupportTicketUpdate,
+    admin: User = Depends(require_business_permission("crm")),
+    db: Session = Depends(get_db),
+):
+    updates = body.model_dump(exclude_unset=True)
+    if not updates:
+        raise HTTPException(422, "Provide at least one ticket field to update")
+    ticket = db.query(SupportTicket).filter(SupportTicket.id == ticket_id).with_for_update().first()
+    if not ticket:
+        raise HTTPException(404, "Support ticket not found")
+    if "assigned_to" in updates and updates["assigned_to"] is not None:
+        assignee = db.query(User).filter(User.id == updates["assigned_to"], User.is_active.is_(True)).first()
+        has_crm_access = assignee and (
+            str(assignee.role).lower() == "admin" or db.query(BusinessTeamPermission.id).filter(
+                BusinessTeamPermission.user_id == assignee.id,
+                BusinessTeamPermission.permission == "crm",
+            ).first()
+        )
+        if not has_crm_access:
+            raise HTTPException(422, "Choose an active admin or CRM team member")
+    changes = []
+    for field, value in updates.items():
+        old = getattr(ticket, field)
+        if old != value:
+            setattr(ticket, field, value)
+            changes.append(f"{field}: {old or 'unassigned'} → {value or 'unassigned'}")
+    if not changes:
+        return {"id": ticket.id, "status": ticket.status, "priority": ticket.priority, "assigned_to": ticket.assigned_to}
+    ticket.updated_at = datetime.now(timezone.utc)
+    if ticket.user_id:
+        db.add(CRMActivity(
+            customer_id=ticket.user_id,
+            activity_type="note",
+            subject=f"Support ticket updated · {ticket.id}",
+            description="; ".join(changes),
+            created_by=admin.id,
+        ))
+    db.commit()
+    return {"id": ticket.id, "status": ticket.status, "priority": ticket.priority, "assigned_to": ticket.assigned_to}
 
 
 @router.get("/crm/leads", dependencies=[Depends(require_business_permission("crm"))])

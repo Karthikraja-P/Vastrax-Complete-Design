@@ -16,6 +16,7 @@ from app.models.order import Order
 from app.models.order_item import OrderItem
 from app.models.product_variant import ProductVariant
 from app.models.user import User
+from app.models.support_ticket import SupportTicket
 from app.models.ledger import LedgerAccount
 
 
@@ -171,6 +172,37 @@ def test_supplier_purchase_receipt_and_stock_audit(business_admin):
     assert adjust.status_code == 200 and adjust.json()["stock_after"] == 6
     movements = client.get("/api/v1/erp/inventory/movements", headers=headers, params={"variant_id": business_admin["variant_id"]}).json()
     assert {movement["reason"] for movement in movements} >= {"purchase_receipt", "damaged"}
+
+
+def test_crm_support_queue_updates_customer_ticket_and_audit(business_admin):
+    db = SessionLocal()
+    ticket = SupportTicket(
+        id=f"ticket-{business_admin['suffix']}", user_id=business_admin["customer_id"],
+        order_id="order-sample", subject="Need exchange", description="Requested a size exchange",
+        status="OPEN", priority="HIGH",
+    )
+    db.add(ticket)
+    db.commit()
+    ticket_id = ticket.id
+    db.close()
+
+    client = TestClient(app)
+    headers = {"Authorization": f"Bearer {business_admin['token']}"}
+    assert client.get("/api/v1/crm/support-tickets").status_code == 401
+    rows = client.get("/api/v1/crm/support-tickets", headers=headers, params={"status": "OPEN", "priority": "HIGH"})
+    assert rows.status_code == 200
+    assert any(row["id"] == ticket_id and row["customer_name"] == "Beta Customer" for row in rows.json())
+    updated = client.patch(f"/api/v1/crm/support-tickets/{ticket_id}", headers=headers, json={
+        "status": "IN_PROGRESS", "priority": "URGENT", "assigned_to": f"admin-{business_admin['suffix']}",
+    })
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["status"] == "IN_PROGRESS" and updated.json()["priority"] == "URGENT"
+    detail = client.get(f"/api/v1/crm/customers/{business_admin['customer_id']}", headers=headers).json()
+    assert detail["support_tickets"][0]["id"] == ticket_id
+    assert detail["support_tickets"][0]["assigned_to_name"] == f"admin-{business_admin['suffix']}@example.test"
+    assert any(activity["subject"] == f"Support ticket updated · {ticket_id}" for activity in detail["activities"])
+    bad_assignee = client.patch(f"/api/v1/crm/support-tickets/{ticket_id}", headers=headers, json={"assigned_to": "missing-user"})
+    assert bad_assignee.status_code == 422
 
 
 def test_crm_leads_tasks_customer_metrics_and_admin_access(business_admin):

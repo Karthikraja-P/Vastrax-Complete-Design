@@ -58,3 +58,27 @@ def test_legacy_crm_activities_get_nullable_assignee_column():
         assert "assigned_to" in columns
         assert conn.execute(text("SELECT assigned_to FROM crm_activities WHERE id = 'OLD'")).scalar_one() is None
     engine.dispose()
+
+
+def test_legacy_support_tickets_get_nullable_assignee_column():
+    engine = create_engine("sqlite:///:memory:")
+    with engine.begin() as conn:
+        conn.execute(text("""CREATE TABLE support_tickets (
+            id VARCHAR(36) PRIMARY KEY,
+            user_id VARCHAR(36),
+            subject VARCHAR(255),
+            description TEXT,
+            status VARCHAR(20),
+            priority VARCHAR(20),
+            created_at DATETIME,
+            updated_at DATETIME
+        )"""))
+        conn.execute(text("INSERT INTO support_tickets (id, subject, description) VALUES ('OLD-TICKET', 'Existing ticket', 'Keep this row')"))
+
+    ensure_columns(engine)
+
+    with engine.connect() as conn:
+        columns = {row["name"] for row in conn.execute(text("PRAGMA table_info(support_tickets)")).mappings()}
+        assert "assigned_to" in columns
+        assert conn.execute(text("SELECT assigned_to FROM support_tickets WHERE id = 'OLD-TICKET'")).scalar_one() is None
+    engine.dispose()
