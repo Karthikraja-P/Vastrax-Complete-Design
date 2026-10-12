@@ -185,3 +185,47 @@ def test_crm_leads_tasks_customer_metrics_and_admin_access(business_admin):
     assert client.post("/api/v1/crm/activities", headers=headers, json={"customer_id": business_admin["customer_id"], "lead_id": lead_id, "subject": "invalid"}).status_code == 422
     assert client.get("/api/v1/crm/customers", headers=headers, params={"q": "Beta Customer"}).json()[0]["id"] == business_admin["customer_id"]
     assert client.post(f"/api/v1/crm/activities/{task.json()['id']}/complete", headers=headers).status_code == 200
+
+
+def test_supplier_maintenance_updates_and_deactivates_without_deleting_history(business_admin):
+    client = TestClient(app)
+    headers = {"Authorization": f"Bearer {business_admin['token']}"}
+    supplier_path = "/api/v1/erp/suppliers"
+    assert client.patch(f"{supplier_path}/missing", json={"name": "Renamed"}).status_code == 401
+
+    created = client.post(supplier_path, headers=headers, json={
+        "name": "  Textile House  ", "contact_name": "Asha", "email": "asha@example.test",
+        "phone": "+91 90000 00000", "gstin": "27ABCDE1234F1Z5", "address": "Mumbai",
+    })
+    assert created.status_code == 201, created.text
+    supplier = created.json()
+    assert supplier["name"] == "Textile House"
+    assert supplier["is_active"] is True
+
+    updated = client.patch(f"{supplier_path}/{supplier['id']}", headers=headers, json={
+        "contact_name": "Asha Rao", "phone": "+91 91111 11111", "gstin": "27ABCDE1234F1Z5",
+    })
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["contact_name"] == "Asha Rao"
+    assert updated.json()["phone"] == "+91 91111 11111"
+    assert client.patch(f"{supplier_path}/{supplier['id']}", headers=headers, json={"name": "   "}).status_code == 422
+    assert client.patch(f"{supplier_path}/{supplier['id']}", headers=headers, json={}).status_code == 422
+
+    inactive = client.patch(f"{supplier_path}/{supplier['id']}", headers=headers, json={"is_active": False})
+    assert inactive.status_code == 200 and inactive.json()["is_active"] is False
+    rejected_po = client.post("/api/v1/erp/purchase-orders", headers=headers, json={
+        "supplier_id": supplier["id"],
+        "items": [{"variant_id": business_admin["variant_id"], "quantity": 1, "unit_cost": "100.00"}],
+    })
+    assert rejected_po.status_code == 404
+
+    reactivated = client.patch(f"{supplier_path}/{supplier['id']}", headers=headers, json={"is_active": True})
+    assert reactivated.status_code == 200 and reactivated.json()["is_active"] is True
+    po = client.post("/api/v1/erp/purchase-orders", headers=headers, json={
+        "supplier_id": supplier["id"],
+        "items": [{"variant_id": business_admin["variant_id"], "quantity": 1, "unit_cost": "100.00"}],
+    })
+    assert po.status_code == 201, po.text
+    listed = client.get(supplier_path, headers=headers)
+    assert listed.status_code == 200
+    assert any(row["id"] == supplier["id"] and row["is_active"] for row in listed.json())
