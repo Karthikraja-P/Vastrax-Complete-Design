@@ -14,7 +14,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.db.database import get_db
 from app.middleware.auth import require_business_permission
-from app.models.business import CRMActivity, CRMLead, OperatingExpense, PurchaseOrder, PurchaseOrderLine, StockMovement, Supplier, SupplierPayment, SupplierExpensePayment, ERPInventoryReceipt, ERPPurchaseOrderRequest
+from app.models.business import CRMActivity, CRMLead, OperatingExpense, PurchaseOrder, PurchaseOrderLine, StockMovement, Supplier, SupplierPayment, SupplierExpensePayment, ERPInventoryReceipt, ERPPurchaseOrderRequest, ERPInventoryCostingConfig, ERPInventoryCostLayer, ERPInventoryCostConsumption
 from app.models.ledger import JournalEntry, JournalLine, LedgerAccount
 from app.models.order import Order
 from app.models.order_item import OrderItem
@@ -500,6 +500,31 @@ def inventory_movements(variant_id: str | None = None, db: Session = Depends(get
     if variant_id:
         q = q.filter(StockMovement.variant_id == variant_id)
     return q.order_by(StockMovement.created_at.desc()).limit(500).all()
+
+
+@router.get("/erp/inventory-costing/status", dependencies=[Depends(require_business_permission("erp"))])
+def inventory_costing_status(db: Session = Depends(get_db)):
+    rows = db.query(
+        ProductVariant.stock_qty,
+        func.coalesce(func.sum(ERPInventoryCostLayer.remaining_quantity), 0),
+    ).outerjoin(ERPInventoryCostLayer, ERPInventoryCostLayer.variant_id == ProductVariant.id).group_by(ProductVariant.id).all()
+    positive_rows = [(int(stock or 0), int(costed or 0)) for stock, costed in rows if int(stock or 0) > 0]
+    config = db.get(ERPInventoryCostingConfig, "default")
+    return {
+        "configured": config is not None,
+        "cost_method": config.cost_method if config else None,
+        "positive_stock_variants": len(positive_rows),
+        "valued_variants": sum(1 for stock, costed in positive_rows if costed >= stock),
+        "unvalued_variants": sum(1 for stock, costed in positive_rows if costed < stock),
+        "overvalued_variants": sum(1 for stock, costed in positive_rows if costed > stock),
+        "on_hand_units": sum(stock for stock, _ in positive_rows),
+        "valued_units": sum(min(stock, costed) for stock, costed in positive_rows),
+        "unvalued_units": sum(max(0, stock - costed) for stock, costed in positive_rows),
+        "overvalued_units": sum(max(0, costed - stock) for stock, costed in positive_rows),
+        "unposted_cost_consumptions": db.query(func.count(ERPInventoryCostConsumption.id)).filter(
+            ERPInventoryCostConsumption.journal_entry_id.is_(None)
+        ).scalar() or 0,
+    }
 
 
 @router.post("/erp/inventory/{variant_id}/adjust", dependencies=[Depends(require_business_permission("erp"))])

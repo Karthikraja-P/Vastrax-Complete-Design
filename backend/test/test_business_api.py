@@ -283,6 +283,20 @@ def test_erp_purchase_orders_support_pages(business_admin):
     assert first_page["has_more"] is True and second_page["has_more"] is False
 
 
+def test_inventory_costing_status_is_read_only_and_requires_erp_access(business_admin):
+    client = TestClient(app)
+    headers = {"Authorization": f"Bearer {business_admin['token']}"}
+    path = "/api/v1/erp/inventory-costing/status"
+    assert client.get(path).status_code == 401
+    response = client.get(path, headers=headers)
+    assert response.status_code == 200, response.text
+    status_payload = response.json()
+    assert status_payload["configured"] is False
+    assert status_payload["unvalued_variants"] == status_payload["positive_stock_variants"]
+    assert status_payload["unvalued_units"] == status_payload["on_hand_units"]
+    assert status_payload["unposted_cost_consumptions"] == 0
+
+
 def test_customer_marketing_consent_is_opt_in_and_audited(business_admin):
     client = TestClient(app)
     customer_headers = {"Authorization": f"Bearer {business_admin['customer_token']}"}

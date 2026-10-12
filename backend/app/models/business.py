@@ -173,6 +173,58 @@ class ERPInventoryReceipt(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
 
 
+class ERPInventoryCostingConfig(Base):
+    """Owner-approved inventory costing method and ledger mappings."""
+    __tablename__ = "erp_inventory_costing_config"
+
+    id: Mapped[str] = mapped_column(String(20), primary_key=True, default="default")
+    cost_method: Mapped[str] = mapped_column(String(30), nullable=False)
+    inventory_account_id: Mapped[str] = mapped_column(ForeignKey("erp_ledger_accounts.id"), nullable=False)
+    cogs_account_id: Mapped[str] = mapped_column(ForeignKey("erp_ledger_accounts.id"), nullable=False)
+    opening_equity_account_id: Mapped[str] = mapped_column(ForeignKey("erp_ledger_accounts.id"), nullable=False)
+    updated_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now)
+
+
+class ERPInventoryCostLayer(Base):
+    """Remaining inventory quantity and unit cost for FIFO or moving-average valuation."""
+    __tablename__ = "erp_inventory_cost_layers"
+    __table_args__ = (
+        CheckConstraint("original_quantity > 0", name="ck_erp_cost_layer_original_quantity_positive"),
+        CheckConstraint("remaining_quantity >= 0 AND remaining_quantity <= original_quantity", name="ck_erp_cost_layer_remaining_quantity_range"),
+        CheckConstraint("unit_cost >= 0", name="ck_erp_cost_layer_unit_cost_nonnegative"),
+        UniqueConstraint("source_type", "source_key", "variant_id", name="uq_erp_cost_layer_source_variant"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    variant_id: Mapped[str] = mapped_column(ForeignKey("product_variants.id"), nullable=False, index=True)
+    original_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    remaining_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    unit_cost: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False)
+    source_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    source_key: Mapped[str] = mapped_column(String(120), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
+
+
+class ERPInventoryCostConsumption(Base):
+    """Append-only unit-cost allocation for an ecommerce order item."""
+    __tablename__ = "erp_inventory_cost_consumptions"
+    __table_args__ = (
+        CheckConstraint("quantity > 0", name="ck_erp_cost_consumption_quantity_positive"),
+        CheckConstraint("unit_cost >= 0 AND total_cost >= 0", name="ck_erp_cost_consumption_cost_nonnegative"),
+        UniqueConstraint("order_item_id", "cost_layer_id", name="uq_erp_cost_consumption_order_layer"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    order_item_id: Mapped[str] = mapped_column(ForeignKey("order_items.id", ondelete="CASCADE"), nullable=False, index=True)
+    cost_layer_id: Mapped[str] = mapped_column(ForeignKey("erp_inventory_cost_layers.id"), nullable=False, index=True)
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    unit_cost: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False)
+    total_cost: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    journal_entry_id: Mapped[str | None] = mapped_column(ForeignKey("erp_journal_entries.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
+
+
 class OperatingExpense(Base):
     __tablename__ = "erp_operating_expenses"
 
