@@ -1,22 +1,46 @@
 "use client";
 
 import { useEffect } from "react";
+import Image from "next/image";
 import { X, ExternalLink, Sparkles, ShoppingBag } from "lucide-react";
 import { GarmentViewer3D } from "./GarmentViewer3D";
 import Link from "next/link";
 
+interface ModalProduct {
+  id: string | number;
+  name: string;
+  category?: string;
+  price: number;
+  image?: string;
+  model3dUrl?: string;
+}
+
+export interface AddToCartProduct {
+  id: string | number;
+  name: string;
+  price: number;
+  image?: string;
+  colour?: string;
+}
+
+const GENERIC_MODEL_FILES = new Set([
+  "garment_perfect.glb",
+  "garment2_textured.glb",
+  "textured_garment.glb",
+  "garment_photo_textured.glb",
+]);
+
+function getProductModelUrl(url?: string) {
+  if (!url) return undefined;
+  const filename = url.split(/[?#]/, 1)[0].split("/").pop()?.toLowerCase();
+  return filename && GENERIC_MODEL_FILES.has(filename) ? undefined : url;
+}
+
 interface Product3DModalProps {
   isOpen: boolean;
   onClose: () => void;
-  product: {
-    id: string | number;
-    name: string;
-    category?: string;
-    price: number;
-    image?: string;
-    model3dUrl?: string;
-  } | null;
-  onAddToBag?: (product: any) => void;
+  product: ModalProduct | null;
+  onAddToBag?: (product: ModalProduct) => void;
 }
 
 export function Product3DModal({
@@ -41,7 +65,7 @@ export function Product3DModal({
 
   if (!isOpen || !product) return null;
 
-  const modelUrl = product.model3dUrl || "/models/3d/garment2_textured.glb";
+  const modelUrl = getProductModelUrl(product.model3dUrl);
 
   return (
     <div className="fixed inset-0 z-[120] flex items-center justify-center p-3 sm:p-6 md:p-10 animate-fade-in">
@@ -87,28 +111,41 @@ export function Product3DModal({
 
         {/* 3D Canvas Area */}
         <div className="flex-1 relative w-full min-h-0">
-          <GarmentViewer3D
-            src={modelUrl}
-            alt={product.name}
-            poster={product.image}
-            badgeTitle="Garment Preview"
-            className="w-full h-full rounded-none"
-          />
+          {modelUrl ? (
+            <GarmentViewer3D
+              src={modelUrl}
+              alt={product.name}
+              poster={product.image}
+              badgeTitle="Garment Preview"
+              showBadge={false}
+              showInteractionHint={false}
+              className="w-full h-full rounded-none"
+            />
+          ) : (
+            <div className="relative flex h-full w-full items-center justify-center bg-[#10141d]">
+              {product.image ? (
+                <Image
+                  src={product.image}
+                  alt={product.name}
+                  fill
+                  unoptimized
+                  className="object-contain p-6"
+                />
+              ) : (
+                <div className="text-sm text-white/60">No product image available</div>
+              )}
+              <div className="absolute bottom-5 left-1/2 -translate-x-1/2 rounded-full border border-white/10 bg-black/75 px-4 py-2 text-xs text-white/80 backdrop-blur">
+                A product-specific 3D preview is not available yet.
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Footer Quick Action */}
         <div className="px-6 py-3.5 border-t border-white/10 bg-black/40 backdrop-blur-md flex items-center justify-between">
-          <span className="text-xs text-white/50">
-            Interactive 3D garment preview
-          </span>
+          <span />
           <div className="flex items-center gap-3">
-            <Link
-              href={`/storefront/product/${product.id}/tryon`}
-              className="px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 text-white text-xs font-semibold transition-all flex items-center gap-2"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-[#e07a3f]" />
-              <span>Virtual Try-On</span>
-            </Link>
+
             {onAddToBag && (
               <button
                 onClick={() => {

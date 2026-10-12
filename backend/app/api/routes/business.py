@@ -1,0 +1,324 @@
+"""Admin CRM and commerce ERP endpoints backed by Vastrax's existing records."""
+from datetime import date, datetime, timezone
+from decimal import Decimal
+from typing import Literal
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel, Field
+from sqlalchemy import case, func, or_
+from sqlalchemy.orm import Session
+
+from app.db.database import get_db
+from app.middleware.auth import require_admin
+from app.models.business import CRMActivity, CRMLead, OperatingExpense, PurchaseOrder, PurchaseOrderLine, StockMovement, Supplier
+from app.models.order import Order
+from app.models.order_item import OrderItem
+from app.models.product import Product
+from app.models.product_variant import ProductVariant
+from app.models.user import User
+
+router = APIRouter(tags=["crm-erp"], dependencies=[Depends(require_admin)])
+
+
+class LeadCreate(BaseModel):
+    full_name: str = Field(min_length=1, max_length=255)
+    email: str | None = Field(default=None, max_length=255)
+    phone: str | None = Field(default=None, max_length=40)
+    source: str | None = Field(default=None, max_length=100)
+    notes: str | None = None
+
+
+class LeadUpdate(BaseModel):
+    stage: Literal["new", "contacted", "qualified", "converted", "lost"]
+
+
+class ActivityCreate(BaseModel):
+    customer_id: str | None = None
+    lead_id: str | None = None
+    activity_type: Literal["note", "call", "email", "meeting", "task"] = "note"
+    subject: str = Field(min_length=1, max_length=255)
+    description: str | None = None
+    due_at: datetime | None = None
+
+
+class SupplierCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    contact_name: str | None = None
+    email: str | None = None
+    phone: str | None = None
+    gstin: str | None = Field(default=None, max_length=20)
+    address: str | None = None
+
+
+class PurchaseLineCreate(BaseModel):
+    variant_id: str
+    quantity: int = Field(gt=0, le=100000)
+    unit_cost: Decimal = Field(ge=0, max_digits=10, decimal_places=2)
+
+
+class PurchaseOrderCreate(BaseModel):
+    supplier_id: str
+    expected_date: date | None = None
+    notes: str | None = None
+    items: list[PurchaseLineCreate] = Field(min_length=1)
+
+
+class ReceiptLine(BaseModel):
+    line_id: str
+    quantity: int = Field(gt=0, le=100000)
+
+
+class PurchaseReceipt(BaseModel):
+    items: list[ReceiptLine] = Field(min_length=1)
+
+
+class StockAdjustment(BaseModel):
+    quantity_delta: int
+    reason: Literal["count_correction", "damaged", "returned", "other"]
+    notes: str | None = None
+
+
+class ExpenseCreate(BaseModel):
+    category: str = Field(min_length=1, max_length=80)
+    description: str = Field(min_length=1, max_length=255)
+    amount: Decimal = Field(gt=0, max_digits=12, decimal_places=2)
+    tax_amount: Decimal = Field(default=Decimal("0"), ge=0, max_digits=12, decimal_places=2)
+    supplier_id: str | None = None
+    reference: str | None = Field(default=None, max_length=100)
+    expense_date: date
+
+
+@router.get("/crm/overview")
+def crm_overview(db: Session = Depends(get_db)):
+    open_leads = db.query(func.count(CRMLead.id)).filter(CRMLead.stage.notin_(["converted", "lost"])).scalar() or 0
+    due_tasks = db.query(func.count(CRMActivity.id)).filter(
+        CRMActivity.activity_type == "task", CRMActivity.completed_at.is_(None), CRMActivity.due_at <= datetime.now(timezone.utc)
+    ).scalar() or 0
+    customers = db.query(func.count(User.id)).filter(User.role == "customer", User.is_active.is_(True)).scalar() or 0
+    activities = db.query(func.count(CRMActivity.id)).scalar() or 0
+    return {"customers": customers, "open_leads": open_leads, "due_tasks": due_tasks, "logged_activities": activities}
+
+
+@router.get("/crm/customers")
+def crm_customers(q: str | None = Query(default=None, max_length=120), db: Session = Depends(get_db)):
+    query = db.query(
+        User.id, User.full_name, User.email, User.phone_number, User.created_at,
+        func.count(func.distinct(Order.id)).label("order_count"),
+        func.coalesce(func.sum(case((Order.status != "cancelled", Order.total_amount), else_=0)), 0).label("lifetime_value"),
+        func.max(Order.placed_at).label("last_order_at"),
+    ).outerjoin(Order, Order.user_id == User.id).filter(User.role == "customer", User.is_active.is_(True)).group_by(User.id)
+    if q:
+        term = f"%{q.strip()}%"
+        query = query.filter(or_(User.full_name.ilike(term), User.email.ilike(term), User.phone_number.ilike(term)))
+    rows = query.order_by(User.created_at.desc()).limit(500).all()
+    return [{"id": row.id, "full_name": row.full_name, "email": row.email, "phone": row.phone_number,
+             "created_at": row.created_at, "order_count": row.order_count,
+             "lifetime_value": str(row.lifetime_value or 0), "last_order_at": row.last_order_at} for row in rows]
+
+
+@router.get("/crm/leads")
+def list_leads(stage: str | None = None, db: Session = Depends(get_db)):
+    q = db.query(CRMLead)
+    if stage:
+        q = q.filter(CRMLead.stage == stage)
+    return q.order_by(CRMLead.created_at.desc()).limit(500).all()
+
+
+@router.post("/crm/leads", status_code=status.HTTP_201_CREATED)
+def create_lead(body: LeadCreate, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    lead = CRMLead(**body.model_dump(), created_by=admin.id)
+    db.add(lead)
+    db.commit()
+    db.refresh(lead)
+    return lead
+
+
+@router.patch("/crm/leads/{lead_id}")
+def update_lead(lead_id: str, body: LeadUpdate, db: Session = Depends(get_db)):
+    lead = db.get(CRMLead, lead_id)
+    if not lead:
+        raise HTTPException(404, "Lead not found")
+    lead.stage = body.stage
+    lead.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(lead)
+    return lead
+
+
+@router.get("/crm/activities")
+def list_activities(customer_id: str | None = None, lead_id: str | None = None, upcoming: bool = False, db: Session = Depends(get_db)):
+    q = db.query(CRMActivity)
+    if customer_id:
+        q = q.filter(CRMActivity.customer_id == customer_id)
+    if lead_id:
+        q = q.filter(CRMActivity.lead_id == lead_id)
+    if upcoming:
+        q = q.filter(CRMActivity.completed_at.is_(None), CRMActivity.due_at.isnot(None))
+    return q.order_by(CRMActivity.due_at.asc().nullslast(), CRMActivity.created_at.desc()).limit(500).all()
+
+
+@router.post("/crm/activities", status_code=status.HTTP_201_CREATED)
+def create_activity(body: ActivityCreate, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    if bool(body.customer_id) == bool(body.lead_id):
+        raise HTTPException(422, "Choose exactly one customer or lead")
+    if body.customer_id and not db.query(User.id).filter(User.id == body.customer_id, User.role == "customer").first():
+        raise HTTPException(404, "Customer not found")
+    if body.lead_id and not db.get(CRMLead, body.lead_id):
+        raise HTTPException(404, "Lead not found")
+    activity = CRMActivity(**body.model_dump(), created_by=admin.id)
+    db.add(activity)
+    db.commit()
+    db.refresh(activity)
+    return activity
+
+
+@router.post("/crm/activities/{activity_id}/complete")
+def complete_activity(activity_id: str, db: Session = Depends(get_db)):
+    activity = db.get(CRMActivity, activity_id)
+    if not activity:
+        raise HTTPException(404, "Activity not found")
+    activity.completed_at = datetime.now(timezone.utc)
+    db.commit()
+    return {"id": activity.id, "completed_at": activity.completed_at}
+
+
+@router.get("/erp/overview")
+def erp_overview(db: Session = Depends(get_db)):
+    stock_units = db.query(func.coalesce(func.sum(ProductVariant.stock_qty), 0)).scalar() or 0
+    low_stock = db.query(func.count(ProductVariant.id)).filter(ProductVariant.stock_qty.between(1, 5)).scalar() or 0
+    out_of_stock = db.query(func.count(ProductVariant.id)).filter(ProductVariant.stock_qty <= 0).scalar() or 0
+    open_po = db.query(func.count(PurchaseOrder.id)).filter(PurchaseOrder.status.in_(["ordered", "partially_received"])).scalar() or 0
+    month_start = date.today().replace(day=1)
+    monthly_expenses = db.query(func.coalesce(func.sum(OperatingExpense.amount + OperatingExpense.tax_amount), 0)).filter(OperatingExpense.expense_date >= month_start).scalar() or 0
+    sales = db.query(func.coalesce(func.sum(Order.total_amount), 0)).filter(Order.status != "cancelled").scalar() or 0
+    return {"stock_units": int(stock_units), "low_stock_variants": low_stock, "out_of_stock_variants": out_of_stock,
+            "open_purchase_orders": open_po, "monthly_expenses": str(monthly_expenses), "order_value_booked": str(sales)}
+
+
+@router.get("/erp/inventory")
+def inventory_list(q: str | None = Query(default=None, max_length=120), low_stock_only: bool = False, db: Session = Depends(get_db)):
+    query = db.query(ProductVariant, Product.name.label("product_name"), Product.colour, Product.is_published).join(Product, Product.id == ProductVariant.product_id)
+    if q:
+        term = f"%{q.strip()}%"
+        query = query.filter(or_(Product.name.ilike(term), ProductVariant.sku.ilike(term), ProductVariant.size.ilike(term)))
+    if low_stock_only:
+        query = query.filter(ProductVariant.stock_qty <= 5)
+    return [{"variant_id": v.id, "product_id": v.product_id, "product_name": name, "colour": colour, "size": v.size,
+             "sku": v.sku, "stock_qty": v.stock_qty, "is_published": published}
+            for v, name, colour, published in query.order_by(Product.name, ProductVariant.size).limit(1000).all()]
+
+
+@router.get("/erp/inventory/movements")
+def inventory_movements(variant_id: str | None = None, db: Session = Depends(get_db)):
+    q = db.query(StockMovement)
+    if variant_id:
+        q = q.filter(StockMovement.variant_id == variant_id)
+    return q.order_by(StockMovement.created_at.desc()).limit(500).all()
+
+
+@router.post("/erp/inventory/{variant_id}/adjust")
+def adjust_inventory(variant_id: str, body: StockAdjustment, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    if body.quantity_delta == 0:
+        raise HTTPException(422, "Adjustment must change stock")
+    variant = db.get(ProductVariant, variant_id)
+    if not variant:
+        raise HTTPException(404, "Product size variant not found")
+    before = int(variant.stock_qty or 0)
+    after = before + body.quantity_delta
+    if after < 0:
+        raise HTTPException(409, "Adjustment cannot make stock negative")
+    variant.stock_qty = after
+    db.add(StockMovement(product_id=variant.product_id, variant_id=variant.id, quantity_delta=body.quantity_delta,
+                         stock_before=before, stock_after=after, reason=body.reason, notes=body.notes, created_by=admin.id))
+    db.commit()
+    return {"variant_id": variant.id, "stock_before": before, "stock_after": after}
+
+
+@router.get("/erp/suppliers")
+def list_suppliers(db: Session = Depends(get_db)):
+    return db.query(Supplier).order_by(Supplier.name).all()
+
+
+@router.post("/erp/suppliers", status_code=status.HTTP_201_CREATED)
+def create_supplier(body: SupplierCreate, db: Session = Depends(get_db)):
+    supplier = Supplier(**body.model_dump())
+    db.add(supplier)
+    db.commit()
+    db.refresh(supplier)
+    return supplier
+
+
+@router.get("/erp/purchase-orders")
+def list_purchase_orders(db: Session = Depends(get_db)):
+    rows = db.query(PurchaseOrder, Supplier.name).join(Supplier, Supplier.id == PurchaseOrder.supplier_id).order_by(PurchaseOrder.created_at.desc()).limit(500).all()
+    output = []
+    for po, supplier_name in rows:
+        lines = db.query(PurchaseOrderLine, Product.name, ProductVariant.size).join(Product, Product.id == PurchaseOrderLine.product_id).join(ProductVariant, ProductVariant.id == PurchaseOrderLine.variant_id).filter(PurchaseOrderLine.purchase_order_id == po.id).all()
+        output.append({"id": po.id, "supplier_id": po.supplier_id, "supplier_name": supplier_name, "status": po.status,
+                       "expected_date": po.expected_date, "notes": po.notes, "created_at": po.created_at,
+                       "items": [{"id": line.id, "product_name": name, "size": size, "quantity_ordered": line.quantity_ordered,
+                                  "quantity_received": line.quantity_received, "unit_cost": str(line.unit_cost)} for line, name, size in lines]})
+    return output
+
+
+@router.post("/erp/purchase-orders", status_code=status.HTTP_201_CREATED)
+def create_purchase_order(body: PurchaseOrderCreate, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    supplier = db.get(Supplier, body.supplier_id)
+    if not supplier or not supplier.is_active:
+        raise HTTPException(404, "Active supplier not found")
+    po = PurchaseOrder(supplier_id=supplier.id, status="ordered", expected_date=body.expected_date,
+                       notes=body.notes, created_by=admin.id)
+    db.add(po)
+    db.flush()
+    for item in body.items:
+        variant = db.get(ProductVariant, item.variant_id)
+        if not variant:
+            db.rollback()
+            raise HTTPException(404, f"Variant not found: {item.variant_id}")
+        db.add(PurchaseOrderLine(purchase_order_id=po.id, product_id=variant.product_id, variant_id=variant.id,
+                                 quantity_ordered=item.quantity, unit_cost=item.unit_cost))
+    db.commit()
+    db.refresh(po)
+    return {"id": po.id, "supplier_id": po.supplier_id, "status": po.status}
+
+
+@router.post("/erp/purchase-orders/{po_id}/receive")
+def receive_purchase_order(po_id: str, body: PurchaseReceipt, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    po = db.get(PurchaseOrder, po_id)
+    if not po or po.status in ("cancelled", "received"):
+        raise HTTPException(404, "Open purchase order not found")
+    for receipt in body.items:
+        line = db.get(PurchaseOrderLine, receipt.line_id)
+        if not line or line.purchase_order_id != po.id:
+            db.rollback()
+            raise HTTPException(404, "Purchase order line not found")
+        if line.quantity_received + receipt.quantity > line.quantity_ordered:
+            db.rollback()
+            raise HTTPException(409, "Received quantity exceeds the ordered quantity")
+        variant = db.get(ProductVariant, line.variant_id)
+        before = int(variant.stock_qty or 0)
+        variant.stock_qty = before + receipt.quantity
+        line.quantity_received += receipt.quantity
+        db.add(StockMovement(product_id=line.product_id, variant_id=line.variant_id, quantity_delta=receipt.quantity,
+                             stock_before=before, stock_after=variant.stock_qty, reason="purchase_receipt",
+                             reference_id=po.id, created_by=admin.id))
+    lines = db.query(PurchaseOrderLine).filter(PurchaseOrderLine.purchase_order_id == po.id).all()
+    po.status = "received" if all(line.quantity_received == line.quantity_ordered for line in lines) else "partially_received"
+    db.commit()
+    return {"id": po.id, "status": po.status}
+
+
+@router.get("/erp/expenses")
+def list_expenses(db: Session = Depends(get_db)):
+    return db.query(OperatingExpense).order_by(OperatingExpense.expense_date.desc(), OperatingExpense.created_at.desc()).limit(500).all()
+
+
+@router.post("/erp/expenses", status_code=status.HTTP_201_CREATED)
+def create_expense(body: ExpenseCreate, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    if body.supplier_id and not db.get(Supplier, body.supplier_id):
+        raise HTTPException(404, "Supplier not found")
+    expense = OperatingExpense(**body.model_dump(), created_by=admin.id)
+    db.add(expense)
+    db.commit()
+    db.refresh(expense)
+    return expense

@@ -14,6 +14,7 @@ from app.models.order_item import OrderItem
 from app.models.product import Product
 from app.models.product_variant import ProductVariant
 from app.models.user import User
+from app.models.business import StockMovement
 from app.schemas.orders import OrderCreate, OrderResponse
 
 logger = get_logger(__name__)
@@ -92,7 +93,9 @@ class OrderService:
                     raise BadRequestError(
                         f"Insufficient stock for {product.name} size {variant.size} (Available: {variant.stock_qty})"
                     )
-                variant.stock_qty -= item_data.quantity
+                before = int(variant.stock_qty or 0)
+                variant.stock_qty = before - item_data.quantity
+                self.db.add(StockMovement(product_id=product.id, variant_id=variant.id, quantity_delta=-item_data.quantity, stock_before=before, stock_after=variant.stock_qty, reason='sale', reference_id=order.id, created_by=user.id))
 
                 self.db.add(OrderItem(
                     order_id=order.id,
@@ -209,7 +212,9 @@ def _restore_stock(db: Session, order: Order) -> None:
             ProductVariant.id == item.variant_id
         ).first()
         if variant:
-            variant.stock_qty += item.quantity
+            before = int(variant.stock_qty or 0)
+            variant.stock_qty = before + item.quantity
+            db.add(StockMovement(product_id=item.product_id, variant_id=variant.id, quantity_delta=item.quantity, stock_before=before, stock_after=variant.stock_qty, reason='order_cancelled', reference_id=order.id, created_by=order.user_id))
 
 
 def _book_shiprocket(order: Order, user: User, address: Address) -> None:

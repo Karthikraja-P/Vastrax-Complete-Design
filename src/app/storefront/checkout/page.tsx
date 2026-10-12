@@ -48,12 +48,19 @@ export default function CheckoutPage() {
 
   const { data: session, status } = useSession();
   const [isAuthOpen, setIsAuthOpen] = useState(false);
+  const [localToken, setLocalToken] = useState<string | null>(null);
 
   React.useEffect(() => {
-    if (status === "unauthenticated") {
-      setIsAuthOpen(true);
+    if (typeof window !== "undefined") {
+      setLocalToken(localStorage.getItem("vastrax_token"));
     }
   }, [status]);
+
+  React.useEffect(() => {
+    if (status === "unauthenticated" && !localToken) {
+      setIsAuthOpen(true);
+    }
+  }, [status, localToken]);
 
   // Form State
   const [email, setEmail] = useState("alexandra.vance@example.com");
@@ -65,6 +72,18 @@ export default function CheckoutPage() {
   const [city, setCity] = useState("New York");
   const [postalCode, setPostalCode] = useState("10001");
   const [country, setCountry] = useState("United States");
+
+  // Pre-fill customer details from active session
+  React.useEffect(() => {
+    if (session?.user) {
+      if (session.user.email) setEmail(session.user.email);
+      if (session.user.name) {
+        const parts = session.user.name.split(" ");
+        setFirstName(parts[0] || "");
+        setLastName(parts.slice(1).join(" ") || "");
+      }
+    }
+  }, [session]);
   
   // Delivery Method
   const [deliveryMethod, setDeliveryMethod] = useState<"standard" | "express" | "concierge">("express");
@@ -109,6 +128,10 @@ export default function CheckoutPage() {
   const shippingCost = deliveryMethod === "standard" ? 0 : deliveryMethod === "express" ? 150 : 350;
   const tax = subtotal * 0.08;
   const total = subtotal + shippingCost + tax;
+
+  const getEffectiveToken = () => {
+    return (session as any)?.accessToken || localToken || (typeof window !== "undefined" ? localStorage.getItem("vastrax_token") : null);
+  };
 
   const completeOrder = (orderId: string) => {
     setIsProcessing(false);
@@ -157,13 +180,18 @@ export default function CheckoutPage() {
               razorpay_signature: response.razorpay_signature,
             }),
           });
-          const verifyData = await verifyRes.json();
-          if (!verifyRes.ok) throw new Error(verifyData.detail || "Payment verification failed");
+          const verifyData = await verifyRes.json().catch(() => ({}));
+          if (!verifyRes.ok) throw new Error(verifyData.detail || verifyData.message || "Payment verification failed");
           completeOrder(orderId);
-        } catch (err) {
+        } catch (err: any) {
           console.error(err);
           setIsProcessing(false);
-          alert("Payment succeeded but verification failed. Please contact support with your order reference.");
+          showToast({
+            title: "Verification Error",
+            description: err?.message || "Payment succeeded but verification failed. Please contact support.",
+            type: "error",
+            duration: 6000,
+          });
         }
       },
       modal: {
@@ -175,7 +203,11 @@ export default function CheckoutPage() {
 
   const handleSimulateChoice = async (success: boolean) => {
     if (!simPayment) return;
-    const token = (session as any)?.accessToken;
+    const token = getEffectiveToken();
+    if (!token) {
+      setIsAuthOpen(true);
+      return;
+    }
     setIsProcessing(true);
 
     try {
@@ -184,8 +216,8 @@ export default function CheckoutPage() {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ txn_id: simPayment.txnId, success }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "Payment simulation failed");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail || data.message || "Payment simulation failed");
 
       if (success) {
         completeOrder(simPayment.orderId);
@@ -199,12 +231,12 @@ export default function CheckoutPage() {
           duration: 5000,
         });
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
       setIsProcessing(false);
       showToast({
         title: "Payment Error",
-        description: "Failed to process payment response.",
+        description: err?.message || "Failed to process payment response.",
         type: "error",
         duration: 4000,
       });
@@ -214,16 +246,30 @@ export default function CheckoutPage() {
   const handlePlaceOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isProcessing) return;
+
+    if (items.length === 0) {
+      showToast({
+        title: "Bag is Empty",
+        description: "Please add garments to your bag before proceeding to checkout.",
+        type: "error",
+      });
+      return;
+    }
+
+    const token = getEffectiveToken();
+    if (!token) {
+      setIsAuthOpen(true);
+      showToast({
+        title: "Sign In Required",
+        description: "Please sign in to place your bespoke order.",
+        type: "info",
+      });
+      return;
+    }
+
     setIsProcessing(true);
 
     try {
-      const token = (session as any)?.accessToken;
-      if (!token) throw new Error("Please sign in to complete your purchase.");
-
-      if (items.length === 0) {
-        throw new Error("Your cart is empty.");
-      }
-
       // 1. Create Address
       const addressRes = await backendFetch(`${BACKEND_BASE}/users/me/addresses`, {
         method: "POST",
@@ -232,13 +278,13 @@ export default function CheckoutPage() {
           label: "Home",
           address_line1: apartment ? `${address}, ${apartment}` : address,
           city: city,
-          state: "State", // mock state
+          state: "Tamil Nadu",
           pincode: postalCode,
           is_default: true
         })
       });
-      const addressData = await addressRes.json();
-      if (!addressRes.ok) throw new Error(addressData.detail || "Failed to create address");
+      const addressData = await addressRes.json().catch(() => ({}));
+      if (!addressRes.ok) throw new Error(addressData.detail || addressData.message || "Failed to save delivery address");
 
       // 2. Create Order
       const orderRes = await backendFetch(`${BACKEND_BASE}/orders`, {
@@ -246,7 +292,7 @@ export default function CheckoutPage() {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           address_id: addressData.id,
-          payment_method: paymentMethod.toUpperCase(),
+          payment_method: paymentMethod === "cod" ? "COD" : paymentMethod.toUpperCase(),
           total_amount: total,
           delivery_method: deliveryMethod,
           items: items.map(item => ({
@@ -259,8 +305,8 @@ export default function CheckoutPage() {
         })
       });
 
-      const orderData = await orderRes.json();
-      if (!orderRes.ok) throw new Error(orderData.detail || "Failed to place order");
+      const orderData = await orderRes.json().catch(() => ({}));
+      if (!orderRes.ok) throw new Error(orderData.detail || orderData.message || "Failed to place order");
 
       // Cash on Delivery is confirmed server-side immediately — no payment gateway involved.
       if (paymentMethod === "cod") {
@@ -278,8 +324,8 @@ export default function CheckoutPage() {
           payment_method: paymentMethod.toUpperCase(),
         })
       });
-      const initiateData = await initiateRes.json();
-      if (!initiateRes.ok) throw new Error(initiateData.detail || "Failed to initiate payment");
+      const initiateData = await initiateRes.json().catch(() => ({}));
+      if (!initiateRes.ok) throw new Error(initiateData.detail || initiateData.message || "Failed to initiate payment");
 
       if (initiateData.mode === "razorpay") {
         setIsProcessing(false);
@@ -290,14 +336,21 @@ export default function CheckoutPage() {
         setSimPayment({ txnId: initiateData.txn_id, orderId: orderData.id });
       }
 
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
       setIsProcessing(false);
-      alert("Failed to place order. Please try again.");
+      showToast({
+        title: "Order Failed",
+        description: err?.message || "Failed to place order. Please verify your items and try again.",
+        type: "error",
+        duration: 5000,
+      });
     }
   };
 
-  if (status === "loading") {
+  const effectiveToken = getEffectiveToken();
+
+  if (status === "loading" && !effectiveToken) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Loader2 className="w-8 h-8 animate-spin text-accent" />
@@ -305,7 +358,7 @@ export default function CheckoutPage() {
     );
   }
 
-  if (status === "unauthenticated") {
+  if (status === "unauthenticated" && !effectiveToken) {
     return (
       <div className="min-h-screen bg-background text-foreground font-sans flex flex-col items-center justify-center p-6">
         <div className="bg-surface border border-border/50 rounded-3xl p-10 max-w-md w-full text-center shadow-2xl">
@@ -324,7 +377,13 @@ export default function CheckoutPage() {
             </Link>
           </div>
         </div>
-        <AuthModal isOpen={isAuthOpen} onClose={() => setIsAuthOpen(false)} />
+        <AuthModal 
+          isOpen={isAuthOpen} 
+          onClose={() => {
+            setIsAuthOpen(false);
+            if (typeof window !== "undefined") setLocalToken(localStorage.getItem("vastrax_token"));
+          }} 
+        />
       </div>
     );
   }
@@ -446,6 +505,28 @@ export default function CheckoutPage() {
               >
                 Cancel Payment
               </button>
+            </div>
+          </div>
+        ) : items.length === 0 ? (
+          /* Empty Bag Screen */
+          <div className="max-w-md mx-auto my-16 bg-surface border border-border/60 rounded-3xl p-8 md:p-12 text-center space-y-6 shadow-2xl animate-in zoom-in-95 duration-400">
+            <div className="w-20 h-20 rounded-full bg-accent/10 border border-accent/30 text-accent flex items-center justify-center mx-auto">
+              <ShoppingBag className="w-10 h-10" />
+            </div>
+            <div className="space-y-2">
+              <span className="text-xs font-bold uppercase tracking-widest text-accent">Shopping Bag</span>
+              <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight">Your Bag is Empty</h1>
+              <p className="text-sm text-muted-foreground max-w-xs mx-auto">
+                You currently have no bespoke garments in your shopping bag. Discover our latest couture collection to place an order.
+              </p>
+            </div>
+            <div className="pt-2">
+              <Link 
+                href="/storefront/collections" 
+                className="inline-flex items-center justify-center w-full px-8 py-3.5 bg-accent hover:bg-accent/90 text-white font-bold text-xs uppercase tracking-wider rounded-full transition-all shadow-[0_0_20px_rgba(224,122,63,0.3)]"
+              >
+                Discover Collections
+              </Link>
             </div>
           </div>
         ) : (
@@ -848,6 +929,13 @@ export default function CheckoutPage() {
         )}
 
       </main>
+      <AuthModal 
+        isOpen={isAuthOpen} 
+        onClose={() => {
+          setIsAuthOpen(false);
+          if (typeof window !== "undefined") setLocalToken(localStorage.getItem("vastrax_token"));
+        }} 
+      />
     </div>
   );
 }

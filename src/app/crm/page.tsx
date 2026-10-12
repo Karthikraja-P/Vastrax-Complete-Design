@@ -1,0 +1,82 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import { fetchApi } from "@/lib/api";
+
+type Customer = { id: string; full_name: string | null; email: string; phone: string | null; order_count: number; lifetime_value: string; last_order_at: string | null };
+type Lead = { id: string; full_name: string; email: string | null; phone: string | null; source: string | null; stage: string; created_at: string };
+type Activity = { id: string; customer_id: string | null; lead_id: string | null; activity_type: string; subject: string; due_at: string | null; completed_at: string | null };
+
+const card = "rounded-2xl border border-border bg-surface p-5";
+const field = "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground";
+
+export default function CRMPage() {
+  const [tab, setTab] = useState<"customers" | "leads" | "followups">("customers");
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [activities, setActivities] = useState<Activity[]>([]);
+  const [overview, setOverview] = useState({ customers: 0, open_leads: 0, due_tasks: 0, logged_activities: 0 });
+  const [query, setQuery] = useState("");
+  const [leadName, setLeadName] = useState("");
+  const [leadEmail, setLeadEmail] = useState("");
+  const [leadPhone, setLeadPhone] = useState("");
+  const [activityTarget, setActivityTarget] = useState("");
+  const [activitySubject, setActivitySubject] = useState("");
+  const [activityDue, setActivityDue] = useState("");
+  const [error, setError] = useState("");
+
+  const load = useCallback(async () => {
+    try {
+      const [summary, customerRows, leadRows, activityRows] = await Promise.all([
+        fetchApi<typeof overview>("/crm/overview"),
+        fetchApi<Customer[]>(`/crm/customers${query ? `?q=${encodeURIComponent(query)}` : ""}`),
+        fetchApi<Lead[]>("/crm/leads"),
+        fetchApi<Activity[]>("/crm/activities?upcoming=true"),
+      ]);
+      setOverview(summary); setCustomers(customerRows); setLeads(leadRows); setActivities(activityRows);
+      setError("");
+    } catch (e) { setError(e instanceof Error ? e.message : "Could not load CRM data. Check your admin sign-in."); }
+  }, [query]);
+
+  useEffect(() => { const timer = window.setTimeout(() => void load(), 0); return () => window.clearTimeout(timer); }, [load]);
+
+  const addLead = async (event: React.FormEvent) => {
+    event.preventDefault();
+    try {
+      await fetchApi("/crm/leads", { method: "POST", body: JSON.stringify({ full_name: leadName, email: leadEmail || null, phone: leadPhone || null, source: "Vastrax admin" }) });
+      setLeadName(""); setLeadEmail(""); setLeadPhone(""); await load();
+    } catch (e) { setError(e instanceof Error ? e.message : "Could not save lead."); }
+  };
+
+  const addTask = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const [kind, id] = activityTarget.split(":");
+    if (!id) return;
+    try {
+      await fetchApi("/crm/activities", { method: "POST", body: JSON.stringify({ [kind === "customer" ? "customer_id" : "lead_id"]: id, activity_type: "task", subject: activitySubject, due_at: activityDue ? new Date(activityDue).toISOString() : null }) });
+      setActivitySubject(""); setActivityDue(""); await load();
+    } catch (e) { setError(e instanceof Error ? e.message : "Could not save follow-up."); }
+  };
+
+  const updateStage = async (lead: Lead, stage: string) => {
+    try { await fetchApi(`/crm/leads/${lead.id}`, { method: "PATCH", body: JSON.stringify({ stage }) }); await load(); }
+    catch (e) { setError(e instanceof Error ? e.message : "Could not update lead."); }
+  };
+
+  const completeTask = async (id: string) => {
+    try { await fetchApi(`/crm/activities/${id}/complete`, { method: "POST" }); await load(); }
+    catch (e) { setError(e instanceof Error ? e.message : "Could not complete task."); }
+  };
+
+  return <main className="min-h-screen bg-background p-5 md:p-8">
+    <div className="mx-auto max-w-7xl space-y-6">
+      <header><p className="text-xs font-semibold uppercase tracking-[.2em] text-accent">Vastrax Business</p><h1 className="mt-2 text-3xl font-bold text-foreground">Customer relationships</h1><p className="mt-1 text-sm text-muted-foreground">Customer purchase history, prospects, and team follow-ups in one place.</p></header>
+      {error && <div role="alert" className="rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-400">{error}</div>}
+      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{[["Customers", overview.customers], ["Open leads", overview.open_leads], ["Tasks due", overview.due_tasks], ["Logged activities", overview.logged_activities]].map(([label, value]) => <div className={card} key={String(label)}><p className="text-sm text-muted-foreground">{label}</p><p className="mt-2 text-2xl font-semibold text-foreground">{value}</p></div>)}</section>
+      <div className="flex flex-wrap gap-2">{(["customers", "leads", "followups"] as const).map((name) => <button key={name} onClick={() => setTab(name)} className={`rounded-full px-4 py-2 text-sm capitalize ${tab === name ? "bg-accent text-white" : "bg-surface text-foreground"}`}>{name === "followups" ? "Follow-ups" : name}</button>)}</div>
+      {tab === "customers" && <section className={card}><div className="mb-4 flex flex-wrap items-center justify-between gap-3"><h2 className="text-lg font-semibold text-foreground">Customers</h2><input className={`${field} max-w-sm`} placeholder="Search name, email, or phone" value={query} onChange={e => setQuery(e.target.value)} /></div><div className="overflow-x-auto"><table className="w-full min-w-[700px] text-left text-sm"><thead className="text-muted-foreground"><tr><th className="p-3">Customer</th><th className="p-3">Phone</th><th className="p-3">Orders</th><th className="p-3">Lifetime order value</th><th className="p-3">Last order</th></tr></thead><tbody>{customers.map(c => <tr className="border-t border-border" key={c.id}><td className="p-3"><div className="font-medium text-foreground">{c.full_name || "Customer"}</div><div className="text-xs text-muted-foreground">{c.email}</div></td><td className="p-3">{c.phone || "—"}</td><td className="p-3">{c.order_count}</td><td className="p-3">₹{Number(c.lifetime_value).toLocaleString("en-IN", { maximumFractionDigits: 2 })}</td><td className="p-3">{c.last_order_at ? new Date(c.last_order_at).toLocaleDateString() : "—"}</td></tr>)}</tbody></table>{customers.length === 0 && <p className="p-5 text-sm text-muted-foreground">No customers match this search.</p>}</div></section>}
+      {tab === "leads" && <div className="grid gap-5 lg:grid-cols-[360px_1fr]"><form onSubmit={addLead} className={`${card} space-y-3`}><h2 className="font-semibold text-foreground">Add prospect</h2><input required className={field} placeholder="Name" value={leadName} onChange={e => setLeadName(e.target.value)} /><input type="email" className={field} placeholder="Email" value={leadEmail} onChange={e => setLeadEmail(e.target.value)} /><input className={field} placeholder="Phone" value={leadPhone} onChange={e => setLeadPhone(e.target.value)} /><button className="w-full rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white">Save lead</button></form><section className={`${card} overflow-x-auto`}><h2 className="mb-4 font-semibold text-foreground">Lead pipeline</h2><table className="w-full min-w-[600px] text-left text-sm"><thead className="text-muted-foreground"><tr><th className="p-3">Prospect</th><th className="p-3">Source</th><th className="p-3">Stage</th><th className="p-3">Added</th></tr></thead><tbody>{leads.map(lead => <tr className="border-t border-border" key={lead.id}><td className="p-3"><div className="font-medium text-foreground">{lead.full_name}</div><div className="text-xs text-muted-foreground">{lead.email || lead.phone || "No contact details"}</div></td><td className="p-3">{lead.source || "—"}</td><td className="p-3"><select aria-label={`Stage for ${lead.full_name}`} className={field} value={lead.stage} onChange={e => void updateStage(lead, e.target.value)}>{["new", "contacted", "qualified", "converted", "lost"].map(s => <option key={s}>{s}</option>)}</select></td><td className="p-3">{new Date(lead.created_at).toLocaleDateString()}</td></tr>)}</tbody></table></section></div>}
+      {tab === "followups" && <div className="grid gap-5 lg:grid-cols-[360px_1fr]"><form onSubmit={addTask} className={`${card} space-y-3`}><h2 className="font-semibold text-foreground">Schedule follow-up</h2><select required className={field} value={activityTarget} onChange={e => setActivityTarget(e.target.value)}><option value="">Choose customer or lead</option><optgroup label="Customers">{customers.map(c => <option key={c.id} value={`customer:${c.id}`}>{c.full_name || c.email}</option>)}</optgroup><optgroup label="Leads">{leads.map(l => <option key={l.id} value={`lead:${l.id}`}>{l.full_name}</option>)}</optgroup></select><input required className={field} placeholder="Follow-up task" value={activitySubject} onChange={e => setActivitySubject(e.target.value)} /><input type="datetime-local" className={field} value={activityDue} onChange={e => setActivityDue(e.target.value)} /><button className="w-full rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white">Schedule task</button></form><section className={`${card} space-y-3`}><h2 className="font-semibold text-foreground">Open follow-ups</h2>{activities.map(a => <div key={a.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border p-4"><div><p className="font-medium text-foreground">{a.subject}</p><p className="text-xs text-muted-foreground">{a.due_at ? new Date(a.due_at).toLocaleString() : "No due date"} · {a.customer_id ? "Customer" : "Lead"}</p></div><button onClick={() => void completeTask(a.id)} className="rounded-lg border border-border px-3 py-2 text-xs text-foreground">Mark complete</button></div>)}{activities.length === 0 && <p className="text-sm text-muted-foreground">No open follow-ups.</p>}</section></div>}
+    </div>
+  </main>;
+}

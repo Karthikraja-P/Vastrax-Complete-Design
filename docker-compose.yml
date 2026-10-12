@@ -12,6 +12,7 @@ services:
       - DATABASE_URL=sqlite:////app/vastrax.db
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:?Set JWT_SECRET_KEY in .env}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3000,https://vastrax.ai}
+      - APP_ENV=${APP_ENV:-development}
       - FRONTEND_URL=http://localhost:3000
       - RESEND_API_KEY=${RESEND_API_KEY:-}
       - RESEND_FROM_EMAIL=${RESEND_FROM_EMAIL:-noreply@vastrax.ai}
