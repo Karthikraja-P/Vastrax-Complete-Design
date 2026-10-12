@@ -187,6 +187,31 @@ def test_crm_leads_tasks_customer_metrics_and_admin_access(business_admin):
     assert client.post(f"/api/v1/crm/activities/{task.json()['id']}/complete", headers=headers).status_code == 200
 
 
+def test_crm_lead_conversion_links_existing_customer_and_logs_activity(business_admin):
+    client = TestClient(app)
+    headers = {"Authorization": f"Bearer {business_admin['token']}"}
+    customer_email = f"customer-{business_admin['suffix']}@example.com"
+    created = client.post("/api/v1/crm/leads", headers=headers, json={
+        "full_name": "Existing Customer Prospect", "email": customer_email, "source": "website",
+    })
+    assert created.status_code == 201, created.text
+    lead_id = created.json()["id"]
+    assert client.post(f"/api/v1/crm/leads/{lead_id}/convert").status_code == 401
+    assert client.post(f"/api/v1/crm/leads/{lead_id}/convert", headers=headers).status_code == 409
+    qualified = client.patch(f"/api/v1/crm/leads/{lead_id}", headers=headers, json={"stage": "qualified"})
+    assert qualified.status_code == 200
+
+    converted = client.post(f"/api/v1/crm/leads/{lead_id}/convert", headers=headers)
+    assert converted.status_code == 200, converted.text
+    assert converted.json()["stage"] == "converted"
+    assert converted.json()["converted_customer_id"] == business_admin["customer_id"]
+    assert client.patch(f"/api/v1/crm/leads/{lead_id}", headers=headers, json={"stage": "lost"}).status_code == 409
+
+    detail = client.get(f"/api/v1/crm/customers/{business_admin['customer_id']}", headers=headers)
+    assert detail.status_code == 200
+    assert any(a["subject"] == "Lead converted to customer" for a in detail.json()["activities"])
+
+
 def test_supplier_maintenance_updates_and_deactivates_without_deleting_history(business_admin):
     client = TestClient(app)
     headers = {"Authorization": f"Bearer {business_admin['token']}"}
