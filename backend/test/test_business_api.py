@@ -78,6 +78,51 @@ def test_crm_customer_detail_reads_shared_orders_and_activities(business_admin):
     assert any(activity["description"] == "Asked for a call next week" for activity in updated["activities"])
 
 
+def test_store_order_syncs_to_crm_customer_history_and_erp_stock_audit(business_admin):
+    db = SessionLocal()
+    variant = db.get(ProductVariant, business_admin["variant_id"])
+    product_id = variant.product_id
+    initial_stock = variant.stock_qty
+    address = Address(
+        user_id=business_admin["customer_id"], label="Home", address_line1="1 Shared Record Street",
+        city="Mumbai", state="Maharashtra", pincode="400001",
+    )
+    db.add(address)
+    db.commit()
+    address_id = address.id
+    db.close()
+
+    client = TestClient(app)
+    admin_headers = {"Authorization": f"Bearer {business_admin['token']}"}
+    customer_headers = {"Authorization": f"Bearer {business_admin['customer_token']}"}
+    placed = client.post("/api/v1/orders", headers=customer_headers, json={
+        "address_id": address_id,
+        "payment_method": "UPI",
+        "items": [{"product_id": product_id, "variant_id": business_admin["variant_id"], "size": "S", "quantity": 1}],
+    })
+    assert placed.status_code == 201, placed.text
+    order = placed.json()
+
+    crm_detail = client.get(f"/api/v1/crm/customers/{business_admin['customer_id']}", headers=admin_headers)
+    assert crm_detail.status_code == 200, crm_detail.text
+    customer_order = next(row for row in crm_detail.json()["orders"] if row["id"] == order["id"])
+    assert customer_order["items"] == [{"product_name": "Test Dress", "size": "S", "quantity": 1, "unit_price": "90.00"}]
+    customer_page = client.get("/api/v1/crm/customers", headers=admin_headers, params={"q": f"customer-{business_admin['suffix']}@example.com"})
+    assert customer_page.status_code == 200
+    assert any(row["id"] == business_admin["customer_id"] and row["order_count"] == 1 for row in customer_page.json()["items"])
+
+    inventory = client.get("/api/v1/erp/inventory", headers=admin_headers, params={"q": f"sku-{business_admin['suffix']}"})
+    assert inventory.status_code == 200, inventory.text
+    stock_row = next(row for row in inventory.json() if row["variant_id"] == business_admin["variant_id"])
+    assert stock_row["stock_qty"] == initial_stock - 1
+    movements = client.get("/api/v1/erp/inventory/movements", headers=admin_headers, params={"variant_id": business_admin["variant_id"]})
+    assert movements.status_code == 200
+    assert any(row["reference_id"] == order["id"] and row["reason"] == "sale" and row["stock_after"] == initial_stock - 1 for row in movements.json())
+
+    assert client.get(f"/api/v1/crm/customers/{business_admin['customer_id']}", headers=customer_headers).status_code == 403
+    assert client.get("/api/v1/erp/inventory", headers=customer_headers).status_code == 403
+
+
 
 def test_admin_grants_scoped_business_access_to_existing_team_accounts(business_admin):
     client = TestClient(app)
