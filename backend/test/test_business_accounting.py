@@ -102,3 +102,39 @@ def test_profit_and_loss_and_balance_sheet_use_posted_journals():
     assert balance.status_code == 200, balance.text
     assert next(row for row in balance.json()["assets"] if row["code"] == f"RPT-CASH-{suffix}")["amount"] == "125.00"
     assert balance.json()["balanced"] is True
+
+
+def test_starter_chart_is_optional_guarded_and_does_not_configure_posting():
+    suffix = uuid.uuid4().hex[:10]
+    db = SessionLocal()
+    admin = User(id=f"coa-admin-{suffix}", email=f"coa-{suffix}@example.test", hashed_password="test", role="admin", is_active=True)
+    conflict = LedgerAccount(code="1000", name="Existing differently named account", account_type="asset")
+    db.add_all([admin, conflict])
+    db.commit()
+    token = create_access_token({"sub": admin.id})
+    db.close()
+
+    client = TestClient(app)
+    path = "/api/v1/erp/accounts/starter-chart"
+    assert client.post(path).status_code == 401
+    headers = {"Authorization": f"Bearer {token}"}
+    blocked = client.post(path, headers=headers)
+    assert blocked.status_code == 409
+    db = SessionLocal()
+    assert db.query(LedgerAccount).filter(LedgerAccount.code == "1010").first() is None
+    db.query(LedgerAccount).filter(LedgerAccount.code == "1000").update({"name": "Cash on hand"})
+    db.commit()
+    db.close()
+
+    seeded = client.post(path, headers=headers)
+    assert seeded.status_code == 201, seeded.text
+    assert seeded.json()["created_count"] == 21
+    assert len(seeded.json()["accounts"]) == 22
+    assert seeded.json()["review_required"] is True
+    assert seeded.json()["posting_configured"] is False
+    assert client.get("/api/v1/erp/posting-settings", headers=headers).json()["settings"] is None
+    repeated = client.post(path, headers=headers)
+    assert repeated.status_code == 201 and repeated.json()["created_count"] == 0
+    db = SessionLocal()
+    assert db.query(LedgerAccount).filter(LedgerAccount.code.in_(["1000", "1010", "1020", "5000"])).count() == 4
+    db.close()

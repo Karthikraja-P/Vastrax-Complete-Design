@@ -27,6 +27,32 @@ class AccountCreate(BaseModel):
     account_type: Literal["asset", "liability", "equity", "revenue", "expense"]
 
 
+STARTER_CHART = [
+    ("1000", "Cash on hand", "asset"),
+    ("1010", "Operating bank account", "asset"),
+    ("1020", "Payment gateway clearing", "asset"),
+    ("1100", "Trade receivables", "asset"),
+    ("1200", "Inventory", "asset"),
+    ("1300", "Recoverable input tax", "asset"),
+    ("2000", "Accounts payable", "liability"),
+    ("2100", "Supplier trade payables", "liability"),
+    ("2200", "Customer advances", "liability"),
+    ("2300", "Output tax payable", "liability"),
+    ("3000", "Owner capital", "equity"),
+    ("4000", "Sales revenue", "revenue"),
+    ("4100", "Other operating income", "revenue"),
+    ("5000", "Cost of goods sold", "expense"),
+    ("5100", "Sales returns and refunds", "expense"),
+    ("5200", "Shipping and fulfillment", "expense"),
+    ("5300", "Payment processing fees", "expense"),
+    ("5400", "Marketing expense", "expense"),
+    ("5500", "Salaries and contract labor", "expense"),
+    ("5600", "Rent and utilities", "expense"),
+    ("5700", "Packaging and supplies", "expense"),
+    ("5800", "Other operating expenses", "expense"),
+]
+
+
 class JournalLineInput(BaseModel):
     account_id: str
     debit: Decimal = Field(default=Decimal("0"), ge=0, max_digits=14, decimal_places=2)
@@ -161,6 +187,29 @@ def reconcile_erp_postings(_: User = Depends(require_business_permission("erp"))
 @router.get("/erp/accounts")
 def list_accounts(db: Session = Depends(get_db)):
     return db.query(LedgerAccount).order_by(LedgerAccount.code).all()
+
+
+@router.post("/erp/accounts/starter-chart", status_code=status.HTTP_201_CREATED)
+def create_starter_chart(admin: User = Depends(require_business_permission("erp")), db: Session = Depends(get_db)):
+    existing = {row.code.upper(): row for row in db.query(LedgerAccount).all()}
+    conflicts = [
+        code for code, name, account_type in STARTER_CHART
+        if code in existing and (existing[code].name != name or existing[code].account_type != account_type)
+    ]
+    if conflicts:
+        raise HTTPException(409, f"Starter chart codes already exist with different details: {', '.join(conflicts)}")
+    missing = [(code, name, account_type) for code, name, account_type in STARTER_CHART if code not in existing]
+    db.add_all([LedgerAccount(code=code, name=name, account_type=account_type) for code, name, account_type in missing])
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409, "The chart of accounts changed during setup. Refresh and retry.")
+    accounts = db.query(LedgerAccount).filter(LedgerAccount.code.in_([item[0] for item in STARTER_CHART])).order_by(LedgerAccount.code).all()
+    return {"created_count": len(missing), "review_required": True,
+            "posting_configured": db.get(ERPPostingConfig, "default") is not None,
+            "accounts": [{"id": account.id, "code": account.code, "name": account.name,
+                          "account_type": account.account_type, "is_active": account.is_active} for account in accounts]}
 
 
 @router.post("/erp/accounts", status_code=status.HTTP_201_CREATED)
