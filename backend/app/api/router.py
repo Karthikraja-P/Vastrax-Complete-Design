@@ -17,6 +17,7 @@ from app.api.routes.otp import router as otp_router
 from app.api.routes.three_d import router as three_d_router
 from app.api.routes.gpu import router as gpu_router
 from app.api.routes.business import router as business_router
+from app.api.routes.marketing import router as marketing_router
 
 api_router = APIRouter()
 
@@ -47,3 +48,5 @@ api_router.include_router(returns_router, prefix='/api/v1')
 
 from app.api.routes.accounting import router as accounting_router
 api_router.include_router(accounting_router, prefix='/api/v1')
+
+api_router.include_router(marketing_router, prefix="/api/v1")
