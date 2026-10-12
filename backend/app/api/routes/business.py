@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.db.database import get_db
 from app.middleware.auth import require_admin
 from app.models.business import CRMActivity, CRMLead, OperatingExpense, PurchaseOrder, PurchaseOrderLine, StockMovement, Supplier
+from app.models.ledger import JournalEntry, JournalLine, LedgerAccount
 from app.models.order import Order
 from app.models.order_item import OrderItem
 from app.models.product import Product
@@ -86,6 +87,9 @@ class ExpenseCreate(BaseModel):
     supplier_id: str | None = None
     reference: str | None = Field(default=None, max_length=100)
     expense_date: date
+    expense_account_id: str
+    credit_account_id: str
+    input_tax_account_id: str | None = None
 
 
 @router.get("/crm/overview")
@@ -317,8 +321,30 @@ def list_expenses(db: Session = Depends(get_db)):
 def create_expense(body: ExpenseCreate, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
     if body.supplier_id and not db.get(Supplier, body.supplier_id):
         raise HTTPException(404, "Supplier not found")
-    expense = OperatingExpense(**body.model_dump(), created_by=admin.id)
+    expense_account = db.get(LedgerAccount, body.expense_account_id)
+    credit_account = db.get(LedgerAccount, body.credit_account_id)
+    tax_account = db.get(LedgerAccount, body.input_tax_account_id) if body.input_tax_account_id else None
+    if not expense_account or not expense_account.is_active or expense_account.account_type != "expense":
+        raise HTTPException(422, "Choose an active expense account")
+    if not credit_account or not credit_account.is_active or credit_account.account_type not in ("asset", "liability"):
+        raise HTTPException(422, "Choose an active asset or liability credit account")
+    if body.tax_amount > 0 and (not tax_account or not tax_account.is_active or tax_account.account_type != "asset"):
+        raise HTTPException(422, "Choose an active asset account for recoverable tax")
+    expense_data = body.model_dump(exclude={"expense_account_id", "credit_account_id", "input_tax_account_id"})
+    expense = OperatingExpense(**expense_data, created_by=admin.id)
     db.add(expense)
+    db.flush()
+    entry = JournalEntry(posting_date=body.expense_date, description=f"Expense: {body.description}",
+                         reference=body.reference or f"EXP-{expense.id}", created_by=admin.id)
+    db.add(entry)
+    db.flush()
+    journal_lines = [
+        JournalLine(journal_entry_id=entry.id, account_id=expense_account.id, debit=body.amount, credit=0),
+        JournalLine(journal_entry_id=entry.id, account_id=credit_account.id, debit=0, credit=body.amount + body.tax_amount),
+    ]
+    if body.tax_amount > 0 and tax_account:
+        journal_lines.append(JournalLine(journal_entry_id=entry.id, account_id=tax_account.id, debit=body.tax_amount, credit=0))
+    db.add_all(journal_lines)
     db.commit()
     db.refresh(expense)
-    return expense
+    return {"expense": expense, "journal_entry_id": entry.id}
