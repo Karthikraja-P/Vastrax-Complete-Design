@@ -44,3 +44,6 @@ api_router.include_router(otp_router, prefix="/api/v1/otp")
 
 from app.api.routes.returns import router as returns_router
 api_router.include_router(returns_router, prefix='/api/v1')
+
+from app.api.routes.accounting import router as accounting_router
+api_router.include_router(accounting_router, prefix='/api/v1')
