@@ -64,3 +64,12 @@ def admin_update_status(
     db: Session = Depends(get_db),
 ):
     return OrderService(db).admin_update_status(order_id, body.status)
+
+
+@router.post("/admin/{order_id}/cod-collected")
+def mark_cod_collected(
+    order_id: str,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    return OrderService(db).mark_cod_collected(order_id, admin)

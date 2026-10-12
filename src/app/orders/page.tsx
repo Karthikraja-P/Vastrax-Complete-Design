@@ -14,6 +14,7 @@ export default function OrdersPage() {
   const [loading, setLoading] = useState(false);
   const [openActionId, setOpenActionId] = useState<string | null>(null);
   const [selectedOrderDetails, setSelectedOrderDetails] = useState<any | null>(null);
+  const [actionError, setActionError] = useState("");
 
   // Filters State
   const [searchQuery, setSearchQuery] = useState("");
@@ -32,7 +33,7 @@ export default function OrdersPage() {
       if (data && Array.isArray(data)) {
         const formatted = data.map((o: any) => {
           const rawStatus = String(o.status || "CONFIRMED").toUpperCase();
-          const progress = rawStatus === "DELIVERED" ? 100 : rawStatus === "SHIPPED" ? 80 : rawStatus === "PROCESSING" ? 55 : 25;
+          const progress = rawStatus === "DELIVERED" ? 100 : rawStatus === "SHIPPED" ? 80 : rawStatus === "PACKED" ? 55 : 25;
           const statusDisplay = rawStatus.charAt(0) + rawStatus.slice(1).toLowerCase();
           const statusColor = rawStatus === "DELIVERED" ? "text-emerald-500 border-emerald-500/30 bg-emerald-500/10" : 
                               rawStatus === "CANCELLED" ? "text-red-500 border-red-500/30 bg-red-500/10" : 
@@ -42,8 +43,8 @@ export default function OrdersPage() {
           return {
             id: String(o.id || ""),
             orderNumber: o.orderNumber || `#ORD-${String(o.id).slice(0, 8).toUpperCase()}`,
-            customer: o.customerName || "Customer",
-            email: o.customerEmail || "—",
+            customer: o.customer_name || o.customerName || "Customer",
+            email: o.customer_email || o.customerEmail || "—",
             itemsCount: o.items ? o.items.length : (o.itemsCount || 1),
             rawTotal: Number(o.totalAmount || o.total_amount || 0),
             total: `₹${typeof o.totalAmount === 'number' ? o.totalAmount.toFixed(2) : (typeof o.total_amount === 'number' ? o.total_amount.toFixed(2) : (o.totalAmount || o.total_amount || '0.00'))}`,
@@ -51,8 +52,10 @@ export default function OrdersPage() {
             rawStatus,
             status: statusDisplay,
             statusColor,
-            paymentStatus: o.paymentStatus || "Paid",
-            shippingAddress: o.shippingAddress || "104 Madison Avenue, Atelier Suite 402, New York, NY 10016",
+            paymentStatus: o.payment_status || o.paymentStatus || "pending",
+            paymentMethod: o.payment_method || "",
+            isCod: ["cod", "cash on delivery"].includes(String(o.payment_method || "").trim().toLowerCase()),
+            shippingAddress: o.shipping_address || o.shippingAddress || "—",
             date: o.createdAt || o.placed_at ? new Date(o.createdAt || o.placed_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "Recent",
             rawDate: new Date(o.createdAt || o.placed_at || Date.now()).getTime(),
             items: o.items || []
@@ -80,25 +83,27 @@ export default function OrdersPage() {
   };
 
   const handleUpdateOrderStatus = async (orderId: string, newStatus: string) => {
-    setOrders(prev => prev.map(o => {
-      if (o.id === orderId || o.orderNumber === orderId) {
-        const rawStatus = newStatus.toUpperCase();
-        const progress = rawStatus === "DELIVERED" ? 100 : rawStatus === "SHIPPED" ? 80 : rawStatus === "PROCESSING" ? 55 : 25;
-        const statusColor = rawStatus === "DELIVERED" ? "text-emerald-500 border-emerald-500/30 bg-emerald-500/10" : 
-                            rawStatus === "CANCELLED" ? "text-red-500 border-red-500/30 bg-red-500/10" : 
-                            rawStatus === "SHIPPED" ? "text-blue-400 border-blue-400/30 bg-blue-400/10" : 
-                            "text-accent border-accent/30 bg-accent/10";
-        return {
-          ...o,
-          rawStatus,
-          status: newStatus.charAt(0).toUpperCase() + newStatus.slice(1).toLowerCase(),
-          progress,
-          statusColor
-        };
-      }
-      return o;
-    }));
-    setOpenActionId(null);
+    setActionError("");
+    try {
+      await ordersApi.updateStatus(orderId, newStatus.toLowerCase());
+      await loadOrders();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Could not update the order status.");
+    } finally {
+      setOpenActionId(null);
+    }
+  };
+
+  const handleCollectCod = async (orderId: string) => {
+    setActionError("");
+    try {
+      await ordersApi.markCodCollected(orderId);
+      await loadOrders();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Could not confirm COD collection.");
+    } finally {
+      setOpenActionId(null);
+    }
   };
 
   // Filter and Sort Orders
@@ -138,7 +143,7 @@ export default function OrdersPage() {
   const metrics = [
     { label: "Total Orders", value: String(orders.length), icon: ShoppingCart, color: "text-accent", glow: "shadow-[-4px_0_15px_rgba(224,122,63,0.3)]", border: "border-l-accent" },
     { label: "Pending", value: String(orders.filter(o => o.rawStatus === "PENDING" || o.rawStatus === "CONFIRMED").length), icon: Clock, color: "text-yellow-500", glow: "shadow-[-4px_0_15px_rgba(234,179,8,0.2)]", border: "border-l-yellow-500" },
-    { label: "Processing", value: String(orders.filter(o => o.rawStatus === "PROCESSING").length), icon: Truck, color: "text-blue-500", glow: "shadow-[-4px_0_15px_rgba(59,130,246,0.2)]", border: "border-l-blue-500" },
+    { label: "Packed", value: String(orders.filter(o => o.rawStatus === "PACKED").length), icon: Truck, color: "text-blue-500", glow: "shadow-[-4px_0_15px_rgba(59,130,246,0.2)]", border: "border-l-blue-500" },
     { label: "Delivered", value: String(orders.filter(o => o.rawStatus === "DELIVERED").length), icon: CheckCircle2, color: "text-emerald-500", glow: "shadow-[-4px_0_15px_rgba(16,185,129,0.2)]", border: "border-l-emerald-500" },
     { label: "Cancelled", value: String(orders.filter(o => o.rawStatus === "CANCELLED").length), icon: Ban, color: "text-red-500", glow: "shadow-[-4px_0_15px_rgba(239,68,68,0.2)]", border: "border-l-red-500" },
   ];
@@ -194,6 +199,8 @@ export default function OrdersPage() {
         ))}
       </div>
 
+      {actionError && <p role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400">{actionError}</p>}
+
       {/* Filters Section */}
       <div className="bg-surface border border-border rounded-xl p-4 mt-6">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
@@ -225,7 +232,7 @@ export default function OrdersPage() {
                 <option value="">All Statuses</option>
                 <option value="pending">Pending</option>
                 <option value="confirmed">Confirmed</option>
-                <option value="processing">Processing</option>
+                <option value="packed">Packed</option>
                 <option value="shipped">Shipped</option>
                 <option value="delivered">Delivered</option>
                 <option value="cancelled">Cancelled</option>
@@ -390,15 +397,20 @@ export default function OrdersPage() {
                               >
                                 <Eye className="w-3.5 h-3.5 text-muted-foreground" /> View Details
                               </button>
+                              {order.isCod && order.rawStatus === "DELIVERED" && order.paymentStatus.toLowerCase() !== "paid" && (
+                                <button onClick={() => handleCollectCod(order.id)} className="w-full px-3.5 py-2 text-xs font-semibold text-emerald-400 hover:bg-surface-hover text-left transition-colors">
+                                  Confirm COD cash collected
+                                </button>
+                              )}
                               <div className="h-px bg-border/40 my-1" />
                               <div className="px-3.5 py-1 text-[10px] uppercase font-bold text-muted-foreground tracking-wider">
                                 Set Status
                               </div>
-                              <button 
-                                onClick={() => handleUpdateOrderStatus(order.id, "PROCESSING")}
+                              <button
+                                onClick={() => handleUpdateOrderStatus(order.id, "PACKED")}
                                 className="w-full px-3.5 py-1.5 text-xs text-foreground hover:bg-surface-hover hover:text-blue-400 text-left transition-colors"
                               >
-                                → Processing
+                                → Packed
                               </button>
                               <button 
                                 onClick={() => handleUpdateOrderStatus(order.id, "SHIPPED")}
@@ -517,7 +529,11 @@ export default function OrdersPage() {
                 </div>
                 <div className="flex items-center justify-between text-xs pl-6">
                   <span className="text-muted-foreground">Payment Status</span>
-                  <span className="font-bold text-emerald-500">{selectedOrderDetails.paymentStatus}</span>
+                  <span className="font-bold text-foreground capitalize">{selectedOrderDetails.paymentStatus}</span>
+                </div>
+                <div className="flex items-center justify-between text-xs pl-6">
+                  <span className="text-muted-foreground">Method</span>
+                  <span className="font-medium text-foreground">{selectedOrderDetails.paymentMethod || "Not recorded"}</span>
                 </div>
                 <div className="flex items-center justify-between text-xs pl-6">
                   <span className="text-muted-foreground">Total Charged</span>

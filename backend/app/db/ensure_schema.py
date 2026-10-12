@@ -19,6 +19,9 @@ ADDITIVE_COLUMNS = {
     "erp_journal_entries": {
         "source_key": "VARCHAR(120)",
     },
+    "orders": {
+        "payment_method": "VARCHAR(50)",
+    },
 }
 
 

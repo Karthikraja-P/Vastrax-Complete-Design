@@ -11,6 +11,7 @@ from app.core.logging import get_logger
 from app.models.address import Address
 from app.models.order import Order
 from app.models.order_item import OrderItem
+from app.models.payment import Payment
 from app.models.product import Product
 from app.models.product_variant import ProductVariant
 from app.services.erp_posting_service import post_order_revenue
@@ -38,6 +39,13 @@ class OrderService:
         if order.user:
             res.customer_name = order.user.full_name or order.user.email.split("@")[0]
             res.customer_email = order.user.email
+        if order.address:
+            res.shipping_address = ", ".join(filter(None, (
+                order.address.address_line1,
+                order.address.city,
+                order.address.state,
+                order.address.pincode,
+            )))
         return res
 
     def place_order(self, user: User, payload: OrderCreate) -> OrderResponse:
@@ -58,7 +66,7 @@ class OrderService:
         total = (subtotal * Decimal("1.08") + shipping).quantize(Decimal("0.01"))
 
         order_id = f"VX-{datetime.now(timezone.utc).year}-{uuid.uuid4().hex[:10].upper()}"
-        is_cod = payload.payment_method in ("Cash on Delivery", "COD")
+        is_cod = payload.payment_method.strip().casefold() in ("cash on delivery", "cod")
 
         order = Order(
             id=order_id,
@@ -67,9 +75,15 @@ class OrderService:
             total_amount=total,
             status="confirmed" if is_cod else "pending",
             payment_status="pending",
+            payment_method=payload.payment_method,
         )
         self.db.add(order)
         self.db.flush()
+        if is_cod:
+            self.db.add(Payment(
+                id=f"COD-{order_id}", order_id=order_id, user_id=user.id,
+                amount=total, method="COD", status="pending",
+            ))
 
         with _inventory_lock:
             for item_data in payload.items:
@@ -178,6 +192,37 @@ class OrderService:
         if status_filter:
             q = q.filter(Order.status == status_filter)
         return [self._to_response(o) for o in q.all()]
+
+    def mark_cod_collected(self, order_id: str, admin: User) -> dict:
+        order = self.db.query(Order).filter(Order.id == order_id).with_for_update().first()
+        if not order:
+            raise NotFoundError("Order not found")
+        if (order.payment_method or "").strip().casefold() not in ("cod", "cash on delivery"):
+            raise BadRequestError("This order is not marked as Cash on Delivery")
+        if order.status != "delivered":
+            raise BadRequestError("Mark the COD order delivered before confirming cash collection")
+        payment = self.db.query(Payment).filter(
+            Payment.order_id == order.id, Payment.method == "COD"
+        ).with_for_update().first()
+        if not payment:
+            payment = Payment(
+                id=f"COD-{order.id}", order_id=order.id, user_id=order.user_id,
+                amount=order.total_amount, method="COD", status="pending",
+            )
+            self.db.add(payment)
+            self.db.flush()
+        if payment.status not in ("pending", "success"):
+            raise BadRequestError("COD payment is not in a collectible state")
+        already_collected = payment.status == "success"
+        payment.status = "success"
+        order.payment_status = "paid"
+        from app.services.erp_posting_service import post_order_revenue, post_payment_receipt
+        post_payment_receipt(self.db, payment)
+        post_order_revenue(self.db, order)
+        self.db.commit()
+        self.db.refresh(payment)
+        return {"order_id": order.id, "payment_id": payment.id, "payment_status": order.payment_status,
+                "amount": str(payment.amount), "already_collected": already_collected}
 
     def admin_update_status(self, order_id: str, new_status: str) -> OrderResponse:
         if new_status not in VALID_ADMIN_STATUSES:

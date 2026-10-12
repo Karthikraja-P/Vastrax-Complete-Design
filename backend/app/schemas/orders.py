@@ -46,6 +46,7 @@ class OrderResponse(BaseModel):
     total_amount: Decimal
     status: str
     payment_status: str
+    payment_method: Optional[str] = None
     shipping_shipment_id: str | None = None
     shipping_awb: str | None = None
     shipping_courier: str | None = None
@@ -55,6 +56,7 @@ class OrderResponse(BaseModel):
     items: list[OrderItemResponse] = []
     customer_name: Optional[str] = None
     customer_email: Optional[str] = None
+    shipping_address: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 

@@ -20,6 +20,7 @@ class Order(Base):
     total_amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
     payment_status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    payment_method: Mapped[str | None] = mapped_column(String(50), nullable=True)
     shipping_shipment_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     shipping_awb: Mapped[str | None] = mapped_column(String(100), nullable=True)
     shipping_courier: Mapped[str | None] = mapped_column(String(100), nullable=True)

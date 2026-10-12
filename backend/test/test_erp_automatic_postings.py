@@ -116,3 +116,42 @@ def test_additive_migration_adds_unique_source_key_to_existing_journal_table():
     indexes = inspect(engine).get_indexes("erp_journal_entries")
     assert any(index["name"] == "uq_erp_journal_source_key" and index["unique"] for index in indexes)
     engine.dispose()
+
+
+def test_cod_cash_collection_posts_payment_and_delivery_once():
+    from app.models.erp_posting_config import ERPPostingConfig
+    from app.services.order_service import OrderService
+
+    suffix = uuid.uuid4().hex[:8]
+    db = SessionLocal()
+    admin = User(id=f"cod-admin-{suffix}", email=f"cod-admin-{suffix}@example.test", hashed_password="test", role="admin", is_active=True)
+    customer = User(id=f"cod-customer-{suffix}", email=f"cod-customer-{suffix}@example.test", hashed_password="test", role="customer", is_active=True)
+    address = Address(id=f"cod-address-{suffix}", user_id=customer.id, label="Home", address_line1="1 Test Road", city="Chennai", state="Tamil Nadu", pincode="600001")
+    order = Order(id=f"COD-ORDER-{suffix}", user_id=customer.id, address_id=address.id, total_amount=Decimal("80.00"), status="delivered", payment_status="pending", payment_method="Cash on Delivery")
+    payment = Payment(id=f"COD-{order.id}", order_id=order.id, user_id=customer.id, amount=Decimal("80.00"), method="COD", status="pending")
+    accounts = _accounts(db, suffix)
+    config = db.get(ERPPostingConfig, "default")
+    if config:
+        config.payment_clearing_account_id = accounts[0].id
+        config.customer_advances_account_id = accounts[1].id
+        config.sales_revenue_account_id = accounts[2].id
+        config.sales_returns_account_id = accounts[3].id
+        config.updated_by = admin.id
+    else:
+        config = ERPPostingConfig(id="default", payment_clearing_account_id=accounts[0].id,
+                                  customer_advances_account_id=accounts[1].id, sales_revenue_account_id=accounts[2].id,
+                                  sales_returns_account_id=accounts[3].id, updated_by=admin.id)
+        db.add(config)
+    db.add_all([admin, customer, address, order, payment])
+    db.commit()
+
+    first = OrderService(db).mark_cod_collected(order.id, admin)
+    assert first["payment_status"] == "paid" and first["already_collected"] is False
+    second = OrderService(db).mark_cod_collected(order.id, admin)
+    assert second["already_collected"] is True
+    assert db.query(JournalEntry).filter_by(source_key=f"payment-receipt:{payment.id}").count() == 1
+    assert db.query(JournalEntry).filter_by(source_key=f"order-revenue:{payment.id}").count() == 1
+    payment = db.get(Payment, payment.id)
+    assert payment.status == "success"
+    assert db.get(Order, order.id).payment_status == "paid"
+    db.close()
