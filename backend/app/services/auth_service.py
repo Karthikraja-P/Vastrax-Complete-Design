@@ -24,6 +24,7 @@ from app.core.security import (
 )
 from app.models.otp import OTP, _now
 from app.models.user import User
+from app.models.business_team import BusinessTeamPermission
 from app.services.email_service import send_email
 
 logger = get_logger(__name__)
@@ -137,6 +138,9 @@ class AuthService:
         access_token = create_access_token({"sub": user.id, "role": user.role})
         refresh_token = create_refresh_token(user.id)
         user.refresh_token_hash = self._token_hash(refresh_token)
+        business_permissions = [row.permission for row in self.db.query(BusinessTeamPermission.permission).filter(
+            BusinessTeamPermission.user_id == user.id
+        ).order_by(BusinessTeamPermission.permission).all()]
         self.db.commit()
         logger.info("User logged in: %s", user.id)
 
@@ -150,6 +154,7 @@ class AuthService:
                 "email": user.email,
                 "phone_number": user.phone_number,
                 "role": user.role,
+                "business_permissions": business_permissions,
             },
         }
 

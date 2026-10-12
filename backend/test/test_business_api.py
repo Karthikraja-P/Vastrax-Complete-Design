@@ -4,7 +4,7 @@ import uuid
 import pytest
 from fastapi.testclient import TestClient
 
-from app.core.security import create_access_token
+from app.core.security import create_access_token, hash_password
 from app.db.database import SessionLocal
 from app.main import app
 from app.models.address import Address
@@ -23,7 +23,7 @@ def business_admin():
     suffix = uuid.uuid4().hex[:10]
     db = SessionLocal()
     admin = User(id=f"admin-{suffix}", email=f"admin-{suffix}@example.test", hashed_password="test", role="admin", is_active=True)
-    customer = User(id=f"customer-{suffix}", email=f"customer-{suffix}@example.test", full_name="Beta Customer", hashed_password="test", role="customer", is_active=True)
+    customer = User(id=f"customer-{suffix}", email=f"customer-{suffix}@example.com", full_name="Beta Customer", hashed_password="test", role="customer", is_active=True)
     category = Category(id=f"cat-{suffix}", name=f"Business {suffix}", slug=f"business-{suffix}")
     product = Product(id=f"p-{suffix}", category_id=category.id, name="Test Dress", price_mrp=100, price_selling=90)
     variant = ProductVariant(id=f"v-{suffix}", product_id=product.id, sku=f"sku-{suffix}", size="S", stock_qty=4)
@@ -73,6 +73,54 @@ def test_crm_customer_detail_reads_shared_orders_and_activities(business_admin):
     assert note.status_code == 201, note.text
     updated = client.get(f"/api/v1/crm/customers/{business_admin['customer_id']}", headers=headers).json()
     assert any(activity["description"] == "Asked for a call next week" for activity in updated["activities"])
+
+
+
+def test_admin_grants_scoped_business_access_to_existing_team_accounts(business_admin):
+    client = TestClient(app)
+    admin_headers = {"Authorization": f"Bearer {business_admin['token']}"}
+    member_token = create_access_token({"sub": business_admin["customer_id"]})
+    member_headers = {"Authorization": f"Bearer {member_token}"}
+    path = "/api/v1/users/admin/business-team"
+
+    assert client.get(path).status_code == 401
+    grant = client.put(path, headers=admin_headers, json={
+        "email": f"customer-{business_admin['suffix']}@example.com",
+        "permissions": ["crm"],
+    })
+    repeated_grant = client.put(path, headers=admin_headers, json={
+        "email": f"customer-{business_admin['suffix']}@example.com",
+        "permissions": ["crm"],
+    })
+    assert repeated_grant.status_code == 200, repeated_grant.text
+    db = SessionLocal()
+    team_user = db.get(User, business_admin["customer_id"])
+    team_user.hashed_password = hash_password("TeamMember!123")
+    db.commit()
+    db.close()
+    login = client.post("/api/v1/auth/login", json={
+        "email": f"customer-{business_admin['suffix']}@example.com",
+        "password": "TeamMember!123",
+    })
+    assert login.status_code == 200, login.text
+    assert login.json()["user"]["business_permissions"] == ["crm"]
+    assert grant.status_code == 200, grant.text
+    assert grant.json()["permissions"] == ["crm"]
+    assert client.get("/api/v1/auth/me", headers=member_headers).json()["business_permissions"] == ["crm"]
+    assert client.get("/api/v1/crm/overview", headers=member_headers).status_code == 200
+    assert client.get("/api/v1/erp/overview", headers=member_headers).status_code == 403
+
+    update = client.put(path, headers=admin_headers, json={
+        "email": f"customer-{business_admin['suffix']}@example.com",
+        "permissions": ["erp"],
+    })
+    assert update.status_code == 200
+    assert client.get("/api/v1/crm/overview", headers=member_headers).status_code == 403
+    assert client.get("/api/v1/erp/overview", headers=member_headers).status_code == 200
+
+    revoked = client.delete(f"{path}/{business_admin['customer_id']}", headers=admin_headers)
+    assert revoked.status_code == 204
+    assert client.get("/api/v1/erp/overview", headers=member_headers).status_code == 403
 
 
 def test_supplier_purchase_receipt_and_stock_audit(business_admin):

@@ -9,11 +9,11 @@ from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db
-from app.middleware.auth import require_admin
+from app.middleware.auth import require_business_permission
 from app.models.ledger import JournalEntry, JournalLine, LedgerAccount
 from app.models.user import User
 
-router = APIRouter(tags=["erp-accounting"], dependencies=[Depends(require_admin)])
+router = APIRouter(tags=["erp-accounting"], dependencies=[Depends(require_business_permission("erp"))])
 
 
 class AccountCreate(BaseModel):
@@ -68,7 +68,7 @@ def list_journals(limit: int = Query(default=100, ge=1, le=500), db: Session = D
 
 
 @router.post("/erp/journals", status_code=status.HTTP_201_CREATED)
-def post_journal(body: JournalCreate, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+def post_journal(body: JournalCreate, admin: User = Depends(require_business_permission("erp")), db: Session = Depends(get_db)):
     debit_total = sum((line.debit for line in body.lines), Decimal("0"))
     credit_total = sum((line.credit for line in body.lines), Decimal("0"))
     if debit_total <= 0 or debit_total != credit_total:

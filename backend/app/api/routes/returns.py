@@ -8,7 +8,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db
-from app.middleware.auth import require_admin
+from app.middleware.auth import require_business_permission
 from app.models.business import StockMovement
 from app.models.order import Order
 from app.models.order_item import OrderItem
@@ -17,7 +17,7 @@ from app.models.product_variant import ProductVariant
 from app.models.returns import SalesReturn, SalesReturnLine
 from app.models.user import User
 
-router = APIRouter(tags=["erp-returns"], dependencies=[Depends(require_admin)])
+router = APIRouter(tags=["erp-returns"], dependencies=[Depends(require_business_permission("erp"))])
 
 
 class ReturnLineInput(BaseModel):
@@ -79,7 +79,7 @@ def list_returns(db: Session = Depends(get_db)):
 
 
 @router.post("/erp/returns", status_code=status.HTTP_201_CREATED)
-def create_return(body: ReturnCreate, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+def create_return(body: ReturnCreate, admin: User = Depends(require_business_permission("erp")), db: Session = Depends(get_db)):
     order = db.get(Order, body.order_id)
     if not order or order.status != "delivered":
         raise HTTPException(409, "Returns can only be logged for delivered orders")
@@ -108,7 +108,7 @@ def create_return(body: ReturnCreate, admin: User = Depends(require_admin), db: 
 
 
 @router.post("/erp/returns/{return_id}/review")
-def review_return(return_id: str, body: ReturnReview, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+def review_return(return_id: str, body: ReturnReview, admin: User = Depends(require_business_permission("erp")), db: Session = Depends(get_db)):
     case = db.get(SalesReturn, return_id)
     if not case or case.status != "requested":
         raise HTTPException(409, "Only a requested return can be reviewed")
@@ -120,7 +120,7 @@ def review_return(return_id: str, body: ReturnReview, admin: User = Depends(requ
 
 
 @router.post("/erp/returns/{return_id}/receive")
-def receive_return(return_id: str, body: ReturnReceipt, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+def receive_return(return_id: str, body: ReturnReceipt, admin: User = Depends(require_business_permission("erp")), db: Session = Depends(get_db)):
     case = db.get(SalesReturn, return_id)
     if not case or case.status not in ("approved", "partially_received"):
         raise HTTPException(409, "Return must be approved before receiving items")

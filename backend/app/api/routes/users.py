@@ -1,9 +1,12 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, EmailStr, Field
+from typing import Literal
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db
 from app.middleware.auth import get_current_user, require_admin
 from app.models.user import User
+from app.models.business_team import BusinessTeamPermission
 from app.schemas.user import AddressCreate, AddressUpdate, ChangePasswordRequest, UserUpdate
 from app.services.user_service import UserService
 
@@ -130,6 +133,62 @@ def admin_customers(_: User = Depends(require_admin), db: Session = Depends(get_
 @router.get("/admin/admins")
 def admin_admins(_: User = Depends(require_admin), db: Session = Depends(get_db)):
     return UserService(db).list_admins()
+
+
+class BusinessTeamAccessUpdate(BaseModel):
+    email: EmailStr
+    permissions: list[Literal["crm", "erp"]] = Field(min_length=1, max_length=2)
+
+
+@router.get("/admin/business-team")
+def list_business_team(_: User = Depends(require_admin), db: Session = Depends(get_db)):
+    rows = db.query(BusinessTeamPermission, User).join(
+        User, User.id == BusinessTeamPermission.user_id
+    ).filter(User.is_active.is_(True), User.role != "admin").order_by(
+        User.email, BusinessTeamPermission.permission
+    ).all()
+    members: dict[str, dict] = {}
+    for grant, user in rows:
+        members.setdefault(user.id, {
+            "user_id": user.id, "full_name": user.full_name, "email": user.email,
+            "permissions": [],
+        })["permissions"].append(grant.permission)
+    return list(members.values())
+
+
+@router.put("/admin/business-team")
+def update_business_team_access(
+    body: BusinessTeamAccessUpdate,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    user = db.query(User).filter(User.email == str(body.email).lower(), User.is_active.is_(True)).first()
+    if not user:
+        raise HTTPException(404, "Ask the team member to create and verify a Vastrax account first")
+    if user.role == "admin":
+        raise HTTPException(409, "Admins already have full business access")
+    desired = set(body.permissions)
+    existing = {
+        grant.permission: grant
+        for grant in db.query(BusinessTeamPermission).filter(BusinessTeamPermission.user_id == user.id).all()
+    }
+    for permission, grant in existing.items():
+        if permission not in desired:
+            db.delete(grant)
+    for permission in desired - set(existing):
+        db.add(BusinessTeamPermission(user_id=user.id, permission=permission, granted_by=admin.id))
+    db.commit()
+    return {"user_id": user.id, "email": user.email, "permissions": sorted(desired)}
+
+
+@router.delete("/admin/business-team/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+def revoke_business_team_access(
+    user_id: str,
+    _: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    db.query(BusinessTeamPermission).filter(BusinessTeamPermission.user_id == user_id).delete(synchronize_session=False)
+    db.commit()
 
 
 @router.get("/admin/{user_id}")
