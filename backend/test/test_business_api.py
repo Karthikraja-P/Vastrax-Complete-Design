@@ -119,6 +119,26 @@ def test_store_order_syncs_to_crm_customer_history_and_erp_stock_audit(business_
     assert movements.status_code == 200
     assert any(row["reference_id"] == order["id"] and row["reason"] == "sale" and row["stock_after"] == initial_stock - 1 for row in movements.json())
 
+    delivered = client.put(f"/api/v1/orders/admin/{order['id']}/status", headers=admin_headers, json={"status": "delivered"})
+    assert delivered.status_code == 200, delivered.text
+    returned = client.post("/api/v1/erp/returns", headers=admin_headers, json={
+        "order_id": order["id"], "reason": "size", "items": [{"order_item_id": order["items"][0]["id"], "quantity": 1}],
+    })
+    assert returned.status_code == 201, returned.text
+    return_id = returned.json()["id"]
+    assert client.post(f"/api/v1/erp/returns/{return_id}/review", headers=admin_headers, json={"decision": "approve"}).status_code == 200
+    received = client.post(f"/api/v1/erp/returns/{return_id}/receive", headers=admin_headers, json={
+        "items": [{"line_id": returned.json()["items"][0]["id"], "quantity_received": 1, "quantity_restocked": 1}],
+    })
+    assert received.status_code == 200, received.text
+    final_inventory = client.get("/api/v1/erp/inventory", headers=admin_headers, params={"q": f"sku-{business_admin['suffix']}"})
+    final_stock = next(row for row in final_inventory.json() if row["variant_id"] == business_admin["variant_id"])
+    assert final_stock["stock_qty"] == initial_stock
+    final_movements = client.get("/api/v1/erp/inventory/movements", headers=admin_headers, params={"variant_id": business_admin["variant_id"]}).json()
+    assert {row["reason"] for row in final_movements} >= {"sale", "customer_return"}
+    final_crm = client.get(f"/api/v1/crm/customers/{business_admin['customer_id']}", headers=admin_headers).json()
+    assert any(row["id"] == order["id"] and row["status"] == "delivered" for row in final_crm["orders"])
+
     assert client.get(f"/api/v1/crm/customers/{business_admin['customer_id']}", headers=customer_headers).status_code == 403
     assert client.get("/api/v1/erp/inventory", headers=customer_headers).status_code == 403
 
