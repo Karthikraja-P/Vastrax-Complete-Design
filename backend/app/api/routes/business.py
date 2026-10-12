@@ -1,5 +1,7 @@
 """Admin CRM and commerce ERP endpoints backed by Vastrax's existing records."""
 from datetime import date, datetime, timezone
+import hashlib
+import json
 from decimal import Decimal
 import uuid
 from typing import Literal
@@ -12,7 +14,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.db.database import get_db
 from app.middleware.auth import require_business_permission
-from app.models.business import CRMActivity, CRMLead, OperatingExpense, PurchaseOrder, PurchaseOrderLine, StockMovement, Supplier, SupplierPayment, SupplierExpensePayment
+from app.models.business import CRMActivity, CRMLead, OperatingExpense, PurchaseOrder, PurchaseOrderLine, StockMovement, Supplier, SupplierPayment, SupplierExpensePayment, ERPInventoryReceipt
 from app.models.ledger import JournalEntry, JournalLine, LedgerAccount
 from app.models.order import Order
 from app.models.order_item import OrderItem
@@ -95,6 +97,7 @@ class PurchaseReceipt(BaseModel):
     items: list[ReceiptLine] = Field(min_length=1)
     inventory_account_id: str
     payable_account_id: str
+    idempotency_key: str | None = Field(default=None, min_length=16, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
 
 
 class StockAdjustment(BaseModel):
@@ -566,6 +569,20 @@ def create_purchase_order(body: PurchaseOrderCreate, admin: User = Depends(requi
 
 @router.post("/erp/purchase-orders/{po_id}/receive", dependencies=[Depends(require_business_permission("erp"))])
 def receive_purchase_order(po_id: str, body: PurchaseReceipt, admin: User = Depends(require_business_permission("erp")), db: Session = Depends(get_db)):
+    idempotency_key = body.idempotency_key or uuid.uuid4().hex
+    canonical_request = {
+        "purchase_order_id": po_id,
+        "inventory_account_id": body.inventory_account_id,
+        "payable_account_id": body.payable_account_id,
+        "items": sorted(({"line_id": item.line_id, "quantity": item.quantity} for item in body.items), key=lambda item: item["line_id"]),
+    }
+    request_hash = hashlib.sha256(json.dumps(canonical_request, separators=(",", ":"), sort_keys=True).encode()).hexdigest()
+    previous = db.query(ERPInventoryReceipt).filter(ERPInventoryReceipt.idempotency_key == idempotency_key).first()
+    if previous:
+        if previous.request_hash != request_hash:
+            raise HTTPException(409, "This receipt key was already used for a different request")
+        return {"id": previous.purchase_order_id, "status": previous.result_status, "journal_entry_id": previous.journal_entry_id}
+
     po = db.query(PurchaseOrder).filter(PurchaseOrder.id == po_id).with_for_update().first()
     if not po or po.status in ("cancelled", "received"):
         raise HTTPException(404, "Open purchase order not found")
@@ -590,6 +607,23 @@ def receive_purchase_order(po_id: str, body: PurchaseReceipt, admin: User = Depe
             raise HTTPException(409, "Product variant no longer exists")
         validated.append((receipt, line, variant))
         total_cost += Decimal(receipt.quantity) * Decimal(line.unit_cost)
+
+    receipt_record = ERPInventoryReceipt(
+        idempotency_key=idempotency_key, request_hash=request_hash, purchase_order_id=po.id,
+        result_status="processing", created_by=admin.id,
+    )
+    db.add(receipt_record)
+    try:
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        previous = db.query(ERPInventoryReceipt).filter(ERPInventoryReceipt.idempotency_key == idempotency_key).first()
+        if previous and previous.request_hash == request_hash:
+            return {"id": previous.purchase_order_id, "status": previous.result_status, "journal_entry_id": previous.journal_entry_id}
+        if previous:
+            raise HTTPException(409, "This receipt key was already used for a different request")
+        raise HTTPException(409, "A duplicate receipt request is being processed; retry with the same key")
+
     for receipt, line, variant in validated:
         before = int(variant.stock_qty or 0)
         variant.stock_qty = before + receipt.quantity
@@ -602,7 +636,8 @@ def receive_purchase_order(po_id: str, body: PurchaseReceipt, admin: User = Depe
     journal_entry_id = None
     if total_cost > 0:
         entry = JournalEntry(posting_date=date.today(), description=f"Inventory receipt for {po.id}",
-                             reference=f"RECEIPT-{uuid.uuid4().hex[:12].upper()}", created_by=admin.id)
+                             reference=f"RECEIPT-{idempotency_key[:24]}", source_key=f"inventory-receipt:{idempotency_key}",
+                             created_by=admin.id)
         db.add(entry)
         db.flush()
         db.add_all([
@@ -610,6 +645,8 @@ def receive_purchase_order(po_id: str, body: PurchaseReceipt, admin: User = Depe
             JournalLine(journal_entry_id=entry.id, account_id=payable_account.id, debit=0, credit=total_cost),
         ])
         journal_entry_id = entry.id
+    receipt_record.result_status = po.status
+    receipt_record.journal_entry_id = journal_entry_id
     db.commit()
     return {"id": po.id, "status": po.status, "journal_entry_id": journal_entry_id}
 

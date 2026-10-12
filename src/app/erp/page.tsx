@@ -85,8 +85,16 @@ export default function ERPPage() {
     });
     if (exceedsOpen) { setError("A receipt quantity cannot exceed the remaining quantity on its purchase order line."); return; }
     if (!inventoryAccountId || !payableAccountId) { setError("Select an inventory asset and supplier payable liability account before receiving stock."); return; }
+    const receiptRequest = { inventory_account_id: inventoryAccountId, payable_account_id: payableAccountId, items: receipt };
+    const storageKey = `vastrax:receipt:${po.id}:${JSON.stringify(receiptRequest)}`;
+    let idempotencyKey = sessionStorage.getItem(storageKey);
+    if (!idempotencyKey) {
+      idempotencyKey = crypto.randomUUID();
+      sessionStorage.setItem(storageKey, idempotencyKey);
+    }
     try {
-      await fetchApi(`/erp/purchase-orders/${po.id}/receive`, { method: "POST", body: JSON.stringify({ inventory_account_id: inventoryAccountId, payable_account_id: payableAccountId, items: receipt }) });
+      await fetchApi(`/erp/purchase-orders/${po.id}/receive`, { method: "POST", body: JSON.stringify({ ...receiptRequest, idempotency_key: idempotencyKey }) });
+      sessionStorage.removeItem(storageKey);
       setReceiptQuantities(current => {
         const next = { ...current };
         for (const item of receipt) delete next[item.line_id];

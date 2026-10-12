@@ -415,16 +415,24 @@ def test_multi_line_purchase_order_receipt_updates_shared_inventory_and_ledger(b
     po_id = created.json()["id"]
     po = next(row for row in client.get("/api/v1/erp/purchase-orders", headers=headers).json() if row["id"] == po_id)
     assert len(po["items"]) == 2
-    received = client.post(f"/api/v1/erp/purchase-orders/{po_id}/receive", headers=headers, json={
+    receipt_payload = {
         "items": [{"line_id": item["id"], "quantity": item["quantity_ordered"]} for item in po["items"]],
         "inventory_account_id": business_admin["inventory_account_id"],
         "payable_account_id": business_admin["payable_account_id"],
-    })
+        "idempotency_key": f"receipt-{business_admin['suffix']}",
+    }
+    received = client.post(f"/api/v1/erp/purchase-orders/{po_id}/receive", headers=headers, json=receipt_payload)
     assert received.status_code == 200 and received.json()["status"] == "received"
+    retried = client.post(f"/api/v1/erp/purchase-orders/{po_id}/receive", headers=headers, json=receipt_payload)
+    assert retried.status_code == 200 and retried.json() == received.json()
+    conflict_payload = {**receipt_payload, "payable_account_id": business_admin["inventory_account_id"]}
+    assert client.post(f"/api/v1/erp/purchase-orders/{po_id}/receive", headers=headers, json=conflict_payload).status_code == 409
 
     db = SessionLocal()
     assert db.get(ProductVariant, business_admin["variant_id"]).stock_qty == 7
     assert db.get(ProductVariant, second_id).stock_qty == 6
+    from app.models.ledger import JournalEntry
+    assert db.query(JournalEntry).filter(JournalEntry.source_key == f"inventory-receipt:{receipt_payload['idempotency_key']}").count() == 1
     db.close()
     journal = next(row for row in client.get("/api/v1/erp/journals", headers=headers).json()
                    if row["id"] == received.json()["journal_entry_id"])
