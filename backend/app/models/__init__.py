@@ -40,7 +40,7 @@ from .business import CRMLead, CRMActivity, Supplier, PurchaseOrder, PurchaseOrd
 
 from .returns import SalesReturn, SalesReturnLine
 
-from .ledger import LedgerAccount, JournalEntry, JournalLine
+from .ledger import LedgerAccount, JournalEntry, JournalLine, BankStatementLine, BankStatementMatchEvent
 from .business_team import BusinessTeamPermission
 from .marketing_consent import CRMMarketingConsentEvent
 

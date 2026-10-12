@@ -1,5 +1,5 @@
 """Admin general-ledger and trial-balance endpoints."""
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Literal
 
@@ -7,10 +7,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy import case, func
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 
 from app.db.database import get_db
 from app.middleware.auth import require_business_permission
-from app.models.ledger import JournalEntry, JournalLine, LedgerAccount
+from app.models.ledger import JournalEntry, JournalLine, LedgerAccount, BankStatementLine, BankStatementMatchEvent
 from app.models.erp_posting_config import ERPPostingConfig
 from app.models.payment import Payment
 from app.models.payment_refund import PaymentRefund
@@ -48,6 +49,23 @@ def _entry_payload(db: Session, entry: JournalEntry) -> dict:
                        "debit": str(line.debit), "credit": str(line.credit), "memo": line.memo} for line, code, name in rows]}
 
 
+
+
+class BankStatementImportLine(BaseModel):
+    statement_date: date
+    description: str = Field(min_length=1, max_length=255)
+    reference: str | None = Field(default=None, max_length=100)
+    amount: Decimal = Field(max_digits=14, decimal_places=2)
+    source_fingerprint: str = Field(min_length=64, max_length=64, pattern=r"^[a-fA-F0-9]{64}$")
+
+
+class BankStatementImport(BaseModel):
+    account_id: str
+    lines: list[BankStatementImportLine] = Field(min_length=1, max_length=2000)
+
+
+class BankStatementMatchIn(BaseModel):
+    journal_entry_id: str
 
 
 class PostingSettingsIn(BaseModel):
@@ -307,3 +325,175 @@ def balance_sheet(as_of: date = Query(default_factory=date.today), db: Session =
         "liabilities_and_equity_total": str(liabilities_and_equity.quantize(Decimal("0.01"))),
         "balanced": summed["asset"].quantize(Decimal("0.01")) == liabilities_and_equity.quantize(Decimal("0.01")),
     }
+
+
+@router.get("/erp/bank-reconciliation")
+def list_bank_statement_lines(
+    account_id: str | None = None,
+    unmatched_only: bool = False,
+    db: Session = Depends(get_db),
+):
+    query = db.query(BankStatementLine, LedgerAccount.code, LedgerAccount.name).join(
+        LedgerAccount, LedgerAccount.id == BankStatementLine.account_id
+    )
+    if account_id:
+        query = query.filter(BankStatementLine.account_id == account_id)
+    if unmatched_only:
+        query = query.filter(BankStatementLine.matched_journal_entry_id.is_(None))
+    rows = query.order_by(BankStatementLine.statement_date.desc(), BankStatementLine.created_at.desc()).limit(1000).all()
+    output = []
+    for line, code, name in rows:
+        journal = db.get(JournalEntry, line.matched_journal_entry_id) if line.matched_journal_entry_id else None
+        output.append({
+            "id": line.id, "account_id": line.account_id, "account_code": code, "account_name": name,
+            "statement_date": line.statement_date, "description": line.description, "reference": line.reference,
+            "amount": str(line.amount), "matched_journal_entry_id": line.matched_journal_entry_id,
+            "matched_journal_description": journal.description if journal else None,
+            "created_at": line.created_at,
+        })
+    return output
+
+
+@router.post("/erp/bank-reconciliation/import", status_code=status.HTTP_201_CREATED)
+def import_bank_statement(
+    body: BankStatementImport,
+    admin: User = Depends(require_business_permission("erp")),
+    db: Session = Depends(get_db),
+):
+    account = db.get(LedgerAccount, body.account_id)
+    if not account or not account.is_active or account.account_type != "asset":
+        raise HTTPException(422, "Choose an active cash or bank asset account")
+    created = []
+    skipped = 0
+    seen_fingerprints: set[str] = set()
+    for row in body.lines:
+        amount = row.amount.quantize(Decimal("0.01"))
+        if amount == 0:
+            raise HTTPException(422, "Statement lines must have a non-zero amount")
+        fingerprint = row.source_fingerprint.lower()
+        if fingerprint in seen_fingerprints or db.query(BankStatementLine.id).filter(BankStatementLine.source_fingerprint == fingerprint).first():
+            skipped += 1
+            continue
+        seen_fingerprints.add(fingerprint)
+        description = row.description.strip()
+        if not description:
+            raise HTTPException(422, "Statement line descriptions cannot be blank")
+        line = BankStatementLine(
+            account_id=account.id,
+            statement_date=row.statement_date,
+            description=description,
+            reference=row.reference.strip() if row.reference and row.reference.strip() else None,
+            amount=amount,
+            source_fingerprint=fingerprint,
+            created_by=admin.id,
+        )
+        db.add(line)
+        created.append(line)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409, "A duplicate statement line was imported concurrently; reload before retrying")
+    return {"imported": len(created), "skipped_duplicates": skipped}
+
+
+@router.get("/erp/bank-reconciliation/{line_id}/candidates")
+def bank_reconciliation_candidates(line_id: str, db: Session = Depends(get_db)):
+    statement_line = db.get(BankStatementLine, line_id)
+    if not statement_line:
+        raise HTTPException(404, "Statement line not found")
+    if statement_line.matched_journal_entry_id:
+        return []
+    net_amount = func.sum(JournalLine.debit - JournalLine.credit)
+    rows = db.query(
+        JournalEntry.id, JournalEntry.posting_date, JournalEntry.description, JournalEntry.reference,
+        net_amount.label("net_amount"),
+    ).join(JournalLine, JournalLine.journal_entry_id == JournalEntry.id).filter(
+        JournalLine.account_id == statement_line.account_id,
+        JournalEntry.posting_date.between(statement_line.statement_date - timedelta(days=7), statement_line.statement_date + timedelta(days=7)),
+    ).group_by(JournalEntry.id).having(net_amount == statement_line.amount).order_by(
+        JournalEntry.posting_date.desc(), JournalEntry.created_at.desc()
+    ).limit(50).all()
+    return [{
+        "journal_entry_id": row.id, "posting_date": row.posting_date, "description": row.description,
+        "reference": row.reference, "amount": str(Decimal(row.net_amount).quantize(Decimal("0.01"))),
+        "reference_match": bool(statement_line.reference and row.reference and statement_line.reference.casefold() == row.reference.casefold()),
+    } for row in rows]
+
+
+@router.post("/erp/bank-reconciliation/{line_id}/match")
+def match_bank_statement_line(
+    line_id: str,
+    body: BankStatementMatchIn,
+    admin: User = Depends(require_business_permission("erp")),
+    db: Session = Depends(get_db),
+):
+    line = db.query(BankStatementLine).filter(BankStatementLine.id == line_id).with_for_update().first()
+    if not line:
+        raise HTTPException(404, "Statement line not found")
+    if line.matched_journal_entry_id:
+        if line.matched_journal_entry_id == body.journal_entry_id:
+            return {"id": line.id, "status": "matched", "journal_entry_id": body.journal_entry_id}
+        raise HTTPException(409, "This statement line is already matched; unmatch it before choosing another entry")
+    entry = db.get(JournalEntry, body.journal_entry_id)
+    if not entry:
+        raise HTTPException(404, "Journal entry not found")
+    net = db.query(func.coalesce(func.sum(JournalLine.debit - JournalLine.credit), 0)).filter(
+        JournalLine.journal_entry_id == entry.id,
+        JournalLine.account_id == line.account_id,
+    ).scalar()
+    if Decimal(net or 0).quantize(Decimal("0.01")) != Decimal(line.amount).quantize(Decimal("0.01")):
+        raise HTTPException(409, "Journal entry does not match this bank account and signed amount")
+    duplicate = db.query(BankStatementLine.id).filter(
+        BankStatementLine.account_id == line.account_id,
+        BankStatementLine.matched_journal_entry_id == entry.id,
+        BankStatementLine.id != line.id,
+    ).first()
+    if duplicate:
+        raise HTTPException(409, "This journal entry is already reconciled to another statement line")
+    line.matched_journal_entry_id = entry.id
+    line.matched_by = admin.id
+    line.matched_at = datetime.now(timezone.utc)
+    db.add(BankStatementMatchEvent(statement_line_id=line.id, journal_entry_id=entry.id, action="matched", actor_id=admin.id))
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409, "This journal entry has already been matched to another statement row")
+    return {"id": line.id, "status": "matched", "journal_entry_id": entry.id}
+
+
+@router.post("/erp/bank-reconciliation/{line_id}/unmatch")
+def unmatch_bank_statement_line(
+    line_id: str,
+    admin: User = Depends(require_business_permission("erp")),
+    db: Session = Depends(get_db),
+):
+    line = db.query(BankStatementLine).filter(BankStatementLine.id == line_id).with_for_update().first()
+    if not line:
+        raise HTTPException(404, "Statement line not found")
+    if not line.matched_journal_entry_id:
+        return {"id": line.id, "status": "unmatched"}
+    previous_entry_id = line.matched_journal_entry_id
+    db.add(BankStatementMatchEvent(statement_line_id=line.id, journal_entry_id=previous_entry_id, action="unmatched", actor_id=admin.id))
+    line.matched_journal_entry_id = None
+    line.matched_by = None
+    line.matched_at = None
+    db.commit()
+    return {"id": line.id, "status": "unmatched"}
+
+
+@router.get("/erp/bank-reconciliation/{line_id}/history")
+def bank_reconciliation_history(line_id: str, db: Session = Depends(get_db)):
+    if not db.get(BankStatementLine, line_id):
+        raise HTTPException(404, "Statement line not found")
+    rows = db.query(BankStatementMatchEvent, User.full_name, User.email, JournalEntry.description).join(
+        User, User.id == BankStatementMatchEvent.actor_id
+    ).outerjoin(JournalEntry, JournalEntry.id == BankStatementMatchEvent.journal_entry_id).filter(
+        BankStatementMatchEvent.statement_line_id == line_id
+    ).order_by(BankStatementMatchEvent.created_at.desc()).all()
+    return [{
+        "action": event.action, "journal_entry_id": event.journal_entry_id,
+        "journal_description": description, "actor": name or email,
+        "created_at": event.created_at,
+    } for event, name, email, description in rows]

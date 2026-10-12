@@ -1,5 +1,6 @@
 """Integration tests for Vastrax CRM and purchasing/inventory workflows."""
 import uuid
+import hashlib
 
 import pytest
 from fastapi.testclient import TestClient
@@ -466,3 +467,55 @@ def test_supplier_maintenance_updates_and_deactivates_without_deleting_history(b
     listed = client.get(supplier_path, headers=headers)
     assert listed.status_code == 200
     assert any(row["id"] == supplier["id"] and row["is_active"] for row in listed.json())
+
+
+def test_bank_statement_import_match_unmatch_audit_and_duplicate_guard(business_admin):
+    client = TestClient(app)
+    headers = {"Authorization": f"Bearer {business_admin['token']}"}
+    suffix = business_admin["suffix"]
+    revenue = client.post("/api/v1/erp/accounts", headers=headers, json={
+        "code": f"BANK-REV-{suffix}", "name": "Bank reconciliation offset", "account_type": "revenue",
+    })
+    assert revenue.status_code == 201, revenue.text
+    journal = client.post("/api/v1/erp/journals", headers=headers, json={
+        "posting_date": "2026-10-01", "description": "Bank deposit", "reference": "UTR-123",
+        "lines": [
+            {"account_id": business_admin["inventory_account_id"], "debit": "125.50", "credit": "0"},
+            {"account_id": revenue.json()["id"], "debit": "0", "credit": "125.50"},
+        ],
+    })
+    assert journal.status_code == 201, journal.text
+    fingerprint = hashlib.sha256(f"statement-row-{suffix}".encode()).hexdigest()
+    payload = {"account_id": business_admin["inventory_account_id"], "lines": [{
+        "statement_date": "2026-10-01", "description": "Settlement deposit", "reference": "UTR-123",
+        "amount": "125.50", "source_fingerprint": fingerprint,
+    }]}
+    imported = client.post("/api/v1/erp/bank-reconciliation/import", headers=headers, json=payload)
+    assert imported.status_code == 201 and imported.json() == {"imported": 1, "skipped_duplicates": 0}
+    same_batch = {**payload, "lines": [payload["lines"][0], payload["lines"][0]]}
+    within_batch = client.post("/api/v1/erp/bank-reconciliation/import", headers=headers, json=same_batch)
+    assert within_batch.status_code == 201 and within_batch.json() == {"imported": 0, "skipped_duplicates": 2}
+    duplicate = client.post("/api/v1/erp/bank-reconciliation/import", headers=headers, json=payload)
+    assert duplicate.status_code == 201 and duplicate.json() == {"imported": 0, "skipped_duplicates": 1}
+    rows = client.get("/api/v1/erp/bank-reconciliation", headers=headers, params={"unmatched_only": True}).json()
+    assert len(rows) == 1
+    line_id = rows[0]["id"]
+    candidates = client.get(f"/api/v1/erp/bank-reconciliation/{line_id}/candidates", headers=headers)
+    assert candidates.status_code == 200
+    assert candidates.json()[0]["journal_entry_id"] == journal.json()["id"]
+    assert candidates.json()[0]["reference_match"] is True
+    wrong = client.post(f"/api/v1/erp/bank-reconciliation/{line_id}/match", headers=headers, json={"journal_entry_id": "missing"})
+    assert wrong.status_code == 404
+    matched = client.post(f"/api/v1/erp/bank-reconciliation/{line_id}/match", headers=headers, json={"journal_entry_id": journal.json()["id"]})
+    assert matched.status_code == 200 and matched.json()["status"] == "matched"
+    duplicate_line_payload = {**payload, "lines": [{**payload["lines"][0], "source_fingerprint": hashlib.sha256(f"second-row-{suffix}".encode()).hexdigest()}]}
+    second = client.post("/api/v1/erp/bank-reconciliation/import", headers=headers, json=duplicate_line_payload)
+    second_id = client.get("/api/v1/erp/bank-reconciliation", headers=headers, params={"unmatched_only": True}).json()[0]["id"]
+    duplicate_match = client.post(f"/api/v1/erp/bank-reconciliation/{second_id}/match", headers=headers, json={"journal_entry_id": journal.json()["id"]})
+    assert duplicate_match.status_code == 409
+    unmatched = client.post(f"/api/v1/erp/bank-reconciliation/{line_id}/unmatch", headers=headers)
+    assert unmatched.status_code == 200 and unmatched.json()["status"] == "unmatched"
+    history = client.get(f"/api/v1/erp/bank-reconciliation/{line_id}/history", headers=headers)
+    assert history.status_code == 200
+    assert [event["action"] for event in history.json()] == ["unmatched", "matched"]
+    assert client.get("/api/v1/erp/bank-reconciliation").status_code == 401
