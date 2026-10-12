@@ -7,8 +7,12 @@ from fastapi.testclient import TestClient
 from app.core.security import create_access_token
 from app.db.database import SessionLocal
 from app.main import app
+from app.models.address import Address
+from app.models.business import CRMActivity
 from app.models.category import Category
 from app.models.product import Product
+from app.models.order import Order
+from app.models.order_item import OrderItem
 from app.models.product_variant import ProductVariant
 from app.models.user import User
 from app.models.ledger import LedgerAccount
@@ -32,6 +36,34 @@ def business_admin():
     account_ids = {"inventory_account_id": inventory_account.id, "payable_account_id": payable_account.id}
     db.close()
     yield {"token": token, "customer_id": customer_id, "variant_id": variant_id, "suffix": suffix, **account_ids}
+
+
+
+def test_crm_customer_detail_reads_shared_orders_and_activities(business_admin):
+    db = SessionLocal()
+    variant = db.get(ProductVariant, business_admin["variant_id"])
+    address = Address(user_id=business_admin["customer_id"], label="Home", address_line1="1 Test Street", city="Mumbai", state="Maharashtra", pincode="400001")
+    db.add(address)
+    db.flush()
+    order = Order(id=f"order-{business_admin['suffix']}", user_id=business_admin["customer_id"], address_id=address.id, total_amount=194.20, status="delivered", payment_status="paid")
+    db.add(order)
+    db.flush()
+    db.add(OrderItem(order_id=order.id, product_id=variant.product_id, variant_id=variant.id, quantity=2, unit_price=90))
+    db.add(CRMActivity(customer_id=business_admin["customer_id"], activity_type="note", subject="Prefers phone contact", created_by=f"admin-{business_admin['suffix']}"))
+    db.commit()
+    order_id = order.id
+    db.close()
+
+    client = TestClient(app)
+    headers = {"Authorization": f"Bearer {business_admin['token']}"}
+    assert client.get(f"/api/v1/crm/customers/{business_admin['customer_id']}").status_code == 401
+    detail = client.get(f"/api/v1/crm/customers/{business_admin['customer_id']}", headers=headers)
+    assert detail.status_code == 200, detail.text
+    payload = detail.json()
+    assert payload["customer"]["id"] == business_admin["customer_id"]
+    assert payload["orders"][0]["id"] == order_id
+    assert payload["orders"][0]["items"] == [{"product_name": "Test Dress", "size": "S", "quantity": 2, "unit_price": "90.00"}]
+    assert payload["activities"][0]["subject"] == "Prefers phone contact"
 
 
 def test_supplier_purchase_receipt_and_stock_audit(business_admin):
