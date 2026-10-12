@@ -1,14 +1,15 @@
 """Idempotent double-entry postings derived from Vastrax payment/order/refund records."""
-from datetime import date
+from datetime import date, datetime, timezone
 from decimal import Decimal, ROUND_FLOOR, ROUND_HALF_UP
 import logging
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models.erp_posting_config import ERPPostingConfig
 from app.models.ledger import JournalEntry, JournalLine, LedgerAccount
 from app.models.order import Order
-from app.models.business import ERPInventoryCostingConfig, ERPInventoryCostLayer, ERPInventoryCostConsumption
+from app.models.business import ERPInventoryCostingConfig, ERPInventoryCostLayer, ERPInventoryCostConsumption, ERPInventoryCostReturnRestoration
 from app.models.payment import Payment
 from app.models.payment_refund import PaymentRefund
 
@@ -107,7 +108,15 @@ def post_order_cogs(db: Session, order: Order) -> bool:
         logger.error("COGS posting skipped: found cost consumption without its source journal (%s)", order.id)
         return False
     config = _inventory_costing_config(db)
-    if not config:
+    if not config or not config.cogs_active_from:
+        return False
+    placed_at = order.placed_at
+    active_from = config.cogs_active_from
+    if placed_at and placed_at.tzinfo is None:
+        placed_at = placed_at.replace(tzinfo=timezone.utc)
+    if active_from.tzinfo is None:
+        active_from = active_from.replace(tzinfo=timezone.utc)
+    if placed_at and placed_at < active_from:
         return False
 
     item_plans = []
@@ -179,6 +188,96 @@ def post_order_cogs(db: Session, order: Order) -> bool:
         ])
     return True
 
+
+
+def restore_returned_cogs(db: Session, return_line, quantity: int, created_by: str, source_key: str) -> bool:
+    """Restore valued stock and reverse COGS only for quantities physically restocked."""
+    if quantity <= 0:
+        return False
+    if db.query(ERPInventoryCostReturnRestoration.id).filter(
+        ERPInventoryCostReturnRestoration.source_key.like(f"{source_key}:%")
+    ).first():
+        return False
+    consumptions = db.query(ERPInventoryCostConsumption).filter(
+        ERPInventoryCostConsumption.order_item_id == return_line.order_item_id,
+        ERPInventoryCostConsumption.journal_entry_id.is_not(None),
+        ERPInventoryCostConsumption.total_cost > 0,
+    ).order_by(ERPInventoryCostConsumption.created_at, ERPInventoryCostConsumption.id).with_for_update().all()
+    if not consumptions:
+        return False
+    config = _inventory_costing_config(db)
+    if not config:
+        raise RuntimeError("Costing account mappings are missing for a previously valued return")
+    restored_by_consumption = dict(db.query(
+        ERPInventoryCostReturnRestoration.cost_consumption_id,
+        func.coalesce(func.sum(ERPInventoryCostReturnRestoration.quantity), 0),
+    ).filter(ERPInventoryCostReturnRestoration.cost_consumption_id.in_([row.id for row in consumptions])).group_by(
+        ERPInventoryCostReturnRestoration.cost_consumption_id
+    ).all())
+    value_by_consumption = dict(db.query(
+        ERPInventoryCostReturnRestoration.cost_consumption_id,
+        func.coalesce(func.sum(ERPInventoryCostReturnRestoration.total_cost), 0),
+    ).filter(ERPInventoryCostReturnRestoration.cost_consumption_id.in_([row.id for row in consumptions])).group_by(
+        ERPInventoryCostReturnRestoration.cost_consumption_id
+    ).all())
+    left = quantity
+    plans = []
+    for consumption in consumptions:
+        available = int(consumption.quantity) - int(restored_by_consumption.get(consumption.id, 0) or 0)
+        if available <= 0:
+            continue
+        take = min(left, available)
+        remaining_value = (Decimal(consumption.total_cost) - Decimal(value_by_consumption.get(consumption.id, 0) or 0)).quantize(Decimal("0.01"))
+        amount = remaining_value if take == available else (Decimal(consumption.unit_cost) * take).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        amount = min(amount, remaining_value)
+        if amount <= 0:
+            raise RuntimeError("Returned quantity has no positive posted cost value")
+        plans.append((consumption, take, amount))
+        left -= take
+        if left == 0:
+            break
+    if left:
+        raise RuntimeError("Restocked quantity exceeds the previously posted COGS quantity")
+    total_cost = sum((amount for _, _, amount in plans), Decimal("0.00"))
+    if total_cost <= 0:
+        raise RuntimeError("Return COGS reversal must have positive value")
+    entry = JournalEntry(
+        posting_date=date.today(),
+        description=f"COGS reversal for restocked return {return_line.return_id}",
+        reference=return_line.return_id,
+        source_key=source_key,
+        created_by=created_by,
+    )
+    db.add(entry)
+    db.flush()
+    db.add_all([
+        JournalLine(journal_entry_id=entry.id, account_id=config.inventory_account_id, debit=total_cost, credit=0,
+                    memo=f"Inventory restored for return {return_line.return_id}"),
+        JournalLine(journal_entry_id=entry.id, account_id=config.cogs_account_id, debit=0, credit=total_cost,
+                    memo="Reverse COGS for physically restocked units"),
+    ])
+    for consumption, restored_quantity, amount in plans:
+        layer = ERPInventoryCostLayer(
+            variant_id=return_line.variant_id,
+            original_quantity=restored_quantity,
+            remaining_quantity=restored_quantity,
+            unit_cost=consumption.unit_cost,
+            source_type="customer_return",
+            source_key=f"{source_key}:{consumption.id}",
+        )
+        db.add(layer)
+        db.flush()
+        db.add(ERPInventoryCostReturnRestoration(
+            return_line_id=return_line.id,
+            cost_consumption_id=consumption.id,
+            restored_layer_id=layer.id,
+            source_key=f"{source_key}:{consumption.id}",
+            quantity=restored_quantity,
+            unit_cost=consumption.unit_cost,
+            total_cost=amount,
+            journal_entry_id=entry.id,
+        ))
+    return True
 
 def post_payment_receipt(db: Session, payment: Payment) -> bool:
     if payment.status not in ("success", "partially_refunded", "refunded"):

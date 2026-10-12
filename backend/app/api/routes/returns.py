@@ -21,6 +21,7 @@ from app.models.returns import SalesReturn, SalesReturnLine
 from app.models.user import User
 from app.schemas.payments import RefundIn
 from app.services.payment_service import PaymentService
+from app.services.erp_posting_service import restore_returned_cogs
 
 router = APIRouter(tags=["erp-returns"], dependencies=[Depends(require_business_permission("erp"))])
 
@@ -170,6 +171,12 @@ def receive_return(return_id: str, body: ReturnReceipt, admin: User = Depends(re
                                  quantity_delta=receipt.quantity_restocked, stock_before=before,
                                  stock_after=variant.stock_qty, reason="customer_return", reference_id=case.id,
                                  notes=f"Return receipt {line.id}", created_by=admin.id))
+            source_key = f"return-cogs:{case.id}:{line.id}:{line.quantity_restocked + receipt.quantity_restocked}"
+            try:
+                restore_returned_cogs(db, line, receipt.quantity_restocked, admin.id, source_key)
+            except RuntimeError as exc:
+                db.rollback()
+                raise HTTPException(409, str(exc)) from exc
         line.quantity_received += receipt.quantity_received
         line.quantity_restocked += receipt.quantity_restocked
     all_lines = db.query(SalesReturnLine).filter(SalesReturnLine.return_id == case.id).all()

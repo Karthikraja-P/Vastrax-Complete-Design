@@ -2,15 +2,17 @@
 import uuid
 import hashlib
 from decimal import Decimal
+from datetime import datetime, timezone
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import func
 
 from app.core.security import create_access_token, hash_password
 from app.db.database import SessionLocal
 from app.main import app
 from app.models.address import Address
-from app.models.business import CRMActivity, PurchaseOrder, PurchaseOrderLine, ERPPurchaseOrderRequest, ERPInventoryCostingConfig, ERPInventoryCostLayer, ERPInventoryCostConsumption
+from app.models.business import CRMActivity, PurchaseOrder, PurchaseOrderLine, ERPPurchaseOrderRequest, ERPInventoryCostingConfig, ERPInventoryCostLayer, ERPInventoryCostConsumption, ERPInventoryCostOpeningRequest, ERPInventoryCostReturnRestoration
 from app.models.category import Category
 from app.models.product import Product
 from app.models.order import Order
@@ -159,6 +161,7 @@ def test_delivered_order_posts_idempotent_cogs_using_configured_method(business_
     db.add(ERPInventoryCostingConfig(
         id="default", cost_method=cost_method, inventory_account_id=business_admin["inventory_account_id"],
         cogs_account_id=cogs_account.id, opening_equity_account_id=equity_account.id,
+        cogs_active_from=datetime.now(timezone.utc),
         updated_by=f"admin-{business_admin['suffix']}",
     ))
     db.add_all([
@@ -783,4 +786,105 @@ def test_purchase_order_creation_is_idempotent_and_rejects_key_reuse(business_ad
     assert db.query(PurchaseOrder).filter(PurchaseOrder.id == created.json()["id"]).count() == 1
     assert db.query(PurchaseOrderLine).filter(PurchaseOrderLine.purchase_order_id == created.json()["id"]).count() == 1
     assert db.query(ERPPurchaseOrderRequest).filter(ERPPurchaseOrderRequest.idempotency_key == payload["idempotency_key"]).count() == 1
+    db.close()
+
+
+def test_costing_setup_opening_valuation_and_restocked_return_reverse_cogs(business_admin):
+    from app.models.ledger import JournalEntry, JournalLine
+
+    client = TestClient(app)
+    admin_headers = {"Authorization": f"Bearer {business_admin['token']}"}
+    customer_headers = {"Authorization": f"Bearer {business_admin['customer_token']}"}
+    db = SessionLocal()
+    variant = db.get(ProductVariant, business_admin["variant_id"])
+    product_id = variant.product_id
+    address = Address(user_id=business_admin["customer_id"], label="Home", address_line1="2 Cost Setup Road",
+                      city="Mumbai", state="Maharashtra", pincode="400002")
+    cogs = LedgerAccount(code=f"COGSSET-{business_admin['suffix']}", name="COGS", account_type="expense")
+    equity = LedgerAccount(code=f"OPENSET-{business_admin['suffix']}", name="Opening equity", account_type="equity")
+    db.add_all([address, cogs, equity])
+    db.commit()
+    address_id, cogs_id, equity_id = address.id, cogs.id, equity.id
+    db.close()
+
+    assert client.get("/api/v1/erp/inventory-costing/settings").status_code == 401
+    assert client.put("/api/v1/erp/inventory-costing/settings", headers=customer_headers, json={}).status_code == 403
+    historical_order = client.post("/api/v1/orders", headers=customer_headers, json={
+        "address_id": address_id, "payment_method": "UPI",
+        "items": [{"product_id": product_id, "variant_id": business_admin["variant_id"], "size": "S", "quantity": 1}],
+    })
+    assert historical_order.status_code == 201
+    historical_id = historical_order.json()["id"]
+    settings = client.put("/api/v1/erp/inventory-costing/settings", headers=admin_headers, json={
+        "cost_method": "fifo", "inventory_account_id": business_admin["inventory_account_id"],
+        "cogs_account_id": cogs_id, "opening_equity_account_id": equity_id,
+    })
+    assert settings.status_code == 200, settings.text
+    db = SessionLocal()
+    stock_rows = db.query(ProductVariant).filter(ProductVariant.stock_qty > 0).all()
+    recorded = dict(db.query(ERPInventoryCostLayer.variant_id,
+        func.sum(ERPInventoryCostLayer.remaining_quantity)
+    ).group_by(ERPInventoryCostLayer.variant_id).all())
+    opening_items = [{"variant_id": row.id, "unit_cost": "100.00"} for row in stock_rows
+                     if int(row.stock_qty or 0) > int(recorded.get(row.id, 0) or 0)]
+    expected_opening_value = sum((int(row.stock_qty or 0) - int(recorded.get(row.id, 0) or 0)) * 100
+                                 for row in stock_rows if int(row.stock_qty or 0) > int(recorded.get(row.id, 0) or 0))
+    db.close()
+    opening_body = {"idempotency_key": f"opening-{business_admin['suffix']}-2026", "items": opening_items}
+    opening = client.post("/api/v1/erp/inventory-costing/opening-balances", headers=admin_headers, json=opening_body)
+    assert opening.status_code == 201, opening.text
+    assert Decimal(opening.json()["total_value"]) == Decimal(expected_opening_value)
+    assert client.get("/api/v1/erp/inventory-costing/status", headers=admin_headers).json()["cogs_active"] is True
+    assert client.put(f"/api/v1/orders/admin/{historical_id}/status", headers=admin_headers, json={"status": "delivered"}).status_code == 200
+    db = SessionLocal()
+    from app.models.ledger import JournalEntry
+    assert db.query(JournalEntry).filter_by(source_key=f"order-cogs:{historical_id}").count() == 0
+    db.close()
+    replay = client.post("/api/v1/erp/inventory-costing/opening-balances", headers=admin_headers, json=opening_body)
+    assert replay.status_code == 201 and replay.json()["replayed"] is True
+    conflict = client.post("/api/v1/erp/inventory-costing/opening-balances", headers=admin_headers, json={
+        **opening_body, "items": [{"variant_id": business_admin["variant_id"], "unit_cost": "99.00"}]})
+    assert conflict.status_code == 409
+
+    order = client.post("/api/v1/orders", headers=customer_headers, json={
+        "address_id": address_id, "payment_method": "UPI",
+        "items": [{"product_id": product_id, "variant_id": business_admin["variant_id"], "size": "S", "quantity": 2}],
+    })
+    assert order.status_code == 201, order.text
+    order_id = order.json()["id"]
+    delivered = client.put(f"/api/v1/orders/admin/{order_id}/status", headers=admin_headers, json={"status": "delivered"})
+    assert delivered.status_code == 200, delivered.text
+    db = SessionLocal()
+    posted = db.query(JournalEntry).filter_by(source_key=f"order-cogs:{order_id}").one()
+    assert sum((Decimal(line.debit) for line in db.query(JournalLine).filter_by(journal_entry_id=posted.id)), Decimal("0")) == Decimal("200.00")
+    order_item_id = db.query(OrderItem).filter_by(order_id=order_id).one().id
+    db.close()
+
+    created = client.post("/api/v1/erp/returns", headers=admin_headers, json={
+        "order_id": order_id, "reason": "size", "items": [{"order_item_id": order_item_id, "quantity": 1}],
+    })
+    assert created.status_code == 201, created.text
+    return_id = created.json()["id"]
+    assert client.post(f"/api/v1/erp/returns/{return_id}/review", headers=admin_headers, json={"decision": "approve"}).status_code == 200
+    line_id = created.json()["items"][0]["id"]
+    received = client.post(f"/api/v1/erp/returns/{return_id}/receive", headers=admin_headers, json={
+        "items": [{"line_id": line_id, "quantity_received": 1, "quantity_restocked": 1}],
+    })
+    assert received.status_code == 200, received.text
+    db = SessionLocal()
+    reversal = db.query(JournalEntry).filter(JournalEntry.source_key.like(f"return-cogs:{return_id}:%")).one()
+    reversal_lines = db.query(JournalLine).filter_by(journal_entry_id=reversal.id).all()
+    assert sum((Decimal(line.debit) for line in reversal_lines), Decimal("0")) == Decimal("100.00")
+    assert sum((Decimal(line.credit) for line in reversal_lines), Decimal("0")) == Decimal("100.00")
+    restored = db.query(ERPInventoryCostReturnRestoration).filter_by(return_line_id=line_id).one()
+    assert restored.quantity == 1 and Decimal(restored.total_cost) == Decimal("100.00")
+    layer = db.get(ERPInventoryCostLayer, restored.restored_layer_id)
+    assert layer.remaining_quantity == 1 and Decimal(layer.unit_cost) == Decimal("100.0000")
+    assert db.get(ProductVariant, business_admin["variant_id"]).stock_qty == 2
+    db.query(ERPInventoryCostReturnRestoration).delete()
+    db.query(ERPInventoryCostConsumption).delete()
+    db.query(ERPInventoryCostLayer).delete()
+    db.query(ERPInventoryCostOpeningRequest).delete()
+    db.query(ERPInventoryCostingConfig).delete()
+    db.commit()
     db.close()

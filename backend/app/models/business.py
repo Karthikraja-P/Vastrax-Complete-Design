@@ -182,6 +182,7 @@ class ERPInventoryCostingConfig(Base):
     inventory_account_id: Mapped[str] = mapped_column(ForeignKey("erp_ledger_accounts.id"), nullable=False)
     cogs_account_id: Mapped[str] = mapped_column(ForeignKey("erp_ledger_accounts.id"), nullable=False)
     opening_equity_account_id: Mapped[str] = mapped_column(ForeignKey("erp_ledger_accounts.id"), nullable=False)
+    cogs_active_from: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     updated_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now)
 
@@ -222,6 +223,40 @@ class ERPInventoryCostConsumption(Base):
     unit_cost: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False)
     total_cost: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
     journal_entry_id: Mapped[str | None] = mapped_column(ForeignKey("erp_journal_entries.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
+
+
+class ERPInventoryCostOpeningRequest(Base):
+    """Idempotency record for verified opening-stock valuation."""
+    __tablename__ = "erp_inventory_cost_opening_requests"
+    __table_args__ = (UniqueConstraint("idempotency_key", name="uq_erp_cost_opening_request_key"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    idempotency_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    request_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    journal_entry_id: Mapped[str] = mapped_column(ForeignKey("erp_journal_entries.id"), nullable=False)
+    created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
+
+
+class ERPInventoryCostReturnRestoration(Base):
+    """Cost-layer and journal reversal for inventory restocked from a customer return."""
+    __tablename__ = "erp_inventory_cost_return_restorations"
+    __table_args__ = (
+        CheckConstraint("quantity > 0", name="ck_erp_cost_return_quantity_positive"),
+        CheckConstraint("unit_cost > 0 AND total_cost > 0", name="ck_erp_cost_return_cost_positive"),
+        UniqueConstraint("source_key", name="uq_erp_cost_return_source_key"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    return_line_id: Mapped[str] = mapped_column(ForeignKey("erp_sales_return_lines.id", ondelete="CASCADE"), nullable=False, index=True)
+    cost_consumption_id: Mapped[str] = mapped_column(ForeignKey("erp_inventory_cost_consumptions.id"), nullable=False, index=True)
+    restored_layer_id: Mapped[str] = mapped_column(ForeignKey("erp_inventory_cost_layers.id"), nullable=False, index=True)
+    source_key: Mapped[str] = mapped_column(String(160), nullable=False)
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    unit_cost: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False)
+    total_cost: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    journal_entry_id: Mapped[str] = mapped_column(ForeignKey("erp_journal_entries.id"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
 
 

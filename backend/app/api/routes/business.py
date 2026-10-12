@@ -14,7 +14,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.db.database import get_db
 from app.middleware.auth import require_business_permission
-from app.models.business import CRMActivity, CRMLead, OperatingExpense, PurchaseOrder, PurchaseOrderLine, StockMovement, Supplier, SupplierPayment, SupplierExpensePayment, ERPInventoryReceipt, ERPPurchaseOrderRequest, ERPInventoryCostingConfig, ERPInventoryCostLayer, ERPInventoryCostConsumption
+from app.models.business import CRMActivity, CRMLead, OperatingExpense, PurchaseOrder, PurchaseOrderLine, StockMovement, Supplier, SupplierPayment, SupplierExpensePayment, ERPInventoryReceipt, ERPPurchaseOrderRequest, ERPInventoryCostingConfig, ERPInventoryCostLayer, ERPInventoryCostConsumption, ERPInventoryCostOpeningRequest
 from app.models.ledger import JournalEntry, JournalLine, LedgerAccount
 from app.models.order import Order
 from app.models.order_item import OrderItem
@@ -105,6 +105,23 @@ class StockAdjustment(BaseModel):
     quantity_delta: int
     reason: Literal["count_correction", "damaged", "returned", "other"]
     notes: str | None = None
+
+
+class InventoryCostingSettingsIn(BaseModel):
+    cost_method: Literal["fifo", "moving_average"]
+    inventory_account_id: str
+    cogs_account_id: str
+    opening_equity_account_id: str
+
+
+class OpeningStockCostLine(BaseModel):
+    variant_id: str = Field(min_length=1, max_length=36)
+    unit_cost: Decimal = Field(gt=0, max_digits=10, decimal_places=2)
+
+
+class OpeningStockCostsIn(BaseModel):
+    idempotency_key: str = Field(min_length=16, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
+    items: list[OpeningStockCostLine] = Field(min_length=1, max_length=500)
 
 
 class SupplierPaymentCreate(BaseModel):
@@ -507,11 +524,12 @@ def inventory_costing_status(db: Session = Depends(get_db)):
     rows = db.query(
         ProductVariant.stock_qty,
         func.coalesce(func.sum(ERPInventoryCostLayer.remaining_quantity), 0),
-    ).outerjoin(ERPInventoryCostLayer, ERPInventoryCostLayer.variant_id == ProductVariant.id).group_by(ProductVariant.id).all()
+    ).outerjoin(ERPInventoryCostLayer, (ERPInventoryCostLayer.variant_id == ProductVariant.id) & (ERPInventoryCostLayer.unit_cost > 0)).group_by(ProductVariant.id).all()
     positive_rows = [(int(stock or 0), int(costed or 0)) for stock, costed in rows if int(stock or 0) > 0]
     config = db.get(ERPInventoryCostingConfig, "default")
     return {
         "configured": config is not None,
+        "cogs_active": bool(config and config.cogs_active_from),
         "cost_method": config.cost_method if config else None,
         "positive_stock_variants": len(positive_rows),
         "valued_variants": sum(1 for stock, costed in positive_rows if costed >= stock),
@@ -528,6 +546,155 @@ def inventory_costing_status(db: Session = Depends(get_db)):
     }
 
 
+def _cost_layers_match_on_hand(db: Session) -> bool:
+    rows = db.query(
+        ProductVariant.stock_qty,
+        func.coalesce(func.sum(ERPInventoryCostLayer.remaining_quantity), 0),
+    ).outerjoin(
+        ERPInventoryCostLayer,
+        (ERPInventoryCostLayer.variant_id == ProductVariant.id) & (ERPInventoryCostLayer.unit_cost > 0),
+    ).group_by(ProductVariant.id).all()
+    return all(int(stock or 0) == int(costed or 0) for stock, costed in rows)
+
+
+@router.get("/erp/inventory-costing/settings", dependencies=[Depends(require_business_permission("erp"))])
+def get_inventory_costing_settings(db: Session = Depends(get_db)):
+    config = db.get(ERPInventoryCostingConfig, "default")
+    accounts = db.query(LedgerAccount).filter(LedgerAccount.is_active.is_(True)).order_by(LedgerAccount.code).all()
+    return {
+        "settings": ({
+            "cost_method": config.cost_method,
+            "inventory_account_id": config.inventory_account_id,
+            "cogs_account_id": config.cogs_account_id,
+            "opening_equity_account_id": config.opening_equity_account_id,
+            "updated_at": config.updated_at,
+            "cogs_active_from": config.cogs_active_from,
+        } if config else None),
+        "accounts": [{"id": a.id, "code": a.code, "name": a.name, "account_type": a.account_type} for a in accounts],
+    }
+
+
+@router.put("/erp/inventory-costing/settings")
+def save_inventory_costing_settings(body: InventoryCostingSettingsIn, admin: User = Depends(require_business_permission("erp")), db: Session = Depends(get_db)):
+    expected = {
+        body.inventory_account_id: "asset",
+        body.cogs_account_id: "expense",
+        body.opening_equity_account_id: "equity",
+    }
+    if len(expected) != 3:
+        raise HTTPException(422, "Choose a different account for inventory, COGS, and opening equity")
+    accounts = db.query(LedgerAccount).filter(LedgerAccount.id.in_(expected), LedgerAccount.is_active.is_(True)).all()
+    by_id = {account.id: account for account in accounts}
+    if len(by_id) != 3 or any(by_id[key].account_type != value for key, value in expected.items()):
+        raise HTTPException(422, "Select active accounts with asset, expense, and equity account types")
+    config = db.get(ERPInventoryCostingConfig, "default")
+    if config:
+        has_opening_valuation = db.query(ERPInventoryCostOpeningRequest.id).first()
+        if has_opening_valuation and (
+            config.inventory_account_id != body.inventory_account_id
+            or config.opening_equity_account_id != body.opening_equity_account_id
+        ):
+            raise HTTPException(409, "Inventory and opening equity accounts cannot change after opening stock has been valued")
+        has_posted_cost = db.query(ERPInventoryCostConsumption.id).filter(
+            ERPInventoryCostConsumption.journal_entry_id.is_not(None)
+        ).first()
+        if has_posted_cost and (
+            config.cost_method != body.cost_method
+            or config.inventory_account_id != body.inventory_account_id
+            or config.cogs_account_id != body.cogs_account_id
+            or config.opening_equity_account_id != body.opening_equity_account_id
+        ):
+            raise HTTPException(409, "Costing settings cannot be changed after COGS has been posted")
+        config.cost_method = body.cost_method
+        config.inventory_account_id = body.inventory_account_id
+        config.cogs_account_id = body.cogs_account_id
+        config.opening_equity_account_id = body.opening_equity_account_id
+        config.updated_by = admin.id
+    else:
+        db.add(ERPInventoryCostingConfig(id="default", cost_method=body.cost_method,
+            inventory_account_id=body.inventory_account_id, cogs_account_id=body.cogs_account_id,
+            opening_equity_account_id=body.opening_equity_account_id, updated_by=admin.id))
+    db.flush()
+    if config is None:
+        config = db.get(ERPInventoryCostingConfig, "default")
+    if not config.cogs_active_from and _cost_layers_match_on_hand(db):
+        config.cogs_active_from = datetime.now(timezone.utc)
+    db.commit()
+    return get_inventory_costing_settings(db)
+
+
+@router.post("/erp/inventory-costing/opening-balances", status_code=status.HTTP_201_CREATED)
+def create_inventory_opening_costs(body: OpeningStockCostsIn, admin: User = Depends(require_business_permission("erp")), db: Session = Depends(get_db)):
+    if len({item.variant_id for item in body.items}) != len(body.items):
+        raise HTTPException(422, "Each size variant can only be listed once")
+    request_hash = hashlib.sha256(json.dumps(sorted(
+        (item.variant_id, str(item.unit_cost)) for item in body.items
+    ), separators=(",", ":")).encode()).hexdigest()
+    prior = db.query(ERPInventoryCostOpeningRequest).filter_by(idempotency_key=body.idempotency_key).first()
+    if prior:
+        if prior.request_hash != request_hash:
+            raise HTTPException(409, "This idempotency key was already used for different opening costs")
+        return {"journal_entry_id": prior.journal_entry_id, "variants_valued": len(body.items), "replayed": True}
+    config = db.get(ERPInventoryCostingConfig, "default")
+    if not config:
+        raise HTTPException(409, "Save costing method and account mappings before entering opening costs")
+    account_ids = (config.inventory_account_id, config.opening_equity_account_id)
+    accounts = {a.id: a for a in db.query(LedgerAccount).filter(LedgerAccount.id.in_(account_ids), LedgerAccount.is_active.is_(True)).all()}
+    if len(accounts) != 2 or accounts[config.inventory_account_id].account_type != "asset" or accounts[config.opening_equity_account_id].account_type != "equity":
+        raise HTTPException(409, "Inventory or opening equity account mapping is invalid")
+    plans = []
+    for item in body.items:
+        variant = db.query(ProductVariant).filter(ProductVariant.id == item.variant_id).with_for_update().first()
+        if not variant:
+            raise HTTPException(404, "A selected size variant no longer exists")
+        if int(variant.stock_qty or 0) <= 0:
+            raise HTTPException(409, "Opening costs can only be added for size variants with stock")
+        recorded = int(db.query(func.coalesce(func.sum(ERPInventoryCostLayer.remaining_quantity), 0)).filter(
+            ERPInventoryCostLayer.variant_id == variant.id
+        ).scalar() or 0)
+        unvalued = int(variant.stock_qty or 0) - recorded
+        if unvalued <= 0:
+            raise HTTPException(409, "A selected size variant has no unvalued units; refresh the worksheet")
+        prior_opening = db.query(ERPInventoryCostLayer.id).filter(
+            ERPInventoryCostLayer.variant_id == variant.id, ERPInventoryCostLayer.source_type == "opening_balance"
+        ).first()
+        if prior_opening:
+            raise HTTPException(409, "An opening cost layer already exists for a selected size; use receipt costs for new stock")
+        plans.append((variant, unvalued, item.unit_cost))
+    total_cost = sum((Decimal(quantity) * cost for _, quantity, cost in plans), Decimal("0.00")).quantize(Decimal("0.01"))
+    if total_cost <= 0:
+        raise HTTPException(422, "Opening stock value must be greater than zero")
+    source_key = f"inventory-opening:{body.idempotency_key}"
+    entry = JournalEntry(posting_date=date.today(), description="Verified opening inventory valuation",
+        reference=body.idempotency_key, source_key=source_key, created_by=admin.id)
+    db.add(entry)
+    db.flush()
+    db.add_all([
+        JournalLine(journal_entry_id=entry.id, account_id=config.inventory_account_id, debit=total_cost, credit=0,
+            memo=f"Opening inventory value for {len(plans)} size variants"),
+        JournalLine(journal_entry_id=entry.id, account_id=config.opening_equity_account_id, debit=0, credit=total_cost,
+            memo="Owner-verified opening inventory valuation"),
+    ])
+    for variant, quantity, unit_cost in plans:
+        db.add(ERPInventoryCostLayer(variant_id=variant.id, original_quantity=quantity,
+            remaining_quantity=quantity, unit_cost=unit_cost, source_type="opening_balance",
+            source_key=body.idempotency_key))
+    db.add(ERPInventoryCostOpeningRequest(idempotency_key=body.idempotency_key,
+        request_hash=request_hash, journal_entry_id=entry.id, created_by=admin.id))
+    db.flush()
+    if not config.cogs_active_from and _cost_layers_match_on_hand(db):
+        config.cogs_active_from = datetime.now(timezone.utc)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        prior = db.query(ERPInventoryCostOpeningRequest).filter_by(idempotency_key=body.idempotency_key).first()
+        if prior and prior.request_hash == request_hash:
+            return {"journal_entry_id": prior.journal_entry_id, "variants_valued": len(body.items), "replayed": True}
+        raise HTTPException(409, "Opening costs were already submitted or inventory changed; refresh and retry")
+    return {"journal_entry_id": entry.id, "variants_valued": len(plans), "total_value": str(total_cost), "replayed": False}
+
+
 @router.get("/erp/inventory-costing/variants", dependencies=[Depends(require_business_permission("erp"))])
 def inventory_costing_variants(
     limit: int = Query(default=100, ge=1, le=200),
@@ -542,7 +709,7 @@ def inventory_costing_variants(
         ProductVariant.stock_qty,
         func.coalesce(func.sum(ERPInventoryCostLayer.remaining_quantity), 0).label("recorded_cost_units"),
     ).join(Product, Product.id == ProductVariant.product_id).outerjoin(
-        ERPInventoryCostLayer, ERPInventoryCostLayer.variant_id == ProductVariant.id
+        ERPInventoryCostLayer, (ERPInventoryCostLayer.variant_id == ProductVariant.id) & (ERPInventoryCostLayer.unit_cost > 0)
     ).filter(ProductVariant.stock_qty > 0).group_by(
         ProductVariant.id, Product.name, ProductVariant.sku, ProductVariant.size, ProductVariant.stock_qty
     )

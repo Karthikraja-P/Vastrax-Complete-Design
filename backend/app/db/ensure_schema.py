@@ -31,6 +31,9 @@ ADDITIVE_COLUMNS = {
     "orders": {
         "payment_method": "VARCHAR(50)",
     },
+    "erp_inventory_costing_config": {
+        "cogs_active_from": "DATETIME",
+    },
 }
 
 
