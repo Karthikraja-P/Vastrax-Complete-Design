@@ -1,6 +1,9 @@
-"""Keep backend tests isolated from the developer\x27s local production settings."""
+"""Keep backend tests isolated from the developer's local production settings."""
+
 import os
 import tempfile
+
+
 _test_dir = tempfile.TemporaryDirectory(prefix="vastrax-backend-tests-")
 os.environ["DATABASE_URL"] = f"sqlite:///{_test_dir.name}/test.db"
 os.environ["JWT_SECRET_KEY"] = "e2e-test-key-e2e-test-key-e2e-test-key"

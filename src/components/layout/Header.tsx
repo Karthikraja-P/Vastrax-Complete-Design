@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Bell, Search, Menu } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { performSignOut } from "@/lib/auth-utils";
 
@@ -23,11 +24,12 @@ export interface HeaderNotification {
   href: string;
 }
 
-export function Header({ isSidebarCollapsed, toggleSidebar, onOpenCart }: HeaderProps) {
+export function Header({ toggleSidebar }: HeaderProps) {
+  const router = useRouter();
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const { data: session } = useSession();
-  const isAdmin = String((session?.user as any)?.role || "").toLowerCase() === "admin";
+  const isAdmin = String(session?.user?.role || "").toLowerCase() === "admin";
 
   const [notifications, setNotifications] = useState<HeaderNotification[]>([
     {
@@ -113,7 +115,7 @@ export function Header({ isSidebarCollapsed, toggleSidebar, onOpenCart }: Header
               placeholder="Search garments, orders, clients..."
               onKeyDown={(e) => {
                 if (e.key === "Enter" && (e.target as HTMLInputElement).value.trim()) {
-                  window.location.href = `/products?search=${encodeURIComponent((e.target as HTMLInputElement).value.trim())}`;
+                  router.push(`/products?search=${encodeURIComponent((e.target as HTMLInputElement).value.trim())}`);
                 }
               }}
               className="w-full bg-surface border border-border rounded-full py-1.5 pl-9 pr-14 text-sm text-foreground focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-all placeholder:text-muted-foreground/50"

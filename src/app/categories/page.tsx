@@ -1,21 +1,26 @@
 "use client";
+import Image from "next/image";
 
 import React, { useState, useEffect, useMemo } from "react";
-import { 
-  Home, ChevronRight, Plus, LayoutGrid, Check, X as XIcon, Trash2, Boxes, 
-  Search, ChevronDown, Filter, RotateCcw, Image as ImageIcon, Eye, Edit2, AlertCircle, Loader2
-} from "lucide-react";
+import { Home, ChevronRight, Plus, LayoutGrid, Check, X as XIcon, Trash2, Boxes, ChevronDown, RotateCcw, Edit2, AlertCircle, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { categoriesApi, CategoryItem } from "@/lib/api";
 
+interface CategoryRow extends CategoryItem {
+  desc: string;
+  status: string;
+  count: number;
+  sort: string;
+}
+
 export default function CategoriesPage() {
-  const [categories, setCategories] = useState<any[]>([]);
+  const [categories, setCategories] = useState<CategoryRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [openActionId, setOpenActionId] = useState<number | string | null>(null);
   const [isAddCategoryOpen, setIsAddCategoryOpen] = useState(false);
   const [isEditCategoryOpen, setIsEditCategoryOpen] = useState(false);
-  const [editingCategory, setEditingCategory] = useState<any | null>(null);
-  const [categoryToDelete, setCategoryToDelete] = useState<any | null>(null);
+  const [editingCategory, setEditingCategory] = useState<CategoryRow | null>(null);
+  const [categoryToDelete, setCategoryToDelete] = useState<CategoryRow | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   
@@ -59,11 +64,11 @@ export default function CategoriesPage() {
     try {
       const data = await categoriesApi.list();
       if (data && Array.isArray(data)) {
-        const mapped = data.map((c: any, index: number) => ({
+        const mapped = data.map((c, index): CategoryRow => ({
           id: c.id,
           name: c.name,
           slug: c.slug || c.name.toLowerCase().replace(/\s+/g, "-"),
-          desc: c.description || "Luxury collection",
+          desc: c.description || "",
           status: c.is_active === false ? "Inactive" : "Active",
           count: c.count || c.product_count || 0,
           sort: String(index + 1),
@@ -79,7 +84,7 @@ export default function CategoriesPage() {
   };
 
   useEffect(() => {
-    loadCategories();
+    void Promise.resolve().then(loadCategories);
   }, []);
 
   const handleResetFilters = () => {
@@ -100,7 +105,7 @@ export default function CategoriesPage() {
       id: tempId,
       name: cleanName,
       slug: cleanSlug,
-      desc: newCatDesc || "Luxury collection",
+      desc: newCatDesc || "",
       count: 0,
       status: isActiveStatus ? "Active" : "Inactive",
       sort: String(categories.length + 1),
@@ -168,7 +173,7 @@ export default function CategoriesPage() {
 
   // Filter & Sort Logic
   const filteredCategories = useMemo(() => {
-    let result = categories.filter((cat) => {
+    const result = categories.filter((cat) => {
       const matchesSearch = !searchQuery.trim() || 
         cat.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         cat.slug.toLowerCase().includes(searchQuery.toLowerCase());
@@ -385,7 +390,7 @@ export default function CategoriesPage() {
                       <div className="flex items-center gap-4">
                         <div className="w-10 h-10 rounded-lg bg-surface-hover border border-border flex items-center justify-center text-muted-foreground overflow-hidden">
                           {cat.image_url ? (
-                            <img src={cat.image_url} alt={cat.name} className="w-full h-full object-cover" />
+                            <Image width={1200} height={900} unoptimized src={cat.image_url} alt={cat.name} className="w-full h-full object-cover" />
                           ) : (
                             <LayoutGrid className="w-4 h-4 text-accent/70" />
                           )}
@@ -538,7 +543,7 @@ export default function CategoriesPage() {
                 <div className="flex items-center gap-3">
                   {newCatImage && (
                     <div className="w-12 h-12 rounded-lg border border-accent overflow-hidden bg-background shrink-0">
-                      <img src={newCatImage} alt="Preview" className="w-full h-full object-cover" />
+                      <Image width={1200} height={900} unoptimized src={newCatImage} alt="Preview" className="w-full h-full object-cover" />
                     </div>
                   )}
                   <input 
@@ -613,7 +618,7 @@ export default function CategoriesPage() {
                 <div className="flex items-center gap-3">
                   {editingCategory.image_url && (
                     <div className="w-12 h-12 rounded-lg border border-accent overflow-hidden bg-background shrink-0">
-                      <img src={editingCategory.image_url} alt="Preview" className="w-full h-full object-cover" />
+                      <Image width={1200} height={900} unoptimized src={editingCategory.image_url} alt="Preview" className="w-full h-full object-cover" />
                     </div>
                   )}
                   <input 

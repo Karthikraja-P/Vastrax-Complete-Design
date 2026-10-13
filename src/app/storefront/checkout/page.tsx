@@ -1,21 +1,19 @@
 "use client";
+import Image from "next/image";
 
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import Link from "next/link";
 import Script from "next/script";
-import {
-  ChevronLeft, ShieldCheck, Lock, CreditCard, CheckCircle2,
-  Truck, Sparkles, MapPin, Phone, Mail, User, ArrowRight, Loader2,
-  Package, ShoppingBag
-} from "lucide-react";
+import { ChevronLeft, ShieldCheck, Lock, CreditCard, CheckCircle2, Truck, Sparkles, Phone, Mail, ArrowRight, Loader2, Package, ShoppingBag } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useSession } from "next-auth/react";
 import { AuthModal } from "@/components/auth/AuthModal";
 import { reportBackendReachable, reportBackendUnreachable } from "@/lib/backendStatus";
-import { getCart, clearCart, CartItem } from "@/lib/cart";
+import { clearCart } from "@/lib/cart";
+import { useCartItems } from "@/hooks/useCartItems";
 import { showToast } from "@/lib/toast";
 
-const BACKEND_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8090/api/v1";
+const BACKEND_BASE = "/api/v1";
 
 /** Wraps fetch to report backend connectivity — a thrown network error means the backend
  * is unreachable, distinct from a normal HTTP error response (which still reaches the server). */
@@ -40,6 +38,43 @@ interface OrderItem {
   image?: string;
 }
 
+interface PaymentInitiateData {
+  razorpay_key_id: string;
+  amount: number;
+  currency: string;
+  razorpay_order_id: string;
+  txn_id: string;
+}
+
+interface RazorpayPaymentResponse {
+  razorpay_order_id: string;
+  razorpay_payment_id: string;
+  razorpay_signature: string;
+}
+
+interface RazorpayInstance {
+  open(): void;
+}
+
+interface RazorpayOptions {
+  key: string;
+  amount: number;
+  currency: string;
+  order_id: string;
+  name: string;
+  description: string;
+  prefill: { name: string; email: string; contact: string };
+  theme: { color: string };
+  handler(response: RazorpayPaymentResponse): Promise<void>;
+  modal: { ondismiss(): void };
+}
+
+declare global {
+  interface Window {
+    Razorpay?: new (options: RazorpayOptions) => RazorpayInstance;
+  }
+}
+
 export default function CheckoutPage() {
   // Step State
   const [isProcessing, setIsProcessing] = useState(false);
@@ -52,13 +87,13 @@ export default function CheckoutPage() {
 
   React.useEffect(() => {
     if (typeof window !== "undefined") {
-      setLocalToken(localStorage.getItem("vastrax_token"));
+      void Promise.resolve().then(() => setLocalToken(localStorage.getItem("vastrax_token")));
     }
   }, [status]);
 
   React.useEffect(() => {
     if (status === "unauthenticated" && !localToken) {
-      setIsAuthOpen(true);
+      void Promise.resolve().then(() => setIsAuthOpen(true));
     }
   }, [status, localToken]);
 
@@ -71,17 +106,18 @@ export default function CheckoutPage() {
   const [apartment, setApartment] = useState("Penthouse 4B");
   const [city, setCity] = useState("New York");
   const [postalCode, setPostalCode] = useState("10001");
-  const [country, setCountry] = useState("United States");
 
   // Pre-fill customer details from active session
   React.useEffect(() => {
     if (session?.user) {
-      if (session.user.email) setEmail(session.user.email);
-      if (session.user.name) {
-        const parts = session.user.name.split(" ");
-        setFirstName(parts[0] || "");
-        setLastName(parts.slice(1).join(" ") || "");
-      }
+      void Promise.resolve().then(() => {
+        if (session.user.email) setEmail(session.user.email);
+        if (session.user.name) {
+          const parts = session.user.name.split(" ");
+          setFirstName(parts[0] || "");
+          setLastName(parts.slice(1).join(" ") || "");
+        }
+      });
     }
   }, [session]);
   
@@ -99,30 +135,16 @@ export default function CheckoutPage() {
   const [simPayment, setSimPayment] = useState<{ txnId: string; orderId: string } | null>(null);
 
   // Cart items
-  const [items, setItems] = useState<OrderItem[]>([]);
-  
-  React.useEffect(() => {
-    const loadItems = () => {
-      const currentCart = getCart();
-      setItems(currentCart.map(c => ({
-        id: c.id,
-        name: c.name,
-        price: Number(c.price) || 0,
-        quantity: c.quantity || 1,
-        size: c.size,
-        color: c.color,
-        image: c.image
-      })));
-    };
-
-    loadItems();
-    window.addEventListener("cart-updated", loadItems);
-    window.addEventListener("storage", loadItems);
-    return () => {
-      window.removeEventListener("cart-updated", loadItems);
-      window.removeEventListener("storage", loadItems);
-    };
-  }, []);
+  const cartItems = useCartItems();
+  const items = useMemo<OrderItem[]>(() => cartItems.map((item) => ({
+    id: item.id,
+    name: item.name,
+    price: Number(item.price) || 0,
+    quantity: item.quantity || 1,
+    size: item.size,
+    color: item.color,
+    image: item.image,
+  })), [cartItems]);
 
   const subtotal = items.reduce((acc, item) => acc + item.price * item.quantity, 0);
   const shippingCost = deliveryMethod === "standard" ? 0 : deliveryMethod === "express" ? 150 : 350;
@@ -130,7 +152,7 @@ export default function CheckoutPage() {
   const total = subtotal + shippingCost + tax;
 
   const getEffectiveToken = () => {
-    return (session as any)?.accessToken || localToken || (typeof window !== "undefined" ? localStorage.getItem("vastrax_token") : null);
+    return session?.accessToken || localToken || (typeof window !== "undefined" ? localStorage.getItem("vastrax_token") : null);
   };
 
   const completeOrder = (orderId: string) => {
@@ -148,7 +170,6 @@ export default function CheckoutPage() {
 
     // Clear cart across application
     clearCart();
-    setItems([]);
 
     showToast({
       title: "Order Placed Successfully",
@@ -158,8 +179,9 @@ export default function CheckoutPage() {
     });
   };
 
-  const openRazorpayCheckout = (token: string, orderId: string, initiateData: any) => {
-    const rzp = new (window as any).Razorpay({
+  const openRazorpayCheckout = (token: string, orderId: string, initiateData: PaymentInitiateData) => {
+    if (!window.Razorpay) throw new Error("Payment checkout is still loading. Please try again.");
+    const rzp = new window.Razorpay({
       key: initiateData.razorpay_key_id,
       amount: initiateData.amount,
       currency: initiateData.currency,
@@ -168,7 +190,7 @@ export default function CheckoutPage() {
       description: `Order ${orderId}`,
       prefill: { name: `${firstName} ${lastName}`, email, contact: phone },
       theme: { color: "#E07A3F" },
-      handler: async (response: any) => {
+      handler: async (response: RazorpayPaymentResponse) => {
         try {
           const verifyRes = await backendFetch(`${BACKEND_BASE}/payments/verify`, {
             method: "POST",
@@ -183,12 +205,12 @@ export default function CheckoutPage() {
           const verifyData = await verifyRes.json().catch(() => ({}));
           if (!verifyRes.ok) throw new Error(verifyData.detail || verifyData.message || "Payment verification failed");
           completeOrder(orderId);
-        } catch (err: any) {
+        } catch (err: unknown) {
           console.error(err);
           setIsProcessing(false);
           showToast({
             title: "Verification Error",
-            description: err?.message || "Payment succeeded but verification failed. Please contact support.",
+            description: err instanceof Error ? err.message : "Payment succeeded but verification failed. Please contact support.",
             type: "error",
             duration: 6000,
           });
@@ -231,12 +253,12 @@ export default function CheckoutPage() {
           duration: 5000,
         });
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
       setIsProcessing(false);
       showToast({
         title: "Payment Error",
-        description: err?.message || "Failed to process payment response.",
+        description: err instanceof Error ? err.message : "Failed to process payment response.",
         type: "error",
         duration: 4000,
       });
@@ -270,6 +292,19 @@ export default function CheckoutPage() {
     setIsProcessing(true);
 
     try {
+      if (paymentMethod !== "cod") {
+        const readinessRes = await backendFetch(`${BACKEND_BASE}/payments/readiness`, {
+          method: "GET",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const readiness = await readinessRes.json().catch(() => ({}));
+        const productionBuild = process.env.NODE_ENV === "production";
+        if (!readinessRes.ok || !readiness.checkout_available ||
+            (productionBuild && !readiness.razorpay_available)) {
+          throw new Error("Online payments are not ready yet. Please choose Cash on Delivery or contact support.");
+        }
+      }
+
       // 1. Create Address
       const addressRes = await backendFetch(`${BACKEND_BASE}/users/me/addresses`, {
         method: "POST",
@@ -330,18 +365,19 @@ export default function CheckoutPage() {
       if (initiateData.mode === "razorpay") {
         setIsProcessing(false);
         openRazorpayCheckout(token, orderData.id, initiateData);
-      } else {
-        // No live Razorpay credentials configured — fall back to an in-page simulated gateway.
+      } else if (initiateData.mode === "simulation" && process.env.NODE_ENV !== "production") {
         setIsProcessing(false);
         setSimPayment({ txnId: initiateData.txn_id, orderId: orderData.id });
+      } else {
+        throw new Error("Online payments are unavailable. Please choose Cash on Delivery or contact support.");
       }
 
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
       setIsProcessing(false);
       showToast({
         title: "Order Failed",
-        description: err?.message || "Failed to place order. Please verify your items and try again.",
+        description: err instanceof Error ? err.message : "Failed to place order. Please verify your items and try again.",
         type: "error",
         duration: 5000,
       });
@@ -430,7 +466,7 @@ export default function CheckoutPage() {
               <span className="text-xs font-bold uppercase tracking-widest text-accent">Order Confirmed</span>
               <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight">Thank You For Your Order</h1>
               <p className="text-sm text-muted-foreground max-w-md mx-auto">
-                We've received your purchase. A bespoke confirmation email and receipt has been sent to <span className="text-foreground font-medium">{email}</span>.
+                We&apos;ve received your purchase. A bespoke confirmation email and receipt has been sent to <span className="text-foreground font-medium">{email}</span>.
               </p>
             </div>
 
@@ -477,7 +513,7 @@ export default function CheckoutPage() {
               <span className="text-xs font-bold uppercase tracking-widest text-accent">Simulated Payment Gateway</span>
               <h1 className="text-2xl font-extrabold tracking-tight">Complete Test Payment</h1>
               <p className="text-sm text-muted-foreground">
-                Razorpay live credentials aren't configured yet. Simulate the outcome of this ${total.toFixed(2)} charge below.
+                Razorpay live credentials aren&apos;t configured yet. Simulate the outcome of this ₹{total.toFixed(2)} charge below.
               </p>
             </div>
 
@@ -877,7 +913,7 @@ export default function CheckoutPage() {
                   {items.map((item) => (
                     <div key={item.id} className="flex gap-4 items-center">
                       <div className="w-16 h-20 rounded-lg bg-background overflow-hidden shrink-0 border border-border relative">
-                        <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
+                        <Image width={1200} height={900} unoptimized src={item.image || "/placeholder.svg"} alt={item.name} className="w-full h-full object-cover" />
                         <span className="absolute -top-1 -right-1 bg-accent text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
                           {item.quantity}
                         </span>

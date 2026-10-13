@@ -1,18 +1,52 @@
 "use client";
+import Image from "next/image";
 
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useMemo, useSyncExternalStore } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
-  Sparkles, X, Send, Bot, User, ArrowRight, 
-  Shirt, RefreshCcw, Loader2, CheckCircle2, MessageSquare, Heart, ShoppingBag, Eye,
+  Sparkles, X, Send, Bot,
+  Shirt, RefreshCcw, Loader2, CheckCircle2, Heart, ShoppingBag, Eye,
   ChevronDown, ChevronRight
 } from "lucide-react";
-import { chatApi, tryonApi, ordersApi } from "@/lib/api";
+import { chatApi, ordersApi, type ChatResponse } from "@/lib/api";
 import { useRouter, usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useFavorites } from "@/hooks/useFavorites";
 import { addToCart as addCartItem, getCart } from "@/lib/cart";
 import { showToast } from "@/lib/toast";
+
+type SuggestedProduct = NonNullable<ChatResponse["suggested_products"]>[number];
+type ExecutedTool = NonNullable<ChatResponse["executed_tools"]>[number];
+
+// Shown on any Stylist API failure (MiniMax unconfigured/unavailable); never a fabricated recommendation.
+const STYLIST_OUTAGE_MESSAGE = "Vastra is off hunting for better outfits. Please try again in a bit.";
+
+const SESSION_ID_KEY = "vastrax_stylist_session_id";
+const LAST_ACTIVE_KEY = "vastrax_stylist_last_active";
+const SESSION_TIMEOUT_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+const currentTimeMs = () => Date.now();
+
+/** Returns the active stylist session id, rotating it after 24h of inactivity, and marks it active now. */
+function touchStylistSession(): string {
+  let sid = localStorage.getItem(SESSION_ID_KEY);
+  const lastActive = localStorage.getItem(LAST_ACTIVE_KEY);
+  if (!sid || !lastActive || currentTimeMs() - parseInt(lastActive, 10) > SESSION_TIMEOUT_MS) {
+    sid = `ses_${crypto.randomUUID()}`;
+    localStorage.setItem(SESSION_ID_KEY, sid);
+  }
+  localStorage.setItem(LAST_ACTIVE_KEY, currentTimeMs().toString());
+  return sid;
+}
+
+function hasPlacedOrderLocally(): boolean {
+  return localStorage.getItem("vastrax_has_placed_order") === "true" || !!localStorage.getItem("vastrax_last_order_id");
+}
+
+const subscribeToStorage = (onChange: () => void) => {
+  window.addEventListener("storage", onChange);
+  return () => window.removeEventListener("storage", onChange);
+};
 
 interface Message {
   id: string;
@@ -20,18 +54,8 @@ interface Message {
   text: string;
   timestamp: string;
   chips?: string[];
-  suggestedProducts?: {
-    id?: string;
-    name: string;
-    price: string;
-    image: string;
-    category: string;
-  }[];
-  executedTools?: {
-    tool: string;
-    arguments?: any;
-    result?: any;
-  }[];
+  suggestedProducts?: SuggestedProduct[];
+  executedTools?: ExecutedTool[];
   isEscalated?: boolean;
 }
 
@@ -157,13 +181,11 @@ export function StylistDrawer({ isOpen: externalIsOpen, onClose: externalOnClose
   const { data: session } = useSession();
   const { isFavorite, toggleFavorite, favorites } = useFavorites();
 
-  const [hasOrders, setHasOrders] = useState(false);
-  const [activePrompts, setActivePrompts] = useState<string[]>([]);
+  const [apiHasOrders, setApiHasOrders] = useState(false);
   const [showInspiration, setShowInspiration] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
-  const [sessionId, setSessionId] = useState<string>("");
   const [addedToCart, setAddedToCart] = useState<string[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -177,7 +199,7 @@ export function StylistDrawer({ isOpen: externalIsOpen, onClose: externalOnClose
     }
   }, [isOpen]);
 
-  const handleAddToCart = (product: any) => {
+  const handleAddToCart = (product: SuggestedProduct) => {
     const pId = product.id || product.name;
     setAddedToCart(prev => [...prev, pId]);
     setTimeout(() => {
@@ -208,48 +230,33 @@ export function StylistDrawer({ isOpen: externalIsOpen, onClose: externalOnClose
   };
 
   // Activity-based context computation
-  useEffect(() => {
-    let orderPlaced = false;
-    if (typeof window !== "undefined") {
-      orderPlaced = localStorage.getItem("vastrax_has_placed_order") === "true" || !!localStorage.getItem("vastrax_last_order_id");
-    }
+  const localHasOrders = useSyncExternalStore(subscribeToStorage, hasPlacedOrderLocally, () => false);
+  const signedIn = !!session?.user;
 
-    if (!orderPlaced && session?.user) {
-      ordersApi.myOrders().then(ords => {
-        if (ords && ords.length > 0) {
-          setHasOrders(true);
-        }
-      }).catch(() => {});
-    } else {
-      setHasOrders(orderPlaced);
-    }
-  }, [isOpen, session]);
-
-  // Update active prompts based on activity or route changes
   useEffect(() => {
+    if (localHasOrders || !signedIn) return;
+    ordersApi.myOrders().then(ords => {
+      if (ords && ords.length > 0) {
+        setApiHasOrders(true);
+      }
+    }).catch(() => {});
+  }, [isOpen, localHasOrders, signedIn]);
+
+  const hasOrders = localHasOrders || (signedIn && apiHasOrders);
+
+  // Active prompts follow activity or route changes
+  const activePrompts = useMemo(() => {
+    void isOpen; // recompute (cart contents may have changed) whenever the drawer is toggled
     const cartHasItems = getCart().length > 0;
     const favsCount = favorites?.length || 0;
-    const suggestions = getSuggestionsForActivity(pathname, hasOrders, cartHasItems, favsCount);
-    setActivePrompts(suggestions.prompts);
+    return getSuggestionsForActivity(pathname, hasOrders, cartHasItems, favsCount).prompts;
   }, [isOpen, pathname, hasOrders, favorites]);
 
   // Initialize or load session & history
   useEffect(() => {
-    const SESSION_TIMEOUT_MS = 24 * 60 * 60 * 1000; // 24 hours
-    let sid = localStorage.getItem("vastrax_stylist_session_id");
-    let lastActive = localStorage.getItem("vastrax_stylist_last_active");
-    
-    if (!sid || !lastActive || (Date.now() - parseInt(lastActive, 10)) > SESSION_TIMEOUT_MS) {
-      sid = `ses_${crypto.randomUUID()}`;
-      localStorage.setItem("vastrax_stylist_session_id", sid);
-      localStorage.setItem("vastrax_stylist_last_active", Date.now().toString());
-    } else {
-      localStorage.setItem("vastrax_stylist_last_active", Date.now().toString());
-    }
-    setSessionId(sid);
+    const sid = touchStylistSession();
 
     async function loadHistory() {
-      if (!sid) return;
       const history = await chatApi.getHistory(sid);
       if (history && history.length > 0) {
         const parsed: Message[] = history.map(h => {
@@ -278,7 +285,7 @@ export function StylistDrawer({ isOpen: externalIsOpen, onClose: externalOnClose
     if (!query.trim() || isTyping) return;
 
     const userMsg: Message = {
-      id: `u-${Date.now()}`,
+      id: `u-${currentTimeMs()}`,
       sender: "user",
       text: query,
       timestamp: "Just now"
@@ -287,7 +294,7 @@ export function StylistDrawer({ isOpen: externalIsOpen, onClose: externalOnClose
     setMessages(prev => [...prev, userMsg]);
     setInput("");
     setIsTyping(true);
-    localStorage.setItem("vastrax_stylist_last_active", Date.now().toString());
+    const sessionId = touchStylistSession();
 
     try {
       const historyPayload = messages.map(m => ({
@@ -296,13 +303,13 @@ export function StylistDrawer({ isOpen: externalIsOpen, onClose: externalOnClose
       }));
 
       const contextUrl = typeof window !== 'undefined' ? `${pathname}${window.location.search}` : '';
-      const userId = (session?.user as any)?.id || session?.user?.email;
+      const userId = (session?.user as { id?: string } | undefined)?.id || session?.user?.email || undefined;
       
       const res = await chatApi.sendMessage(query, sessionId, historyPayload, {}, contextUrl, [], userId);
       const { cleanText, chips } = parseTagsFromReply(res.message);
 
       const stylistMsg: Message = {
-        id: `s-${Date.now()}`,
+        id: `s-${currentTimeMs()}`,
         sender: "stylist",
         text: cleanText,
         timestamp: "Just now",
@@ -316,9 +323,9 @@ export function StylistDrawer({ isOpen: externalIsOpen, onClose: externalOnClose
       setMessages(prev => [...prev, stylistMsg]);
     } catch {
       const fallbackMsg: Message = {
-        id: `s-${Date.now()}`,
+        id: `s-${currentTimeMs()}`,
         sender: "stylist",
-        text: "For a refined architectural silhouette, pair structured tailored blazers with fluid silk bottoms and matte leather accents.",
+        text: STYLIST_OUTAGE_MESSAGE,
         timestamp: "Just now"
       };
       setMessages(prev => [...prev, fallbackMsg]);
@@ -329,10 +336,10 @@ export function StylistDrawer({ isOpen: externalIsOpen, onClose: externalOnClose
 
   const handleClearChat = async () => {
     if (confirm("Reset and clear your styling conversation history?")) {
-      await chatApi.clearHistory(sessionId);
+      await chatApi.clearHistory(localStorage.getItem(SESSION_ID_KEY) ?? undefined);
       const newSid = `ses_${crypto.randomUUID()}`;
-      localStorage.setItem("vastrax_stylist_session_id", newSid);
-      setSessionId(newSid);
+      localStorage.setItem(SESSION_ID_KEY, newSid);
+      localStorage.setItem(LAST_ACTIVE_KEY, currentTimeMs().toString());
       setMessages([]);
       setShowInspiration(false);
     }
@@ -506,7 +513,7 @@ export function StylistDrawer({ isOpen: externalIsOpen, onClose: externalOnClose
                                     }}
                                     title="View Details"
                                   >
-                                    <img src={p.image} alt={p.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                                    <Image width={1200} height={900} unoptimized src={p.image} alt={p.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
                                   </div>
                                   <h5 
                                     className="text-xs font-semibold text-foreground truncate cursor-pointer hover:text-accent transition-colors"

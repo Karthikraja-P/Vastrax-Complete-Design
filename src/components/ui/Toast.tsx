@@ -1,6 +1,7 @@
 "use client";
+import Image from "next/image";
 
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { CheckCircle2, AlertCircle, Info, Sparkles, X } from "lucide-react";
 import { ToastOptions } from "@/lib/toast";
@@ -44,7 +45,7 @@ export function ToastContainer() {
             className="pointer-events-auto flex items-start gap-3.5 p-4 rounded-xl bg-[#0A192F]/95 text-white border border-[#D4AF37]/30 shadow-2xl backdrop-blur-md"
           >
             {toast.image ? (
-              <img
+              <Image width={1200} height={900} unoptimized
                 src={toast.image}
                 alt={toast.title}
                 className="w-11 h-11 rounded-lg object-cover border border-[#D4AF37]/20 flex-shrink-0"

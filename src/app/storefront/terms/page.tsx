@@ -1,7 +1,7 @@
 "use client";
 
-import React from "react";
-import { ChevronRight, Home, Shield, Sparkles, Shirt, FileText } from "lucide-react";
+
+import { ChevronRight, Home, Shield, Sparkles } from "lucide-react";
 import Link from "next/link";
 
 export default function TermsOfServicePage() {

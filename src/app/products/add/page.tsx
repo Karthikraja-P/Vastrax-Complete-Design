@@ -1,17 +1,18 @@
 "use client";
+import Image from "next/image";
 
 import { useState, useRef, useEffect } from "react";
-import {
-  ArrowLeft, Save, Sparkles, Image as ImageIcon, Box, Plus,
-  X as XIcon, Upload, Loader2, Check, RotateCw, Camera, Eye
-} from "lucide-react";
+import { ArrowLeft, Save, Sparkles, Image as ImageIcon, Box, Plus, X as XIcon, Upload, Loader2, Check, RotateCw, Eye } from "lucide-react";
 import Link from "next/link";
 import { clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
-import { productsApi, categoriesApi } from "@/lib/api";
+import { productsApi, categoriesApi, CategoryItem } from "@/lib/api";
+import type { SizeChart } from "@/lib/sizeChart";
 import { useRouter } from "next/navigation";
 import { getSession } from "next-auth/react";
 import { Product3DModal } from "@/components/3d/Product3DModal";
+import PhotoUploadCard from "@/components/products/PhotoUploadCard";
+import { SizeChartEditor } from "@/components/products/SizeChartEditor";
 
 function cn(...inputs: (string | undefined | null | false)[]) {
   return twMerge(clsx(inputs));
@@ -48,19 +49,12 @@ export default function AddProductPage() {
   const [sku, setSku] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [gender, setGender] = useState("Women");
-  const [sizeChart, setSizeChart] = useState<any>({
+  const [sizeChart, setSizeChart] = useState<SizeChart>({
     unit: "in",
     headers: ["Size", "Chest (in)", "Waist (in)", "Hips (in)", "Length (in)"],
-    rows: [
-      { size: "XS", chest: "32-34", waist: "25-26", hips: "35-36", length: "38" },
-      { size: "S", chest: "34-36", waist: "27-28", hips: "37-38", length: "39" },
-      { size: "M", chest: "36-38", waist: "29-30", hips: "39-40", length: "40" },
-      { size: "L", chest: "39-41", waist: "31-33", hips: "41-43", length: "41" },
-      { size: "XL", chest: "42-44", waist: "34-36", hips: "44-46", length: "42" },
-      { size: "XXL", chest: "45-47", waist: "37-39", hips: "47-49", length: "43" }
-    ]
+    rows: [],
   });
-  const [categories, setCategories] = useState<any[]>([]);
+  const [categories, setCategories] = useState<CategoryItem[]>([]);
   const [fabric, setFabric] = useState("");
   const [colour, setColour] = useState("");
   const [occasion, setOccasion] = useState("");
@@ -71,7 +65,7 @@ export default function AddProductPage() {
   // Pricing
   const [priceSelling, setPriceSelling] = useState("");
   const [priceMrp, setPriceMrp] = useState("");
-  const [stock, setStock] = useState("10");
+  const [stockBySize, setStockBySize] = useState<Record<string, string>>({});
   const [isPublished, setIsPublished] = useState(true);
   const [isFeatured, setIsFeatured] = useState(false);
 
@@ -167,8 +161,8 @@ export default function AddProductPage() {
       if (!token || token === "null") {
         try {
           const session = await getSession();
-          if ((session as any)?.accessToken) {
-            token = (session as any).accessToken;
+          if (session?.accessToken) {
+            token = session.accessToken;
           }
         } catch {}
       }
@@ -185,13 +179,16 @@ export default function AddProductPage() {
       }
 
       const data = await res.json();
-      const generatedModelUrl = data.model_url || "/models/3d/garment_perfect.glb";
+      const generatedModelUrl = data.model_url;
+      if (!generatedModelUrl || data.generation_mode !== "hunyuan_textured") {
+        throw new Error("A textured garment-specific reconstruction was not produced. No template was attached.");
+      }
       setModelPath(generatedModelUrl);
       setReconstructResult(generatedModelUrl);
-      showToast(data.generation_mode === "hunyuan_textured" ? "Textured Hunyuan 3D model generated." : data.generation_mode === "hunyuan_untextured" ? "Hunyuan 3D shape generated without texture." : "Template 3D preview created; Hunyuan reconstruction is unavailable.");
-    } catch (err: any) {
+      showToast("Textured Hunyuan 3D model generated.");
+    } catch (err: unknown) {
       console.error(err);
-      showToast(`Reconstruction failed: ${err.message || "Server error"}`);
+      showToast(`Reconstruction failed: ${err instanceof Error ? err.message : "Server error"}`);
     } finally {
       setReconstructing(false);
     }
@@ -220,9 +217,9 @@ export default function AddProductPage() {
       } else {
         throw new Error(data.error || "Upload failed");
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      showToast(err.message || "Failed to upload model");
+      showToast(err instanceof Error ? err.message : "Failed to upload model");
     } finally {
       setIsUploadingGlb(false);
       if (glbInputRef.current) glbInputRef.current.value = "";
@@ -242,6 +239,12 @@ export default function AddProductPage() {
       return;
     }
 
+    if (!sizeChart.rows.some((row) => row.size.trim())) {
+      showToast("Add at least one size in the product size chart before saving.");
+      setActiveTab("basic");
+      return;
+    }
+
     setSaving(true);
     try {
       // Ensure valid auth token from localStorage or active NextAuth session
@@ -249,8 +252,8 @@ export default function AddProductPage() {
       if (!token || token === "null" || token === "undefined") {
         try {
           const session = await getSession();
-          if ((session as any)?.accessToken) {
-            token = (session as any).accessToken;
+          if (session?.accessToken) {
+            token = session.accessToken;
             localStorage.setItem("vastrax_token", token!);
           }
         } catch {}
@@ -276,18 +279,18 @@ export default function AddProductPage() {
         fabric: fabric.trim() || undefined,
         colour: colour.trim() || undefined,
         occasion: occasion.trim() || undefined,
-        model_path: modelPath.trim() || undefined,
+        model_path: modelPath.trim(),
         price_selling: parseFloat(priceSelling),
         price_mrp: priceMrp ? parseFloat(priceMrp) : parseFloat(priceSelling),
         is_published: publish,
         is_featured: isFeatured,
-        variants: [
-          {
-            sku: sku.trim() || `SKU-${Date.now().toString().slice(-6)}`,
-            size: "Standard",
-            stock_qty: parseInt(stock || "10") || 10,
-          },
-        ],
+        variants: sizeChart.rows
+          .filter((row) => row.size.trim())
+          .map((row) => ({
+            sku: (sku.trim() || "SKU-" + Date.now().toString().slice(-6)) + "-" + row.size.trim(),
+            size: row.size.trim(),
+            stock_qty: Math.max(0, Number.parseInt(stockBySize[row.size] || "0", 10) || 0),
+          })),
         images: imageDataUrls.map((url, i) => ({ s3_url: url, display_order: i })),
       };
 
@@ -296,90 +299,12 @@ export default function AddProductPage() {
         showToast(publish ? "Product published!" : "Draft saved!");
         setTimeout(() => router.push("/products"), 800);
       }
-    } catch (err: any) {
-      showToast(`Failed to save: ${err?.message || "Server error"}`);
+    } catch (err: unknown) {
+      showToast(`Failed to save: ${err instanceof Error ? err.message : "Server error"}`);
     } finally {
       setSaving(false);
     }
   };
-
-  // ─── Photo Upload Card (reusable for 3D tab) ────────────────
-  const PhotoUploadCard = ({
-    label,
-    photo,
-    inputRef,
-    onSelect,
-    onClear,
-  }: {
-    label: string;
-    photo: ReconstructPhoto;
-    inputRef: React.RefObject<HTMLInputElement | null>;
-    onSelect: (e: React.ChangeEvent<HTMLInputElement>) => void;
-    onClear: () => void;
-  }) => (
-    <div className="flex flex-col items-center">
-      <input
-        ref={inputRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={onSelect}
-      />
-      <button
-        type="button"
-        onClick={() => inputRef.current?.click()}
-        className={cn(
-          "relative w-full aspect-[3/4] rounded-xl border-2 border-dashed transition-all overflow-hidden group",
-          photo.preview
-            ? "border-accent/40 bg-accent/5"
-            : "border-border hover:border-accent/50 bg-background/50"
-        )}
-      >
-        {photo.preview ? (
-          <>
-            <img
-              src={photo.preview}
-              alt={label}
-              className="w-full h-full object-cover"
-            />
-            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-              <Camera className="w-6 h-6 text-white" />
-            </div>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onClear();
-              }}
-              className="absolute top-2 right-2 w-6 h-6 bg-red-500/90 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-            >
-              <XIcon className="w-3.5 h-3.5 text-white" />
-            </button>
-          </>
-        ) : (
-          <div className="flex flex-col items-center justify-center h-full gap-3 px-4">
-            <div className="w-12 h-12 rounded-full bg-surface border border-border flex items-center justify-center group-hover:scale-110 transition-transform">
-              <Camera className="w-5 h-5 text-muted-foreground group-hover:text-accent transition-colors" />
-            </div>
-            <span className="text-xs text-muted-foreground font-medium">
-              Click to upload
-            </span>
-          </div>
-        )}
-      </button>
-      <span
-        className={cn(
-          "mt-2.5 text-xs font-bold uppercase tracking-wider",
-          photo.preview ? "text-accent" : "text-muted-foreground"
-        )}
-      >
-        {label}
-        {photo.preview && (
-          <Check className="inline w-3.5 h-3.5 ml-1.5 text-emerald-500" />
-        )}
-      </span>
-    </div>
-  );
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-20">
@@ -587,6 +512,9 @@ export default function AddProductPage() {
                   />
                 </div>
               </div>
+              <div className="mt-6">
+                <SizeChartEditor value={sizeChart} onChange={setSizeChart} />
+              </div>
             </div>
           )}
 
@@ -623,17 +551,18 @@ export default function AddProductPage() {
                     />
                   </div>
                 </div>
-                <div className="w-1/2 pr-2">
-                  <label className="block text-sm font-medium text-foreground mb-1.5">
-                    Stock Quantity
-                  </label>
-                  <input
-                    type="number"
-                    value={stock}
-                    onChange={(e) => setStock(e.target.value)}
-                    placeholder="10"
-                    className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent focus:ring-1 focus:ring-accent outline-none transition-all text-foreground"
-                  />
+                <div>
+                  <h3 className="mb-2 text-sm font-medium text-foreground">Stock by size</h3>
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                    {sizeChart.rows.filter((row) => row.size.trim()).map((row) => (
+                      <label key={row.size} className="text-xs text-muted-foreground">
+                        {row.size}
+                        <input type="number" min="0" value={stockBySize[row.size] ?? "0"}
+                          onChange={(event) => setStockBySize((current) => ({ ...current, [row.size]: event.target.value }))}
+                          className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground" />
+                      </label>
+                    ))}
+                  </div>
                 </div>
 
                 <div className="pt-4 border-t border-border/50 mt-6">
@@ -785,7 +714,7 @@ export default function AddProductPage() {
                       key={img.id}
                       className="relative aspect-square rounded-xl border border-border overflow-hidden group bg-surface-hover"
                     >
-                      <img
+                      <Image width={1200} height={900} unoptimized
                         src={img.preview}
                         alt={`Product ${idx + 1}`}
                         className="w-full h-full object-cover"
@@ -868,6 +797,11 @@ export default function AddProductPage() {
                     className="hidden"
                     onChange={handleUploadGlb}
                   />
+                  {modelPath && (
+                    <button type="button" onClick={() => { setModelPath(""); setReconstructResult(null); }} className="mb-2 text-xs font-medium text-red-500 hover:underline">
+                      Remove attached 3D model
+                    </button>
+                  )}
                   <input
                     type="text"
                     value={modelPath}
@@ -896,8 +830,7 @@ export default function AddProductPage() {
                       3D Model Reconstruction
                     </h2>
                     <p className="text-xs text-muted-foreground">
-                      Upload front, side & back photos to generate a 3D garment
-                      model preview
+                      Upload garment photos for a 3D preview
                     </p>
                   </div>
                 </div>
@@ -908,12 +841,11 @@ export default function AddProductPage() {
                 <Sparkles className="w-5 h-5 text-accent flex-shrink-0 mt-0.5" />
                 <div className="text-xs text-muted-foreground leading-relaxed">
                   <span className="font-semibold text-foreground">
-                    How it works:
+                    Current limitation:
                   </span>{" "}
-                  Upload three photos of your garment — front view, side view,
-                  and back view. Our AI service (Hunyuan 3D) will reconstruct a
-                  photorealistic 3D GLB model that customers can rotate and
-                  interact with in the storefront.
+                  Hunyuan currently reconstructs the shape from the front photo
+                  only; side and back photos are not used as reconstruction
+              constraints. Review the generated model carefully before saving.
                 </div>
               </div>
 
@@ -1047,7 +979,7 @@ export default function AddProductPage() {
           id: "preview",
           name: name || "Garment 3D Model",
           price: parseFloat(priceSelling) || 0,
-          model3dUrl: modelPath || "/models/3d/garment_perfect.glb",
+          model3dUrl: modelPath || undefined,
         }}
       />
     </div>

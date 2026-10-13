@@ -1,12 +1,9 @@
 "use client";
+import Image from "next/image";
 
 import React, { useState, useEffect } from "react";
-import { 
-  Home, ChevronRight, User, Shield, Settings as SettingsIcon, 
-  Edit3, Eye, EyeOff, ChevronDown, Lock, AlertTriangle, Upload, CheckCircle2, Loader2,
-  Store, Globe, Bell, DollarSign, Clock, ShieldAlert, Sparkles, Sliders
-} from "lucide-react";
-import { settingsApi, fetchApi } from "@/lib/api";
+import { Home, ChevronRight, User, Shield, Settings as SettingsIcon, Edit3, Eye, EyeOff, ChevronDown, Lock, AlertTriangle, Upload, CheckCircle2, Loader2, Store, Globe, ShieldAlert, Sparkles, Sliders } from "lucide-react";
+import { settingsApi, fetchApi, AppSettings } from "@/lib/api";
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'app'>('profile');
@@ -73,7 +70,7 @@ export default function SettingsPage() {
 
   useEffect(() => {
     async function loadSettings() {
-      const data = await fetchApi<any>("/settings/app/admin").catch(() => null);
+      const data = await fetchApi<AppSettings>("/settings/app/admin").catch(() => null);
       if (data) {
         if (data.storeName) setStoreName(data.storeName);
         if (data.supportEmail) setSupportEmail(data.supportEmail);
@@ -238,7 +235,7 @@ export default function SettingsPage() {
                   <div className="flex items-center gap-4">
                     <div className="w-16 h-16 rounded-full bg-surface-hover flex items-center justify-center text-muted-foreground border border-border overflow-hidden">
                       {profileImage ? (
-                        <img src={profileImage} alt="Profile" className="w-full h-full object-cover" />
+                        <Image width={1200} height={900} unoptimized src={profileImage} alt="Profile" className="w-full h-full object-cover" />
                       ) : (
                         <User className="w-6 h-6" />
                       )}
@@ -446,7 +443,7 @@ export default function SettingsPage() {
                     <div>
                       <h4 className="text-sm font-medium text-foreground">Security Notice</h4>
                       <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-                        After changing your password, you'll remain logged in on this device. However, you'll need to sign in again on other devices.
+                        After changing your password, you&apos;ll remain logged in on this device. However, you&apos;ll need to sign in again on other devices.
                       </p>
                     </div>
                   </div>

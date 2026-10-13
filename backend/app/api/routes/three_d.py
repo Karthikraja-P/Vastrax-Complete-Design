@@ -5,7 +5,10 @@ from app.middleware.auth import require_admin
 from app.models.user import User
 from app.models.product import Product
 from app.core.exceptions import NotFoundError
+from app.core.config import settings
+from app.services.glb import normalize_embedded_image_mime
 import logging
+import os
 import uuid
 
 logger = logging.getLogger(__name__)
@@ -28,7 +31,6 @@ async def generate_3d_mesh(
     Triggers 3D neural reconstruction & texture painting pipeline via 3D generator on port 8081.
     Protected by global GPU execution queue.
     """
-    import os
     import httpx
     from app.core.gpu_queue import gpu_queue
 
@@ -74,8 +76,29 @@ async def generate_3d_mesh(
                 )
                 if resp.status_code == 200:
                     res_json = resp.json()
-                    model_url = res_json.get("model_url", model_url)
+                    model_url = res_json.get("model_url")
                     generation_mode = res_json.get("generation_mode", "unknown")
+                    if generation_mode != "hunyuan_textured":
+                        raise HTTPException(status_code=502, detail="3D service did not return a textured garment-specific reconstruction; product was not updated")
+                    if not model_url or not model_url.startswith("/models/3d/"):
+                        raise HTTPException(status_code=502, detail="3D service returned an invalid model URL; product was not updated")
+                    model_resp = await client.get(f"{generator_url}{model_url}")
+                    model_bytes = model_resp.content
+                    if model_resp.status_code != 200 or not model_bytes.startswith(b"glTF") or len(model_bytes) > 100 * 1024 * 1024:
+                        raise HTTPException(status_code=502, detail="3D service returned an invalid model file; product was not updated")
+                    try:
+                        model_bytes = normalize_embedded_image_mime(model_bytes)
+                    except ValueError as exc:
+                        logger.warning("3D service returned a malformed GLB: %s", exc)
+                        raise HTTPException(status_code=502, detail="3D service returned a malformed model file; product was not updated") from exc
+                    model_filename = f"{job_id}.glb"
+                    os.makedirs(settings.results_dir, exist_ok=True)
+                    model_path = os.path.join(settings.results_dir, model_filename)
+                    temp_path = f"{model_path}.tmp"
+                    with open(temp_path, "wb") as model_file:
+                        model_file.write(model_bytes)
+                    os.replace(temp_path, model_path)
+                    model_url = f"/results/{model_filename}"
                 else:
                     logger.warning(f"3D generator returned {resp.status_code}: {resp.text}")
                     raise HTTPException(status_code=502, detail="3D generator failed")
@@ -115,13 +138,7 @@ def generate_product_3d(
     if not product:
         raise NotFoundError("Product not found")
 
-    model_url = "/models/3d/garment_perfect.glb"
-    product.model_path = model_url
-    db.commit()
-
-    return {
-        "status": "template_assigned",
-        "product_id": product.id,
-        "model_url": model_url,
-        "message": f"Template 3D model assigned to {product.name}"
-    }
+    raise HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail="A generic 3D model cannot be assigned to a product. Generate and verify a product-specific textured model first.",
+    )

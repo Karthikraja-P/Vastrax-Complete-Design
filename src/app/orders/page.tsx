@@ -1,19 +1,42 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
-import { 
-  Home, ChevronRight, ShoppingCart, Clock, Truck, 
-  CheckCircle2, Ban, Search, ChevronDown, Filter, RotateCcw, Loader2,
-  Eye, PackageCheck, X as XIcon, User, MapPin, CreditCard, Sparkles
-} from "lucide-react";
+import { useState, useEffect, useMemo } from "react";
+import { Home, ChevronRight, ShoppingCart, Clock, Truck, CheckCircle2, Ban, Search, ChevronDown, RotateCcw, Loader2, Eye, X as XIcon, User, MapPin, CreditCard } from "lucide-react";
 import Link from "next/link";
 import { ordersApi, OrderItemRecord } from "@/lib/api";
 
+type BackendOrderItemRecord = OrderItemRecord & {
+  customer_name?: string | null;
+  customer_email?: string | null;
+  payment_method?: string | null;
+};
+
+interface OrderRow {
+  id: string;
+  orderNumber: string;
+  customer: string;
+  email: string;
+  itemsCount: number;
+  rawTotal: number;
+  total: string;
+  progress: number;
+  rawStatus: string;
+  status: string;
+  statusColor: string;
+  paymentStatus: string;
+  shippingAddress: string;
+  date: string;
+  rawDate: number;
+  items: unknown[];
+  paymentMethod: string;
+  isCod: boolean;
+}
+
 export default function OrdersPage() {
-  const [orders, setOrders] = useState<any[]>([]);
+  const [orders, setOrders] = useState<OrderRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [openActionId, setOpenActionId] = useState<string | null>(null);
-  const [selectedOrderDetails, setSelectedOrderDetails] = useState<any | null>(null);
+  const [selectedOrderDetails, setSelectedOrderDetails] = useState<OrderRow | null>(null);
   const [actionError, setActionError] = useState("");
 
   // Filters State
@@ -31,7 +54,9 @@ export default function OrdersPage() {
     try {
       const data = await ordersApi.list();
       if (data && Array.isArray(data)) {
-        const formatted = data.map((o: any) => {
+        const formatted = data.map((o: OrderItemRecord): OrderRow => {
+          const rawOrder = o as BackendOrderItemRecord;
+          const orderDate = o.createdAt || rawOrder.placed_at;
           const rawStatus = String(o.status || "CONFIRMED").toUpperCase();
           const progress = rawStatus === "DELIVERED" ? 100 : rawStatus === "SHIPPED" ? 80 : rawStatus === "PACKED" ? 55 : 25;
           const statusDisplay = rawStatus.charAt(0) + rawStatus.slice(1).toLowerCase();
@@ -43,21 +68,21 @@ export default function OrdersPage() {
           return {
             id: String(o.id || ""),
             orderNumber: o.orderNumber || `#ORD-${String(o.id).slice(0, 8).toUpperCase()}`,
-            customer: o.customer_name || o.customerName || "Customer",
-            email: o.customer_email || o.customerEmail || "—",
-            itemsCount: o.items ? o.items.length : (o.itemsCount || 1),
+            customer: rawOrder.customer_name || o.customerName || "Customer",
+            email: rawOrder.customer_email || o.customerEmail || "\u2014",
+            itemsCount: o.items?.length ?? (o.itemsCount || 1),
             rawTotal: Number(o.totalAmount || o.total_amount || 0),
             total: `₹${typeof o.totalAmount === 'number' ? o.totalAmount.toFixed(2) : (typeof o.total_amount === 'number' ? o.total_amount.toFixed(2) : (o.totalAmount || o.total_amount || '0.00'))}`,
             progress,
             rawStatus,
             status: statusDisplay,
             statusColor,
-            paymentStatus: o.payment_status || o.paymentStatus || "pending",
-            paymentMethod: o.payment_method || "",
-            isCod: ["cod", "cash on delivery"].includes(String(o.payment_method || "").trim().toLowerCase()),
-            shippingAddress: o.shipping_address || o.shippingAddress || "—",
-            date: o.createdAt || o.placed_at ? new Date(o.createdAt || o.placed_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "Recent",
-            rawDate: new Date(o.createdAt || o.placed_at || Date.now()).getTime(),
+            paymentStatus: rawOrder.payment_status || o.paymentStatus || "pending",
+            paymentMethod: rawOrder.payment_method || "",
+            isCod: ["cod", "cash on delivery"].includes(String(rawOrder.payment_method || "").trim().toLowerCase()),
+            shippingAddress: rawOrder.shipping_address || o.shippingAddress || "\u2014",
+            date: orderDate ? new Date(orderDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "Recent",
+            rawDate: new Date(orderDate || Date.now()).getTime(),
             items: o.items || []
           };
         });
@@ -71,7 +96,7 @@ export default function OrdersPage() {
   };
 
   useEffect(() => {
-    loadOrders();
+    void Promise.resolve().then(loadOrders);
   }, []);
 
   const handleResetFilters = () => {
@@ -108,7 +133,7 @@ export default function OrdersPage() {
 
   // Filter and Sort Orders
   const filteredOrders = useMemo(() => {
-    let result = orders.filter((o) => {
+    const result = orders.filter((o) => {
       const matchesSearch = !searchQuery.trim() || 
         o.customer.toLowerCase().includes(searchQuery.toLowerCase()) || 
         o.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -144,6 +169,7 @@ export default function OrdersPage() {
     { label: "Total Orders", value: String(orders.length), icon: ShoppingCart, color: "text-accent", glow: "shadow-[-4px_0_15px_rgba(224,122,63,0.3)]", border: "border-l-accent" },
     { label: "Pending", value: String(orders.filter(o => o.rawStatus === "PENDING" || o.rawStatus === "CONFIRMED").length), icon: Clock, color: "text-yellow-500", glow: "shadow-[-4px_0_15px_rgba(234,179,8,0.2)]", border: "border-l-yellow-500" },
     { label: "Packed", value: String(orders.filter(o => o.rawStatus === "PACKED").length), icon: Truck, color: "text-blue-500", glow: "shadow-[-4px_0_15px_rgba(59,130,246,0.2)]", border: "border-l-blue-500" },
+    { label: "Processing", value: String(orders.filter(o => o.rawStatus === "PROCESSING").length), icon: Truck, color: "text-blue-500", glow: "shadow-[-4px_0_15px_rgba(59,130,246,0.2)]", border: "border-l-blue-500" },
     { label: "Delivered", value: String(orders.filter(o => o.rawStatus === "DELIVERED").length), icon: CheckCircle2, color: "text-emerald-500", glow: "shadow-[-4px_0_15px_rgba(16,185,129,0.2)]", border: "border-l-emerald-500" },
     { label: "Cancelled", value: String(orders.filter(o => o.rawStatus === "CANCELLED").length), icon: Ban, color: "text-red-500", glow: "shadow-[-4px_0_15px_rgba(239,68,68,0.2)]", border: "border-l-red-500" },
   ];
@@ -376,7 +402,7 @@ export default function OrdersPage() {
                     <td className="px-6 py-4 whitespace-nowrap text-right relative">
                       <div className="relative inline-block text-left">
                         <button 
-                          onClick={() => setOpenActionId(openActionId === (order.id || index) ? null : (order.id || index))}
+                          onClick={() => setOpenActionId(openActionId === String(order.id || index) ? null : String(order.id || index))}
                           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-background border border-border hover:bg-surface-hover text-xs font-medium text-foreground transition-colors ml-auto"
                         >
                           Actions
@@ -536,7 +562,7 @@ export default function OrdersPage() {
                   <span className="font-medium text-foreground">{selectedOrderDetails.paymentMethod || "Not recorded"}</span>
                 </div>
                 <div className="flex items-center justify-between text-xs pl-6">
-                  <span className="text-muted-foreground">Total Charged</span>
+                  <span className="text-muted-foreground">Order Total</span>
                   <span className="font-bold text-foreground">{selectedOrderDetails.total}</span>
                 </div>
               </div>

@@ -121,7 +121,7 @@ export function clearCart(): void {
   try {
     localStorage.removeItem(CART_STORAGE_KEY);
     window.dispatchEvent(new CustomEvent("cart-updated", { detail: { items: [] } }));
-  } catch (err) {}
+  } catch {}
 }
 
 /**

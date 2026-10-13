@@ -5,11 +5,12 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOG="$HOME/vastrax-health.log"; STATE="$HOME/.vastrax-health.state"
 [ -f "$DIR/.env" ] && set -a && . "$DIR/.env" 2>/dev/null; set +a
 WIN_HOST="$(ip route | awk '/default/ {print $3; exit}')"
-declare -A URLS=([frontend]=http://localhost:3000/health [backend]=http://localhost:8090/health [gateway3d]=http://localhost:8081/health [hunyuan]=http://$WIN_HOST:8082/health [tryon]=http://localhost:8001/health)
+declare -A URLS=([frontend]=http://localhost:3000/health [backend]=http://localhost:8090/health [hunyuan]=http://$WIN_HOST:8082/health [tryon]=http://localhost:8001/health)
 bad=()
 for n in "${!URLS[@]}"; do
   [ "$(curl -s -o /dev/null -m 8 -w '%{http_code}' "${URLS[$n]}")" = 200 ] || bad+=("$n")
 done
+[ "$(docker inspect -f '{{.State.Health.Status}}' vastrax-3d-generator 2>/dev/null)" = healthy ] || bad+=(gateway3d)
 case " ${bad[*]} " in *" frontend "*|*" backend "*) (cd "$DIR" && docker compose up -d >/dev/null 2>&1) ;; esac
 df_pct=$(df -P "$DIR" | awk 'NR==2 {gsub("%",""); print $5}'); [ "${df_pct:-0}" -ge 90 ] && bad+=("disk-${df_pct}pct")
 now="${bad[*]:-ok}"; prev="$(cat "$STATE" 2>/dev/null)"

@@ -1,14 +1,20 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
-import { 
-  Home, ChevronRight, Users, UserMinus, ShieldAlert, ShieldCheck, UserPlus, 
-  ChevronDown, Filter, RotateCcw, RotateCw, Trash2, ArrowLeft, AlertCircle, Loader2
-} from "lucide-react";
+import { useState, useMemo } from "react";
+import { Home, ChevronRight, UserMinus, RotateCcw, RotateCw, Trash2, ArrowLeft, AlertCircle, Loader2 } from "lucide-react";
 import Link from "next/link";
 
+interface DeletedUser {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  status: string;
+  deletedAt: string;
+}
+
 export default function DeletedUsersPage() {
-  const [deletedUsers, setDeletedUsers] = useState<any[]>([
+  const [deletedUsers, setDeletedUsers] = useState<DeletedUser[]>([
     { id: "del-usr-1", name: "Mia Wright", email: "mia.wright@example.com", phone: "+1 (555) 666-8888", status: "Verified", deletedAt: "2 days ago" },
     { id: "del-usr-2", name: "Ethan King", email: "ethan.king@example.com", phone: "+1 (555) 222-4444", status: "Verified", deletedAt: "5 days ago" },
     { id: "del-usr-3", name: "Isabella Allen", email: "isabella.allen@example.com", phone: "+1 (555) 000-1111", status: "Unverified", deletedAt: "1 week ago" }
@@ -16,8 +22,8 @@ export default function DeletedUsersPage() {
 
   const [nameFilter, setNameFilter] = useState("");
   const [emailFilter, setEmailFilter] = useState("");
-  const [userToRestore, setUserToRestore] = useState<any | null>(null);
-  const [userToPurge, setUserToPurge] = useState<any | null>(null);
+  const [userToRestore, setUserToRestore] = useState<DeletedUser | null>(null);
+  const [userToPurge, setUserToPurge] = useState<DeletedUser | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
 
@@ -36,7 +42,7 @@ export default function DeletedUsersPage() {
     setCurrentPage(1);
   };
 
-  const handleRestoreUser = (user: any) => {
+  const handleRestoreUser = (user: DeletedUser) => {
     setIsProcessing(true);
     setTimeout(() => {
       setDeletedUsers(prev => prev.filter(u => u.id !== user.id));
@@ -46,7 +52,7 @@ export default function DeletedUsersPage() {
     }, 400);
   };
 
-  const handlePurgeUser = (user: any) => {
+  const handlePurgeUser = (user: DeletedUser) => {
     setIsProcessing(true);
     setTimeout(() => {
       setDeletedUsers(prev => prev.filter(u => u.id !== user.id));

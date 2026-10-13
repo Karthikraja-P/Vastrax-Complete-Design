@@ -103,10 +103,6 @@ CHAT_TOOLS = [
                         "type": "string",
                         "description": "The order ID or order number e.g. 'ORD-2026-1048' or UUID",
                     },
-                    "email": {
-                        "type": "string",
-                        "description": "Customer email if unauthenticated/guest lookup",
-                    },
                 },
                 "required": ["order_id"],
             },
@@ -123,10 +119,6 @@ CHAT_TOOLS = [
                     "order_id": {
                         "type": "string",
                         "description": "The order ID or order number",
-                    },
-                    "email": {
-                        "type": "string",
-                        "description": "Customer email if unauthenticated/guest lookup",
                     },
                 },
                 "required": ["order_id"],
@@ -239,6 +231,9 @@ CHAT_TOOLS = [
 
 # ── Secure Execution Handlers ──────────────────────────────────────────────────
 
+_IDENTITY_ARG_KEYS = {"email", "user_id", "session_id"}
+
+
 def execute_tool(
     tool_name: str,
     args: Dict[str, Any],
@@ -250,6 +245,8 @@ def execute_tool(
     Central security gateway. Executes requested tool against active PostgreSQL database
     with strict authentication and authorization checks.
     """
+    # Identity comes only from the authenticated session, never from model-supplied args.
+    args = {k: v for k, v in (args or {}).items() if k not in _IDENTITY_ARG_KEYS}
     logger.info("Executing chat tool: %s with args: %s (user_id=%s)", tool_name, args, user_id)
 
     try:
@@ -276,8 +273,8 @@ def execute_tool(
         else:
             return {"error": f"Unknown tool '{tool_name}'"}
     except Exception as e:
-        logger.error("Error executing tool %s: %s", tool_name, e, exc_info=True)
-        return {"error": f"Failed to execute {tool_name}: {str(e)}"}
+        logger.error("Error executing tool %s: %s", tool_name, type(e).__name__)
+        return {"error": "The requested action could not be completed. Please try again later."}
 
 
 # ── Internal Tool Implementations ─────────────────────────────────────────────
@@ -325,8 +322,13 @@ def _search_products(
     }
 
 
+def _get_published_product(db: Session, product_id: str) -> Optional[Product]:
+    # Unpublished products look identical to missing ones, for every caller.
+    return db.query(Product).filter(Product.id == product_id, Product.is_published == True).first()
+
+
 def _get_product_details(db: Session, product_id: str) -> Dict[str, Any]:
-    p = db.query(Product).filter(Product.id == product_id).first()
+    p = _get_published_product(db, product_id)
     if not p:
         return {"error": f"Product '{product_id}' not found"}
 
@@ -339,7 +341,7 @@ def _get_product_details(db: Session, product_id: str) -> Dict[str, Any]:
         "id": p.id,
         "name": p.name,
         "price": float(p.price_selling) if p.price_selling else 0,
-        "original_price": float(p.price_original) if p.price_original else None,
+        "original_price": float(p.price_mrp) if p.price_mrp else None,
         "category": p.category.name if p.category else None,
         "fabric": p.fabric,
         "colour": p.colour,
@@ -351,7 +353,7 @@ def _get_product_details(db: Session, product_id: str) -> Dict[str, Any]:
 
 
 def _check_inventory(db: Session, product_id: str, size: Optional[str] = None) -> Dict[str, Any]:
-    p = db.query(Product).filter(Product.id == product_id).first()
+    p = _get_published_product(db, product_id)
     if not p:
         return {"error": f"Product '{product_id}' not found"}
 
@@ -380,38 +382,35 @@ def _check_inventory(db: Session, product_id: str, size: Optional[str] = None) -
     }
 
 
-def _resolve_authorized_order(db: Session, order_id: str, user_id: Optional[str] = None, email: Optional[str] = None) -> Optional[Order]:
-    """Authorization guard: prevents customer from accessing orders belonging to another patron."""
-    order = db.query(Order).filter(
-        (Order.id == order_id) | (Order.id.ilike(f"%{order_id}%"))
-    ).first()
+def _resolve_authorized_order(db: Session, order_id: str, user_id: Optional[str] = None) -> Optional[Order]:
+    """Authorization guard: only the authenticated owner (or an admin) may access an order.
 
+    Identity comes solely from the authenticated user_id; model-supplied identity
+    (e.g. email) is never trusted and order IDs are matched exactly.
+    """
+    if not user_id or not isinstance(order_id, str) or not order_id.strip():
+        return None
+
+    order = db.query(Order).filter(Order.id == order_id.strip()).first()
     if not order:
         return None
 
-    # Check ownership
-    if user_id and order.user_id == user_id:
+    if order.user_id == user_id:
         return order
 
-    # If guest or user_id not matching, verify via user email
-    if email and order.user and order.user.email and order.user.email.lower() == email.strip().lower():
+    user = db.query(User).filter(User.id == user_id).first()
+    if user and user.role in ["admin", "superadmin"]:
         return order
-
-    # If user is admin, allow
-    if user_id:
-        user = db.query(User).filter(User.id == user_id).first()
-        if user and user.role in ["admin", "superadmin"]:
-            return order
 
     return None
 
 
-def _get_order_status(db: Session, order_id: str, user_id: Optional[str] = None, email: Optional[str] = None) -> Dict[str, Any]:
-    order = _resolve_authorized_order(db, order_id, user_id=user_id, email=email)
+def _get_order_status(db: Session, order_id: str, user_id: Optional[str] = None) -> Dict[str, Any]:
+    order = _resolve_authorized_order(db, order_id, user_id=user_id)
     if not order:
         return {
             "authorized": False,
-            "message": "Order not found, or you do not have permission to view it. Please sign in or provide the email associated with this order.",
+            "message": "Order not found, or you do not have permission to view it. Please sign in to the account that placed this order.",
         }
 
     return {
@@ -427,8 +426,8 @@ def _get_order_status(db: Session, order_id: str, user_id: Optional[str] = None,
     }
 
 
-def _get_order_details(db: Session, order_id: str, user_id: Optional[str] = None, email: Optional[str] = None) -> Dict[str, Any]:
-    order = _resolve_authorized_order(db, order_id, user_id=user_id, email=email)
+def _get_order_details(db: Session, order_id: str, user_id: Optional[str] = None) -> Dict[str, Any]:
+    order = _resolve_authorized_order(db, order_id, user_id=user_id)
     if not order:
         return {
             "authorized": False,
@@ -448,7 +447,7 @@ def _get_order_details(db: Session, order_id: str, user_id: Optional[str] = None
 
     address_summary = None
     if order.address:
-        address_summary = f"{order.address.address_line1}, {order.address.city}, {order.address.state} - {order.address.postal_code}"
+        address_summary = f"{order.address.address_line1}, {order.address.city}, {order.address.state} - {order.address.pincode}"
 
     return {
         "authorized": True,
@@ -541,9 +540,20 @@ def _create_support_ticket(
     user_id: Optional[str] = None,
     session_id: Optional[str] = None,
 ) -> Dict[str, Any]:
+    linked_order_id = None
+    if order_id is not None and str(order_id).strip():
+        order = _resolve_authorized_order(db, order_id, user_id=user_id)
+        if not order:
+            return {
+                "success": False,
+                "authorized": False,
+                "message": "I couldn't verify that order on your account, so no ticket was created. Please sign in and check the order ID.",
+            }
+        linked_order_id = order.id
+
     ticket = SupportTicket(
         user_id=user_id,
-        order_id=order_id,
+        order_id=linked_order_id,
         subject=subject,
         description=description,
         status="OPEN",

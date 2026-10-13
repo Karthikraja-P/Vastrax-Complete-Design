@@ -1,55 +1,48 @@
 "use client";
+import Image from "next/image";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, Suspense, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { 
-  ChevronRight, Heart, Star, Share2, Ruler, Truck, ShieldCheck, 
-  Minus, Plus, ChevronLeft, ArrowRight, Menu, Search, User, ShoppingBag,
-  Phone, Link as LinkIcon, RefreshCw, Check, Sparkles, Shirt, Box,
-  Bell, AlertCircle
-} from "lucide-react";
+import { Heart, Star, Ruler, Truck, ShieldCheck, Minus, Plus, ShoppingBag, RefreshCw, Check, Box, Bell } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { AuthModal } from "@/components/auth/AuthModal";
-import { useSession, signOut } from "next-auth/react";
+import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { CartDrawer } from "@/components/layout/CartDrawer";
 import { StylistDrawer } from "@/components/stylist/StylistDrawer";
 import { GarmentViewer3D } from "@/components/3d/GarmentViewer3D";
 import { Product3DModal } from "@/components/3d/Product3DModal";
 
-import { productsApi, ProductReview } from "@/lib/api";
-import { addToCart as addCartItem, getCart } from "@/lib/cart";
+import { productsApi, ProductReview, ProductItem, ProductVariant } from "@/lib/api";
+import { addToCart as addCartItem } from "@/lib/cart";
+import { useCartItems } from "@/hooks/useCartItems";
+import { isSizeChart, SizeChart, SizeChartRow } from "@/lib/sizeChart";
 import { showToast } from "@/lib/toast";
-
-const colors = [
-  { name: 'Black', value: '#1a1a1a' },
-  { name: 'Brown', value: '#4a3b32' },
-  { name: 'Navy', value: '#1d2b45' },
-  { name: 'Teal', value: '#244c5a' },
-];
+import StorefrontMobileControls from "@/components/layout/StorefrontMobileControls";
+import { useFavorites } from "@/hooks/useFavorites";
 
 function ProductContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const productId = searchParams.get("id") || searchParams.get("product_id");
+  const requestedProductKey = productId || "__featured__";
+  const [resolvedProductKey, setResolvedProductKey] = useState<string | null>(null);
+  const [failedProductKey, setFailedProductKey] = useState<string | null>(null);
 
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
-  const [pendingAction, setPendingAction] = useState<'tryon' | 'cart' | 'favorites' | 'buynow' | null>(null);
+  const [pendingAction, setPendingAction] = useState<'cart' | 'favorites' | 'buynow' | null>(null);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isStylistOpen, setIsStylistOpen] = useState(false);
-  const [bagItems, setBagItems] = useState<any[]>([]);
+  const bagItems = useCartItems();
   const [activeColor, setActiveColor] = useState('Black');
   const [activeSize, setActiveSize] = useState('M');
   const [quantity, setQuantity] = useState(1);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [activeTab, setActiveTab] = useState('Description');
-  const [favorites, setFavorites] = useState<string[]>([]);
-  
+  const { favorites, toggleFavorite: toggleFavoriteStore } = useFavorites();
+
   const { data: session } = useSession();
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [userName, setUserName] = useState("");
-  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
 
   const [is3DMode, setIs3DMode] = useState(false);
   const [is3DModalOpen, setIs3DModalOpen] = useState(false);
@@ -72,142 +65,136 @@ function ProductContent() {
     model3dUrl?: string;
     model_path?: string;
     stock?: number;
-    size_chart?: any;
-    variants?: any[];
+    size_chart?: SizeChart;
+    variants?: ProductVariant[];
   }>({
-    id: "vtx-default",
-    name: "Cyber Silk Trench Coat",
-    categoryName: "Jackets & Outerwear",
-    price: 4999,
-    originalPrice: 5999,
-    description: "High-end luxury trench coat tailored with precision silk blend fabric.",
-    fabric: "Silk Blend",
-    colour: "Onyx Black",
-    image: "https://images.unsplash.com/photo-1551028719-00167b16eac5?q=80&w=800&auto=format&fit=crop",
-    images: ["https://images.unsplash.com/photo-1551028719-00167b16eac5?q=80&w=800&auto=format&fit=crop"],
-    rating: 4.9,
-    reviewsCount: 12,
-    model3dUrl: "/models/3d/garment2_textured.glb"
+    id: "",
+    name: "",
+    categoryName: "",
+    price: 0,
+    description: "",
+    fabric: "",
+    colour: "",
+    image: "/product-placeholder.svg",
+    images: ["/product-placeholder.svg"],
+    rating: 0,
+    reviewsCount: 0,
   });
 
   const [sizeChartUnit, setSizeChartUnit] = useState<"in" | "cm">("in");
 
-  const getFallbackImage = (name: string, catName: string) => {
-    const p = (name + " " + catName).toLowerCase();
-    if (/frock|dress/i.test(p)) return "https://images.unsplash.com/photo-1572804013309-59a88b7e92f1?q=80&w=800&auto=format&fit=crop";
-    if (/jacket|coat|outerwear|puffer|trench/i.test(p)) return "https://images.unsplash.com/photo-1551028719-00167b16eac5?q=80&w=800&auto=format&fit=crop";
-    if (/hoodie|sweatshirt/i.test(p)) return "https://images.unsplash.com/photo-1556821840-3a63f95609a7?q=80&w=800&auto=format&fit=crop";
-    if (/pant|trouser|cargo|denim|jean/i.test(p)) return "https://images.unsplash.com/photo-1542272604-787c3835535d?q=80&w=800&auto=format&fit=crop";
-    if (/shirt/i.test(p)) return "https://images.unsplash.com/photo-1596755094514-f87e34085b2c?q=80&w=800&auto=format&fit=crop";
-    if (/shoe|sneaker|loafer/i.test(p)) return "https://images.unsplash.com/photo-1549298916-b41d501d3772?q=80&w=800&auto=format&fit=crop";
-    return "https://images.unsplash.com/photo-1551028719-00167b16eac5?q=80&w=800&auto=format&fit=crop";
+  const getFallbackImage = () => "/product-placeholder.svg";
+  const getProductSpecificModelUrl = (value?: string) => {
+    if (!value) return undefined;
+    const filename = value.split(/[?#]/, 1)[0].split("/").pop()?.toLowerCase();
+    if (["garment_perfect.glb", "garment2_textured.glb", "textured_garment.glb", "garment_photo_textured.glb"].includes(filename || "")) return undefined;
+    return value;
   };
 
-  const get3DModelForProduct = (name: string, catName: string) => {
-    const p = (name + " " + catName).toLowerCase();
-    if (/frock|dress/i.test(p)) return "/models/3d/textured_garment.glb";
-    if (/limitless|graphic|white/i.test(p)) return "/models/3d/garment2_textured.glb";
-    if (/pant|trouser/i.test(p)) return "/models/3d/garment_photo_textured.glb";
-    return "/models/3d/garment2_textured.glb";
-  };
-
-  useEffect(() => {
-    const syncCart = () => {
-      setBagItems(getCart());
-    };
-    syncCart();
-    window.addEventListener("cart-updated", syncCart);
-    window.addEventListener("storage", syncCart);
-    return () => {
-      window.removeEventListener("cart-updated", syncCart);
-      window.removeEventListener("storage", syncCart);
-    };
-  }, []);
 
   // Auto-open auth modal when redirected from try-on without login
   useEffect(() => {
     if (searchParams.get("requireAuth") === "1" && !session) {
-      setAuthMode('signin');
-      setIsAuthOpen(true);
+      void Promise.resolve().then(() => setIsAuthOpen(true));
     }
   }, [searchParams, session]);
 
   useEffect(() => {
+    let cancelled = false;
+    const requestKey = productId || "__featured__";
+
     async function loadProduct() {
       try {
         if (productId) {
-          const item: any = await productsApi.getById(productId);
-          if (item) {
-            const catName = item.category?.name || item.category || "Apparel";
-            const img = item.image || item.images?.[0]?.s3_url || (typeof item.images?.[0] === 'string' ? item.images[0] : "") || getFallbackImage(item.name || item.title || "", catName);
-            const allImgs = item.images?.length 
-              ? item.images.map((i: any) => typeof i === 'string' ? i : i.s3_url || img) 
-              : [img];
-            const modelUrl = item.model_path || item.model3dUrl || get3DModelForProduct(item.name || item.title || "", catName);
+          const item = await productsApi.getById(productId);
+          if (!item) throw new Error("Product not found");
+          if (cancelled) return;
 
-            setProduct({
-              id: String(item.id),
-              name: item.name || item.title || "Luxury Item",
-              categoryName: catName,
-              price: Number(item.price_selling || item.price || 0),
-              originalPrice: item.price_mrp || item.originalPrice ? Number(item.price_mrp || item.originalPrice) : undefined,
-              description: item.description || "Crafted with premium materials and designed for supreme comfort and modern elegance.",
-              fabric: item.fabric || "Premium Cotton Blend",
-              colour: item.colour || "Default",
-              image: img,
-              images: allImgs,
-              rating: item.rating || 4.8,
-              reviewsCount: item.reviewsCount || 9,
-              model3dUrl: modelUrl,
-              stock: item.stock ?? item.inventoryCount ?? 10,
-              size_chart: item.size_chart,
-              variants: item.variants || []
-            });
-            if (item.colour) setActiveColor(item.colour);
-            if (item.name?.toLowerCase().includes("3d") || item.name?.toLowerCase().includes("limitless")) {
-              setIs3DMode(true);
-            }
-            return;
-          }
-        }
-
-        const allItems = await productsApi.list();
-        if (allItems.length > 0) {
-          const item: any = allItems[0];
-          const catName = item.category?.name || item.category || "Jackets & Outerwear";
-          const img = item.image || item.images?.[0]?.s3_url || (typeof item.images?.[0] === 'string' ? item.images[0] : "") || getFallbackImage(item.name || item.title || "", catName);
-          const allImgs = item.images?.length 
-            ? item.images.map((i: any) => typeof i === 'string' ? i : i.s3_url || img) 
+          const catName = item.category_name || item.category || "Apparel";
+          const firstImage = item.images?.[0];
+          const img = item.image || (typeof firstImage === "string" ? firstImage : firstImage?.s3_url || "") || getFallbackImage();
+          const allImgs = item.images?.length
+            ? item.images.map((image) => typeof image === "string" ? image : image.s3_url || img)
             : [img];
-          const modelUrl = item.model_path || item.model3dUrl || get3DModelForProduct(item.name || item.title || "", catName);
+          const modelUrl = getProductSpecificModelUrl(item.model_path || item.model3dUrl);
 
           setProduct({
             id: String(item.id),
-            name: item.name || item.title || "Cyber Silk Trench Coat",
+            name: item.name || item.title || "Product",
             categoryName: catName,
             price: Number(item.price_selling || item.price || 0),
             originalPrice: item.price_mrp || item.originalPrice ? Number(item.price_mrp || item.originalPrice) : undefined,
-            description: item.description || "Crafted with premium materials and designed for supreme comfort and modern elegance.",
-            fabric: item.fabric || "Silk Blend",
-            colour: item.colour || "Onyx Black",
+            description: item.description || "",
+            fabric: item.fabric || "",
+            colour: item.colour || "Default",
             image: img,
             images: allImgs,
-            rating: Number(item.rating_average || item.rating || 4.9),
-            ratingCount: Number(item.rating_count || item.reviewsCount || 14),
-            reviewsCount: Number(item.rating_count || item.reviewsCount || 14),
+            rating: Number(item.rating || item.rating_average || 0),
+            reviewsCount: Number(item.rating_count || item.reviewsCount || 0),
             model3dUrl: modelUrl,
-            model_path: item.model_path,
-            stock: item.stock ?? item.inventoryCount ?? 10,
-            size_chart: item.size_chart,
+            stock: item.stock ?? item.inventoryCount ?? 0,
+            size_chart: isSizeChart(item.size_chart) ? item.size_chart : undefined,
             variants: item.variants || []
           });
           if (item.colour) setActiveColor(item.colour);
+          setActiveSize(item.variants?.[0]?.size || (isSizeChart(item.size_chart) ? item.size_chart.rows[0]?.size || "" : ""));
+          setActiveImageIndex(0);
+          setIs3DMode(false);
+          setResolvedProductKey(requestKey);
+          setFailedProductKey(null);
+          return;
         }
+
+        const allItems = await productsApi.list();
+        if (cancelled) return;
+        if (allItems.length === 0) throw new Error("No products are available");
+
+        const item: ProductItem = allItems[0];
+        const catName = item.category_name || item.category || "Apparel";
+        const firstImage = item.images?.[0];
+        const img = item.image || (typeof firstImage === "string" ? firstImage : firstImage?.s3_url || "") || getFallbackImage();
+        const allImgs = item.images?.length
+          ? item.images.map((image) => typeof image === "string" ? image : image.s3_url || img)
+          : [img];
+        const modelUrl = getProductSpecificModelUrl(item.model_path || item.model3dUrl);
+
+        setProduct({
+          id: String(item.id),
+          name: item.name || item.title || "Product",
+          categoryName: catName,
+          price: Number(item.price_selling || item.price || 0),
+          originalPrice: item.price_mrp || item.originalPrice ? Number(item.price_mrp || item.originalPrice) : undefined,
+          description: item.description || "",
+          fabric: item.fabric || "",
+          colour: item.colour || "Default",
+          image: img,
+          images: allImgs,
+          rating: Number(item.rating_average || item.rating || 0),
+          ratingCount: Number(item.rating_count || item.reviewsCount || 0),
+          reviewsCount: Number(item.rating_count || item.reviewsCount || 0),
+          model3dUrl: modelUrl,
+          model_path: item.model_path,
+          stock: item.stock ?? item.inventoryCount ?? 0,
+          size_chart: isSizeChart(item.size_chart) ? item.size_chart : undefined,
+          variants: item.variants || []
+        });
+        if (item.colour) setActiveColor(item.colour);
+        setActiveImageIndex(0);
+        setIs3DMode(false);
+        setResolvedProductKey(requestKey);
+        setFailedProductKey(null);
       } catch (err) {
-        console.error("Failed to load product details:", err);
+        if (!cancelled) {
+          console.error("Failed to load product details:", err);
+          setFailedProductKey(requestKey);
+        }
       }
     }
-    loadProduct();
+
+    void loadProduct();
+    return () => {
+      cancelled = true;
+    };
   }, [productId]);
 
   const [reviewsList, setReviewsList] = useState<ProductReview[]>([]);
@@ -215,15 +202,15 @@ function ProductContent() {
   const [newComment, setNewComment] = useState("");
   const [isSubmittingReview, setIsSubmittingReview] = useState(false);
 
-  const loadReviews = async () => {
+  const loadReviews = useCallback(async () => {
     if (!productId) return;
     const revs = await productsApi.getReviews(productId);
     setReviewsList(revs);
-  };
+  }, [productId]);
 
   useEffect(() => {
-    loadReviews();
-  }, [productId]);
+    void Promise.resolve().then(loadReviews);
+  }, [loadReviews]);
 
   const handleReviewSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -242,7 +229,7 @@ function ProductContent() {
         type: "gold",
       });
       setNewComment("");
-      
+
       // Refresh product details & reviews list to update dynamic rating average
       const [item, revs] = await Promise.all([
         productsApi.getById(product.id),
@@ -257,10 +244,10 @@ function ProductContent() {
         }));
       }
       setReviewsList(revs);
-    } catch (err: any) {
+    } catch (err: unknown) {
       showToast({
         title: "Submission Failed",
-        description: err?.message || "Could not submit review. Please try again.",
+        description: err instanceof Error ? err.message : "Could not submit review. Please try again.",
         type: "error",
       });
     } finally {
@@ -268,28 +255,19 @@ function ProductContent() {
     }
   };
 
-  useEffect(() => {
-    if (session?.user?.name) {
-      setIsLoggedIn(true);
-      setUserName(session.user.name);
-    }
-    if (session?.user?.email && !notifyEmail) {
-      setNotifyEmail(session.user.email);
-    }
-  }, [session]);
-
-  const [notifyEmail, setNotifyEmail] = useState("");
+  const [notifyEmail, setNotifyEmail] = useState(session?.user?.email || "");
   const [isSubscribingNotify, setIsSubscribingNotify] = useState(false);
   const [isNotifySuccess, setIsNotifySuccess] = useState(false);
 
   // Derive stock for current active size
   const activeVariant = product.variants?.find(
-    (v: any) => v.size?.toUpperCase() === activeSize.toUpperCase()
+    (v: ProductVariant) => v.size?.toUpperCase() === activeSize.toUpperCase()
   );
-  const currentStock = activeVariant !== undefined
-    ? Number(activeVariant.stock_qty ?? 0)
-    : (product.stock ?? 10);
+  const currentStock = activeVariant ? Number(activeVariant.stock_qty ?? 0) : 0;
   const isOutOfStock = currentStock <= 0;
+  const availableSizes = product.variants?.length
+    ? product.variants.map((variant) => variant.size?.trim()).filter((size): size is string => Boolean(size))
+    : product.size_chart?.rows.map((row) => row.size).filter(Boolean) || [];
 
   const handleSubscribeNotify = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -312,11 +290,11 @@ function ProductContent() {
         type: "gold",
         duration: 5000,
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Failed to subscribe for restock:", err);
       showToast({
         title: "Subscription Failed",
-        description: err?.message || "Could not register for notifications. Please try again.",
+        description: err instanceof Error ? err.message : "Could not register for notifications. Please try again.",
         type: "error",
         duration: 4000,
       });
@@ -325,17 +303,7 @@ function ProductContent() {
     }
   };
 
-  useEffect(() => {
-    const saved = localStorage.getItem("vastrax_favorites");
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        setFavorites(parsed.map((f: any) => f.id));
-      } catch (e) {}
-    }
-  }, []);
-
-  const toggleFavorite = (p: any, e: React.MouseEvent) => {
+  const toggleFavorite = (p: typeof product, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
 
@@ -345,23 +313,8 @@ function ProductContent() {
       setIsAuthOpen(true);
       return;
     }
-    
-    const savedStr = localStorage.getItem("vastrax_favorites");
-    let currentFavs = savedStr ? JSON.parse(savedStr) : [];
-    
-    if (currentFavs.some((f: any) => f.id === p.id)) {
-      currentFavs = currentFavs.filter((f: any) => f.id !== p.id);
-      setFavorites(prev => prev.filter(id => id !== p.id));
-    } else {
-      currentFavs.push({
-        id: p.id,
-        name: p.name,
-        price: `₹${p.price || 0}`,
-        image: p.image
-      });
-      setFavorites(prev => [...prev, p.id]);
-    }
-    localStorage.setItem("vastrax_favorites", JSON.stringify(currentFavs));
+
+    toggleFavoriteStore(p.id, { id: p.id, name: p.name, price: `₹${p.price || 0}`, image: p.image });
   };
 
   useEffect(() => {
@@ -388,11 +341,11 @@ function ProductContent() {
       return;
     }
 
-    const priceNum = typeof product.price === 'string' 
+    const priceNum = typeof product.price === 'string'
       ? parseFloat(String(product.price).replace(/[^0-9.-]+/g, "")) || 0
       : Number(product.price) || 0;
 
-    const updated = addCartItem({
+    addCartItem({
       id: product.id,
       name: product.name,
       price: priceNum,
@@ -401,8 +354,6 @@ function ProductContent() {
       color: activeColor,
       image: product.image
     });
-
-    setBagItems(updated);
 
     showToast({
       title: "Added to Shopping Bag",
@@ -417,25 +368,35 @@ function ProductContent() {
     }
   };
 
-  const handleOpenTryOn = () => {
-    if (!session) {
-      setPendingAction('tryon');
-      setAuthMode('signin');
-      setIsAuthOpen(true);
-      return;
-    }
-    router.push(`/storefront/product/${product.id}/tryon`);
-  };
+
+  if (resolvedProductKey !== requestedProductKey) {
+    const failed = failedProductKey === requestedProductKey;
+    return (
+      <main className="min-h-screen bg-background text-foreground flex items-center justify-center px-6">
+        <div className="flex max-w-sm flex-col items-center gap-4 text-center">
+          {failed ? (
+            <>
+              <p className="text-sm text-muted-foreground">This product could not be loaded. Please return to the collection and try again.</p>
+              <Link href="/storefront/collections" className="rounded-full bg-[#e07a3f] px-5 py-2.5 text-sm font-semibold text-white">Back to collection</Link>
+            </>
+          ) : (
+            <>
+              <div className="h-8 w-8 animate-spin rounded-full border-2 border-foreground/20 border-t-[#e07a3f]" />
+              <p className="text-sm text-muted-foreground">Loading product…</p>
+            </>
+          )}
+        </div>
+      </main>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background text-foreground font-sans flex flex-col transition-colors duration-300">
       {/* Header */}
       <header className="h-16 md:h-20 flex items-center justify-between relative px-3 sm:px-6 md:px-12 sticky top-2 md:top-4 bg-surface z-50 rounded-[1.5rem] sm:rounded-[2rem] shadow-md border border-border/50 mx-2 md:mx-4 mt-2 md:mt-4 transition-colors duration-300">
         <div className="flex items-center gap-2 sm:gap-6 z-10">
-          <button className="md:hidden text-foreground/70 hover:text-foreground transition-colors p-1">
-            <Menu className="w-5 h-5 sm:w-6 sm:h-6" />
-          </button>
-          <nav className="hidden md:flex items-center gap-8">
+          <StorefrontMobileControls />
+          <nav className="hidden 2xl:flex items-center gap-8">
             <Link href="/storefront/collections?sort=newest" className="text-lg font-medium hover:text-[#e07a3f] transition-colors">New Arrivals</Link>
             <Link href="/storefront/collections?gender=Women" className="text-lg font-medium hover:text-[#e07a3f] transition-colors">Women</Link>
             <Link href="/storefront/collections?gender=Men" className="text-lg font-medium hover:text-[#e07a3f] transition-colors">Men</Link>
@@ -443,7 +404,7 @@ function ProductContent() {
             <Link href="/storefront/collections" className="text-lg font-medium hover:text-[#e07a3f] transition-colors">Collections</Link>
           </nav>
         </div>
-        
+
         <div className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center pointer-events-none z-0">
           <Link href="/storefront/home" className="text-base sm:text-2xl md:text-4xl font-bold tracking-[0.12em] sm:tracking-[0.25em] uppercase pointer-events-auto hover:text-[#e07a3f] transition-colors">
             VASTRAX
@@ -451,18 +412,21 @@ function ProductContent() {
         </div>
 
         <div className="flex items-center gap-1.5 sm:gap-4 md:gap-6 z-10">
+          {String(session?.user?.role || "").toLowerCase() === "admin" && (
+            <Link href="/" className="rounded-full border border-border px-3 py-2 text-xs font-semibold text-foreground hover:border-accent hover:text-accent">Admin</Link>
+          )}
           <ThemeToggle />
           <Link href="/storefront/favorites" className="relative p-1 text-foreground/70 hover:text-[#e07a3f] transition-colors">
             <Heart className="w-5 h-5" />
           </Link>
-          <button 
+          <button
             onClick={() => setIsStylistOpen(true)}
             className="hidden md:flex items-center gap-2 px-4 py-2 rounded-full bg-[#e07a3f]/10 text-[#e07a3f] border border-[#e07a3f]/30 hover:bg-[#e07a3f] hover:text-white transition-all text-xs font-bold uppercase tracking-wider"
           >
             AI Stylist
           </button>
 
-          <button 
+          <button
             onClick={() => setIsCartOpen(true)}
             aria-label="Open Shopping Bag"
             className="w-10 h-10 rounded-full bg-surface dark:bg-[#2a2a2a] flex items-center justify-center text-foreground dark:text-white hover:text-[#e07a3f] transition-colors relative"
@@ -480,7 +444,7 @@ function ProductContent() {
       {/* Main Body */}
       <div className="flex-1 bg-background px-4 md:px-8 pb-10 pt-4 transition-colors duration-300">
         <div className="max-w-[1200px] mx-auto">
-          
+
           {/* Breadcrumb */}
           <div className="flex items-center gap-2 text-xs text-foreground/50 mb-6 font-medium px-2">
             <Link href="/storefront/home" className="hover:text-foreground transition-colors flex items-center gap-2">
@@ -489,7 +453,7 @@ function ProductContent() {
             <span className="text-foreground/30">&gt;</span>
             <Link href="/storefront/collections" className="hover:text-foreground transition-colors">Collections</Link>
             <span className="text-foreground/30">&gt;</span>
-            <span className="hover:text-foreground transition-colors">{product.categoryName}</span>
+            <Link href={"/storefront/collections?category=" + encodeURIComponent(product.categoryName)} className="hover:text-foreground transition-colors">{product.categoryName}</Link>
             <span className="text-foreground/30">&gt;</span>
             <span className="text-foreground font-bold truncate max-w-xs">{product.name}</span>
           </div>
@@ -497,71 +461,35 @@ function ProductContent() {
           {/* Top Product Section */}
           <main className="bg-surface rounded-[2rem] md:rounded-[2.5rem] shadow-sm border border-border/50 p-6 md:p-10 mb-12 transition-colors duration-300">
             <div className="flex flex-col lg:flex-row gap-10 xl:gap-16">
-              
+
               {/* Left: Image Gallery & 3D Interactive Viewer */}
               <div className="w-full lg:w-[55%]">
                 <div className="bg-[#f5f5f5] dark:bg-[#1a1a1a] rounded-[2.5rem] aspect-square relative flex items-center justify-center p-4 sm:p-8 transition-colors duration-300 overflow-hidden">
                   {/* Top Left: Wishlist */}
-                  <button 
+                  <button
                     onClick={(e) => toggleFavorite(product, e)}
                     className="absolute top-6 left-6 w-12 h-12 rounded-full bg-white dark:bg-[#2a2a2a] flex items-center justify-center text-black/60 dark:text-white hover:text-[#e07a3f] transition-colors z-30 shadow-md border border-black/5 dark:border-white/10"
                   >
-                    <Heart className={`w-5 h-5 ${favorites.includes(product.id) ? 'fill-[#e07a3f] text-[#e07a3f]' : ''}`} />
+                    <Heart className={`w-5 h-5 ${favorites.includes(String(product.id)) ? 'fill-[#e07a3f] text-[#e07a3f]' : ''}`} />
                   </button>
-
-                  {/* Top Right: 2D Photo / 3D Interactive Mode Toggle */}
-                  <div className="absolute top-6 right-6 z-30 flex items-center bg-black/60 dark:bg-white/10 backdrop-blur-xl border border-white/10 rounded-full p-1 shadow-lg">
-                    <button
-                      type="button"
-                      onClick={() => setIs3DMode(false)}
-                      className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${!is3DMode ? 'bg-white text-black shadow' : 'text-white/70 hover:text-white'}`}
-                    >
-                      Photo
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setIs3DMode(true)}
-                      className={`px-3 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${is3DMode ? 'bg-[#38bdf8] text-black shadow' : 'text-white/70 hover:text-white'}`}
-                    >
-                      <Box className="w-3.5 h-3.5" />
-                      <span>3D Mesh</span>
-                    </button>
-                  </div>
-
-                  {/* Bottom Action Badges */}
-                  <div className="absolute bottom-6 left-6 right-6 z-30 flex items-center justify-between pointer-events-none">
-                    <button 
-                      onClick={() => setIs3DModalOpen(true)}
-                      className="pointer-events-auto px-4 py-2.5 rounded-full bg-black/70 hover:bg-black text-white text-xs font-semibold backdrop-blur-md border border-white/10 flex items-center gap-2 shadow-xl hover:scale-105 transition-all cursor-pointer"
-                    >
-                      <Box className="w-3.5 h-3.5 text-[#38bdf8]" />
-                      <span>Expand 3D</span>
-                    </button>
-
-                    <button 
-                      onClick={handleOpenTryOn}
-                      className="pointer-events-auto px-4 py-2.5 rounded-full bg-[#0A192F]/90 hover:bg-[#0A192F] text-white text-xs font-semibold backdrop-blur-md border border-white/10 flex items-center gap-2 shadow-xl hover:scale-105 transition-all cursor-pointer"
-                    >
-                      <Sparkles className="w-3.5 h-3.5 text-[#e07a3f]" />
-                      <span>Virtual Try-On</span>
-                    </button>
-                  </div>
-
-                  {/* Main Display: 3D Garment Viewer vs 2D Photo */}
+                  {/* Product photo stays unobstructed; use the thumbnail below for 3D. */}
                   {is3DMode ? (
                     <div className="w-full h-full">
                       <GarmentViewer3D
-                        src={product.model3dUrl || "/models/3d/garment2_textured.glb"}
+                        src={product.model3dUrl || ""}
                         alt={product.name}
                         poster={product.images?.[activeImageIndex] || product.image}
                         badgeTitle="Garment Preview"
+                        showControls={false}
+                        showInteractionHint={false}
+                        showBadge={false}
                         className="w-full h-full"
                       />
                     </div>
                   ) : (
-                    <img 
-                      src={product.images?.[activeImageIndex] || product.image} 
-                      alt={product.name} 
+                    <Image width={1200} height={900} unoptimized
+                      src={product.images?.[activeImageIndex] || product.image}
+                      alt={product.name}
                       className="w-full h-full object-cover rounded-2xl drop-shadow-2xl animate-fade-in"
                     />
                   )}
@@ -580,10 +508,10 @@ function ProductContent() {
                         !is3DMode && activeImageIndex === idx ? 'border-[#e07a3f] shadow-md' : 'border-transparent opacity-70 hover:opacity-100'
                       }`}
                     >
-                      <img src={img} alt={`${product.name} ${idx + 1}`} className="w-full h-full object-cover" />
+                      <Image width={1200} height={900} unoptimized src={img} alt={`${product.name} ${idx + 1}`} className="w-full h-full object-cover" />
                     </button>
                   ))}
-                  
+
                   {/* 3D Model Thumbnail */}
                   {(product.model3dUrl || product.model_path) && (
                     <button
@@ -606,10 +534,12 @@ function ProductContent() {
                 </div>
 
                 <h1 className="text-3xl lg:text-4xl font-bold mb-4 leading-[1.15] text-foreground">{product.name}</h1>
-                
-                <p className="text-foreground/70 text-sm leading-relaxed mb-6 max-w-md">
-                  {product.description}
-                </p>
+
+                {product.description && (
+                  <p className="text-foreground/70 text-sm leading-relaxed mb-6 max-w-md">
+                    {product.description}
+                  </p>
+                )}
 
                 <div className="flex items-center gap-2 mb-6">
                   <div className="flex text-[#e07a3f]">
@@ -641,14 +571,14 @@ function ProductContent() {
                 <div className="mb-8">
                   <div className="flex items-center justify-between mb-3">
                     <div className="text-sm font-bold text-foreground">Select Size</div>
-                    <button 
+                    <button
                       type="button"
                       onClick={() => {
                         setActiveTab('Size Chart');
                         setTimeout(() => {
                           document.getElementById('size-chart-section')?.scrollIntoView({ behavior: 'smooth' });
                         }, 50);
-                      }} 
+                      }}
                       className="text-xs font-semibold text-[#e07a3f] hover:underline flex items-center gap-1.5 cursor-pointer bg-[#e07a3f]/10 px-3 py-1 rounded-full border border-[#e07a3f]/20 transition-all hover:bg-[#e07a3f]/20"
                     >
                       <Ruler className="w-3.5 h-3.5" />
@@ -656,11 +586,11 @@ function ProductContent() {
                     </button>
                   </div>
                   <div className="flex items-center gap-2">
-                    {["S", "M", "L", "XL", "XXL"].map((sz) => {
+                    {availableSizes.map((sz) => {
                       const szVar = product.variants?.find(
-                        (v: any) => v.size?.toUpperCase() === sz.toUpperCase()
+                        (v: ProductVariant) => v.size?.toUpperCase() === sz.toUpperCase()
                       );
-                      const szOos = szVar !== undefined && Number(szVar.stock_qty ?? 0) <= 0;
+                      const szOos = !szVar || Number(szVar.stock_qty ?? 0) <= 0;
                       return (
                         <button
                           key={sz}
@@ -698,14 +628,14 @@ function ProductContent() {
                 ) : (
                   <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-8 mb-8">
                     <div className="flex items-center bg-[#f5f5f5] dark:bg-[#1c1c1c] border border-border/50 rounded-full h-12 w-fit transition-colors duration-300">
-                      <button 
+                      <button
                         onClick={() => setQuantity(Math.max(1, quantity - 1))}
                         className="w-12 h-full flex items-center justify-center text-foreground/50 hover:text-foreground transition-colors cursor-pointer"
                       >
                         <Minus className="w-4 h-4" />
                       </button>
                       <span className="w-8 text-center text-sm font-medium text-foreground">{quantity}</span>
-                      <button 
+                      <button
                         onClick={() => setQuantity(quantity + 1)}
                         className="w-12 h-full flex items-center justify-center text-foreground/50 hover:text-foreground transition-colors cursor-pointer"
                       >
@@ -717,18 +647,6 @@ function ProductContent() {
                 )}
 
                 <div className="space-y-3 mb-8">
-                  <button 
-                    onClick={handleOpenTryOn}
-                    className="w-full bg-[#0A192F] hover:bg-[#112240] text-white border border-[#D4AF37]/50 h-[52px] rounded-full font-medium text-sm transition-all flex items-center justify-center gap-2 shadow-lg shadow-black/10 group cursor-pointer"
-                  >
-                    <Sparkles className="w-4 h-4 text-[#D4AF37] group-hover:rotate-12 transition-transform" />
-                    <span>Virtual Try-On (AI Fitting Room)</span>
-                    {!isLoggedIn && (
-                      <span className="text-[10px] bg-[#D4AF37]/20 border border-[#D4AF37]/40 text-[#D4AF37] px-2 py-0.5 rounded-full uppercase tracking-wider font-semibold ml-1">
-                        Sign In
-                      </span>
-                    )}
-                  </button>
 
                   {isOutOfStock ? (
                     /* Notify Later / Waitlist Panel */
@@ -772,7 +690,7 @@ function ProductContent() {
                     </div>
                   ) : (
                     <div className="flex flex-col sm:flex-row gap-4">
-                      <button 
+                      <button
                         onClick={() => {
                           if (!session) { setAuthMode('signin'); setIsAuthOpen(true); return; }
                           addToCart(false);
@@ -782,7 +700,7 @@ function ProductContent() {
                       >
                         Buy Now
                       </button>
-                      <button 
+                      <button
                         onClick={() => addToCart(true)}
                         className="flex-1 bg-transparent border border-foreground/20 hover:border-foreground/50 hover:bg-foreground/5 text-foreground h-[52px] rounded-full font-medium text-sm transition-all flex items-center justify-center gap-2 cursor-pointer"
                       >
@@ -868,18 +786,10 @@ function ProductContent() {
                   {/* Size Chart Table */}
                   <div className="overflow-x-auto border border-border rounded-2xl bg-surface/50 p-4 shadow-sm">
                     {(() => {
-                      const activeSizeChart = product.size_chart || {
-                        unit: "in",
-                        headers: ["Size", "Chest (in)", "Waist (in)", "Hips (in)", "Length (in)"],
-                        rows: [
-                          { size: "XS", chest: "32 - 34", waist: "25 - 26", hips: "35 - 36", length: "38" },
-                          { size: "S", chest: "34 - 36", waist: "27 - 28", hips: "37 - 38", length: "39" },
-                          { size: "M", chest: "36 - 38", waist: "29 - 30", hips: "39 - 40", length: "40" },
-                          { size: "L", chest: "39 - 41", waist: "31 - 33", hips: "41 - 43", length: "41" },
-                          { size: "XL", chest: "42 - 44", waist: "34 - 36", hips: "44 - 46", length: "42" },
-                          { size: "XXL", chest: "45 - 47", waist: "37 - 39", hips: "47 - 49", length: "43" }
-                        ]
-                      };
+                      const activeSizeChart = product.size_chart;
+                      if (!activeSizeChart?.headers?.length || !activeSizeChart.rows?.length) {
+                        return <p className="text-sm text-muted-foreground">No size chart has been added for this product.</p>;
+                      }
                       return (
                         <table className="w-full text-sm text-left border-collapse">
                           <thead>
@@ -890,7 +800,7 @@ function ProductContent() {
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-border/40">
-                            {activeSizeChart.rows?.map((row: any, rIdx: number) => (
+                            {activeSizeChart.rows?.map((row: SizeChartRow, rIdx: number) => (
                               <tr key={rIdx} className={`hover:bg-[#e07a3f]/5 transition-colors ${activeSize === row.size ? 'bg-[#e07a3f]/15 font-bold' : ''}`}>
                                 <td className="py-3 px-4 text-[#e07a3f] font-bold">{row.size}</td>
                                 {Object.keys(row).filter(k => k !== 'size').map((k, cIdx) => {
@@ -1055,17 +965,13 @@ function ProductContent() {
         </div>
       </div>
 
-      <AuthModal 
-        isOpen={isAuthOpen} 
-        onClose={() => { setIsAuthOpen(false); setPendingAction(null); }} 
+      <AuthModal
+        isOpen={isAuthOpen}
+        onClose={() => { setIsAuthOpen(false); setPendingAction(null); }}
         initialMode={authMode}
-        onSuccess={(name) => {
-          setIsLoggedIn(true);
-          setUserName(name);
+        onSuccess={() => {
           setIsAuthOpen(false);
-          if (pendingAction === 'tryon') {
-            router.push(`/storefront/product/${product.id}/tryon`);
-          } else if (pendingAction === 'buynow') {
+          if (pendingAction === 'buynow') {
             addToCart(false);
             router.push("/storefront/checkout");
           } else if (pendingAction === 'cart') {
@@ -1077,18 +983,18 @@ function ProductContent() {
       />
       <CartDrawer isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} />
       <StylistDrawer isOpen={isStylistOpen} onClose={() => setIsStylistOpen(false)} />
-      <Product3DModal 
-        isOpen={is3DModalOpen} 
-        onClose={() => setIs3DModalOpen(false)} 
+      <Product3DModal
+        isOpen={is3DModalOpen}
+        onClose={() => setIs3DModalOpen(false)}
         product={{
           id: product.id,
           name: product.name,
           category: product.categoryName,
           price: product.price,
           image: product.image,
-          model3dUrl: product.model3dUrl || "/models/3d/garment2_textured.glb"
+          model3dUrl: product.model3dUrl
         }}
-        onAddToBag={() => addToCart(true)}
+        onAddToBag={() => addToCart()}
       />
     </div>
   );

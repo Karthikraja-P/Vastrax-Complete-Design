@@ -7,7 +7,7 @@ For complete end-to-end architecture documentation, system flow diagrams, and AP
 ## Codebase Architecture & Map
 
 - `/src/app/page.tsx` - The main Admin Dashboard overview (Bento grid, charts, metrics).
-- `/src/app/ai-assistant/page.tsx` - Admin AI Assistant conversational interface (OpenAI GPT-4o model selector, 3D iridescent loop, store analytics & inventory queries).
+- `/src/app/ai-assistant/page.tsx` - Admin AI Assistant route; not part of v1 — the sidebar link is removed and the page shows a "not available" notice.
 - `/src/app/admin/management/page.tsx` - Administrator Management & Security Roles console (Admins/Roles tabs, permission assignment, modals).
 - `/src/app/products/` - Admin Products Management.
   - `page.tsx` - All products table with filters, search, thumbnails, delete modal, and pagination.
@@ -36,7 +36,7 @@ For complete end-to-end architecture documentation, system flow diagrams, and AP
   - `MainLayout.tsx` - Layout wrapper managing the sidebar state and grid layout.
   - `CartDrawer.tsx` - Glassmorphic slide-over shopping bag drawer with promo validation and live checkout link.
 - `/src/components/stylist/` - AI Haute Couture Stylist.
-  - `StylistDrawer.tsx` - Conversational concierge powered by OpenAI GPT-4o mini with persistent database chat history, interactive chips, active promotions, and instant virtual try-on routing.
+  - `StylistDrawer.tsx` - Conversational concierge powered by MiniMax M3 with persistent database chat history, interactive chips, active promotions, and instant virtual try-on routing.
 - `/src/components/3d/` - Interactive 3D Garment Visualization.
   - `GarmentViewer3D.tsx` - PBR WebGL 3D model viewer with 360° rotation, zoom, lighting presets, and theme controls.
   - `Product3DModal.tsx` - Quick-preview 3D modal integrated across catalog cards and product pages.
@@ -56,8 +56,10 @@ For complete end-to-end architecture documentation, system flow diagrams, and AP
   - `app/core/gpu_queue.py` - In-process asynchronous FIFO GPU queue manager (`gpu_queue`) with queue depth tracking, active job counting, and single-concurrency isolation (`asyncio.Semaphore(1)`) protecting RTX 5070 Ti 16GB VRAM from OOM.
   - `app/api/routes/` - REST endpoints: `auth`, `users`, `products` (including `POST /{id}/notify` waitlist), `categories`, `orders`, `payments`, `shipping`, `tryon` (FIFO GPU queued), `three_d` (FIFO GPU queued), `chat` (`POST /`, `POST /stream`, `GET /history`, `DELETE /history`), `analytics`, `settings`, `otp`, `health`.
   - `app/models/` - SQLAlchemy models (`User`, `Product`, `Order`, `Payment`, `ChatMessage`, `SupportTicket`, `TryonSession`, `StockNotification`, etc.).
-  - `app/services/` - Business logic services (Razorpay, Fashn VTON, Shiprocket, OpenAI GPT-4o mini Stylist with `chat_tools` function calling & authorization boundary, Resend email notifications, OrderService with thread-safe inventory locking `_inventory_lock` preventing overselling, StockNotificationService with throttled background batch email queue, and PaymentService).
+  - `app/services/` - Business logic services (Razorpay, Fashn VTON, Shiprocket, MiniMax M3 Stylist with `chat_tools` function calling & authorization boundary, Resend email notifications, OrderService with thread-safe inventory locking `_inventory_lock` preventing overselling, StockNotificationService with throttled background batch email queue, and PaymentService).
   - `app/middleware/auth.py` - JWT auth (`get_current_user`, `require_admin`) — no anonymous/admin fallback; missing or invalid credentials are always rejected.
+
+The stylist selects MiniMax M3 when the backend has `MINIMAX_API_KEY`; set `MINIMAX_MODEL` and `MINIMAX_BASE_URL` only to override the defaults (`MiniMax-M3` and `https://api.minimax.io/v1/chat/completions`). Keep the key in the backend environment. MiniMax M3 is the only stylist provider: if `MINIMAX_API_KEY` is missing or MiniMax fails, `POST /chat` and `/chat/stream` return HTTP 503/502 and the Stylist drawer shows a friendly out-of-service message (no OpenAI, Anthropic, or scripted fallback). Put `MINIMAX_API_KEY=...` in the untracked root `.env` (docker-compose passes it to the backend); never commit it. M3 tool calls run through the backend authorization checks.
 - `/virtual-try-on/` - Virtual Try-On sub-system (FASHN VTON 1.5 CUDA GPU engine on port 8001).
   - `/home/pkr/fashn-tryon/server.py` - FastAPI CUDA inference server with TryOnPipeline.
   - `/scripts/start-tryon-service.sh` - Background supervisor script for FASHN AI GPU server.
@@ -103,7 +105,7 @@ docker compose up --build -d
 - [x] Storefront header dead links fixed, wired to dynamic catalog category filters, and fully optimized for responsive mobile layout (eliminating icon/logo overlap).
 - [x] Admin header search and profile settings navigation wired.
 - [x] Dashboard sidebar direct navigation, overview KPI card links, settings tabs, and storefront interactive buttons wired.
-- [x] Production AI Support & Stylist agent with OpenAI tool calling, security authorization guards, order tracking, cancellation, and human escalation.
+- [x] Production AI Support & Stylist agent with MiniMax M3 tool calling, security authorization guards, order tracking, cancellation, and human escalation.
 - [x] Customer Reviews & Dynamic Rating Engine: Created ProductReview model & database schema (`product_reviews`), REST endpoints (`POST /products/{id}/reviews`, `GET /products/{id}/reviews`), automatic dynamic rating average recalculation (`rating_average` & `rating_count`), and storefront PDP Reviews tab with interactive 5-star submission form & verified customer review cards.
 - [x] Multi-Department Garment Classification System: Added `gender` attribute (`Women`, `Men`, `Kids`, `Unisex`) across backend database models, Pydantic schemas, REST endpoints, Admin Product Create/Edit/Add forms, Admin Product Table filters, and Storefront header navigation & collection filtering (`/storefront/collections?gender=Women|Men|Kids`).
 - [x] Garment Size Chart System: Added JSON `size_chart` field across backend database models, Pydantic schemas, Admin Product Creation & Editing forms (Preset Category Templates for Tops, Dresses, Pants, Shoes), interactive Size Guide link prompt ("Not sure about fit? Look into Size Chart") next to size selection on PDP, and dedicated Size Chart measurement grid with Inches / CM unit toggle right after product display.
@@ -132,6 +134,5 @@ docker compose up --build -d
 - [x] **Promo codes**: `VASTRAX10` (10%), `VIP20` (20%), `FREESHIP` (free ship), invalid codes all respond correctly in cart drawer.
 - [x] **Header buttons**: All links wired and functional.
 - [x] **Theme toggle**: Defaults to system preference (light ☀️ / dark 🌙), switches correctly on click.
-- [x] **AI Stylist chatbot**: Functional without login (anonymous session via localStorage `session_id`); full OpenAI/Anthropic response when API keys configured.
+- [x] **AI Stylist chatbot**: Functional without login (anonymous session via localStorage `session_id`); full MiniMax M3 response when `MINIMAX_API_KEY` is configured.
 - [x] **Virtual Try-On Garment Resolution & Inference**: Validated all catalog garment images with high-resolution Unsplash assets, added download status/Content-Type/magic-byte checks in `file_utils.py`, fixed fallback copying behavior in `fashn_service.py`, and aligned dress categories to FASHN `one-pieces` in `tryon/page.tsx`.
-

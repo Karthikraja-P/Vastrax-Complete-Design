@@ -1,16 +1,15 @@
 "use client";
+import Image from "next/image";
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { 
-  Package, Heart, User, ChevronRight,
-  Clock, CheckCircle2, Truck, ExternalLink, Plus, Trash2, Edit2, ShoppingBag, LogOut
-} from "lucide-react";
+import { Package, Heart, User, ChevronRight, Clock, CheckCircle2, Truck, ExternalLink, Plus, Trash2, Edit2, ShoppingBag, LogOut } from "lucide-react";
 import { Header } from "@/components/layout/Header";
 import { CartDrawer } from "@/components/layout/CartDrawer";
 import { StylistDrawer } from "@/components/stylist/StylistDrawer";
 import { performSignOut } from "@/lib/auth-utils";
 import { fetchApi } from "@/lib/api";
+import { useFavoriteProducts, useFavorites } from "@/hooks/useFavorites";
 
 export const dynamic = "force-dynamic";
 
@@ -22,8 +21,6 @@ type MarketingPreferences = {
   history: Array<{ channel: string; granted: boolean; recorded_at: string }>;
 };
 
-type FavoriteItem = { id: string | number; image: string; name: string; price: string };
-type SavedAddress = { id: string | number; title: string; isDefault: boolean; name: string; street: string; city: string; state: string; zip: string };
 
 interface OrderItem {
   id: string;
@@ -39,6 +36,20 @@ interface OrderItem {
   }[];
   trackingNumber?: string;
   shippingAddress: string;
+}
+
+interface AccountAddress {
+  id: string | number;
+  name?: string;
+  title?: string;
+  address?: string;
+  street?: string;
+  city?: string;
+  state?: string;
+  pincode?: string;
+  zip?: string;
+  phone?: string;
+  isDefault?: boolean;
 }
 
 const mockCustomerOrders: OrderItem[] = [];
@@ -97,29 +108,14 @@ function CustomerAccountContent() {
   }, []);
 
   // Address state
-  const [addresses] = useState<SavedAddress[]>([]);
+  const [addresses] = useState<AccountAddress[]>([]);
   const [isAddingAddress, setIsAddingAddress] = useState(false);
 
-  const [favorites, setFavorites] = useState<FavoriteItem[]>([]);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      const saved = localStorage.getItem("vastrax_favorites");
-      if (!saved) return;
-      try {
-        const parsed: unknown = JSON.parse(saved);
-        if (Array.isArray(parsed)) setFavorites(parsed as FavoriteItem[]);
-      } catch {
-        // Ignore invalid local favorites and keep the empty list.
-      }
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, []);
+  const favorites = useFavoriteProducts();
+  const { toggleFavorite: toggleStoredFavorite } = useFavorites();
 
   const toggleFavorite = (id: string | number) => {
-    const newFavorites = favorites.filter(f => f.id !== id);
-    setFavorites(newFavorites);
-    localStorage.setItem("vastrax_favorites", JSON.stringify(newFavorites));
+    toggleStoredFavorite(id);
   };
 
   const handleSaveProfile = async (e: React.FormEvent) => {
@@ -271,17 +267,17 @@ function CustomerAccountContent() {
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 mt-8">
           {/* Navigation Sidebar */}
           <div className="lg:col-span-1 space-y-2">
-            {[
+            {([
               { id: "orders", label: "Orders & Shipments", icon: Package },
               { id: "favorites", label: "Favorites", icon: Heart },
               { id: "profile", label: "Account Profile", icon: User },
-            ].map((tab) => {
+            ] as const).map((tab) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
               return (
                 <button
                   key={tab.id}
-                  onClick={() => setActiveTab(tab.id as "orders" | "favorites" | "profile")}
+                  onClick={() => setActiveTab(tab.id)}
                   className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-lg font-medium transition-all ${
                     isActive 
                       ? "bg-accent/15 text-accent border border-accent/30 shadow-[0_0_15px_rgba(224,122,63,0.15)]" 
@@ -376,7 +372,7 @@ function CustomerAccountContent() {
                         {order.items.map((item, i) => (
                           <div key={i} className="flex items-center justify-between gap-4">
                             <div className="flex items-center gap-4">
-                              <img src={item.image} alt={item.name} className="w-12 h-16 object-cover rounded-lg border border-border" />
+                              <Image width={1200} height={900} unoptimized src={item.image} alt={item.name} className="w-12 h-16 object-cover rounded-lg border border-border" />
                               <div>
                                 <h4 className="text-sm font-semibold text-foreground">{item.name}</h4>
                                 <p className="text-xs text-muted-foreground">{item.variant}</p>
@@ -413,7 +409,7 @@ function CustomerAccountContent() {
                   {favorites.map((item) => (
                     <div key={item.id} className="group bg-surface/60 border border-border/80 rounded-2xl overflow-hidden flex flex-col justify-between">
                       <div className="aspect-[3/4] overflow-hidden bg-surface-hover relative">
-                        <img src={item.image} alt={item.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                        <Image width={1200} height={900} unoptimized src={item.image || "/placeholder.svg"} alt={item.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                         <button 
                           onClick={() => toggleFavorite(item.id)}
                           className="absolute top-3 right-3 p-2 rounded-full bg-white/20 backdrop-blur-md hover:bg-white/40 transition-colors z-10"

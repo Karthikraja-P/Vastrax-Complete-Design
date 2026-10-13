@@ -1,17 +1,16 @@
 "use client";
+import Image from "next/image";
 
 import React, { useState, useRef, useEffect } from "react";
-import { 
-  Home, ChevronRight, Plus, Sparkles, Image as ImageIcon, Send, Link, 
-  Bold, Italic, Underline, List, AlignLeft, Type, Check, ChevronDown, Loader2
-} from "lucide-react";
-import { productsApi, categoriesApi } from "@/lib/api";
+import { Home, ChevronRight, Plus, Sparkles, Check, ChevronDown, Loader2 } from "lucide-react";
+import { productsApi, categoriesApi, CategoryItem } from "@/lib/api";
+import type { SizeChart } from "@/lib/sizeChart";
 import { useRouter } from "next/navigation";
 
 export default function CreateProductPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
-  const [categories, setCategories] = useState<any[]>([]);
+  const [categories, setCategories] = useState<CategoryItem[]>([]);
 
   // Form State
   const [name, setName] = useState("");
@@ -23,7 +22,7 @@ export default function CreateProductPage() {
   const [categoryId, setCategoryId] = useState("");
   const [gender, setGender] = useState("Women");
   const [sizeChartPreset, setSizeChartPreset] = useState("standard");
-  const [sizeChart, setSizeChart] = useState<any>({
+  const [sizeChart, setSizeChart] = useState<SizeChart>({
     unit: "in",
     headers: ["Size", "Chest (in)", "Waist (in)", "Hips (in)", "Length (in)"],
     rows: [
@@ -92,14 +91,14 @@ export default function CreateProductPage() {
 
       const result = await productsApi.create(payload);
       if (result) {
-        window.location.href = "/products";
+        router.push("/products");
       } else {
         router.push("/products");
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Product create error:", err);
-      alert(`Product creation notice: ${err?.message || "Saved with local catalog fallback"}`);
-      window.location.href = "/products";
+      alert(`Product creation notice: ${err instanceof Error ? err.message : "Saved with local catalog fallback"}`);
+      router.push("/products");
     } finally {
       setLoading(false);
     }
@@ -157,7 +156,7 @@ export default function CreateProductPage() {
               <div className="absolute bottom-4 left-4 flex gap-2">
                 {uploadedImage && (
                   <div className="w-12 h-12 rounded-lg border-2 border-accent bg-surface flex items-center justify-center relative shadow-[0_0_10px_rgba(224,122,63,0.2)] overflow-hidden">
-                    <img src={uploadedImage} alt="Thumbnail" className="w-full h-full object-cover" />
+                    <Image width={1200} height={900} unoptimized src={uploadedImage} alt="Thumbnail" className="w-full h-full object-cover" />
                   </div>
                 )}
                 <div 
@@ -374,7 +373,7 @@ export default function CreateProductPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border/50">
-                      {sizeChart.rows.map((row: any, rIdx: number) => (
+                      {sizeChart.rows.map((row, rIdx) => (
                         <tr key={rIdx}>
                           <td className="p-2 font-bold text-accent">{row.size}</td>
                           {Object.keys(row).filter(k => k !== 'size').map((k, cIdx) => (

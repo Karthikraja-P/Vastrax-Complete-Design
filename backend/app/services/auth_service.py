@@ -1,5 +1,5 @@
 import hashlib
-import random
+import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -12,6 +12,7 @@ from app.core.exceptions import (
     ConflictError,
     ForbiddenError,
     UnauthorizedError,
+    ServiceUnavailableError,
 )
 from app.core.logging import get_logger
 from app.core.security import (
@@ -22,7 +23,7 @@ from app.core.security import (
     hash_password,
     verify_password,
 )
-from app.models.otp import OTP, _now
+from app.models.otp import OTP, _now, hash_otp_code
 from app.models.user import User
 from app.models.business_team import BusinessTeamPermission
 from app.services.email_service import send_email
@@ -39,6 +40,9 @@ class AuthService:
         return hashlib.sha256(token.encode()).hexdigest()
 
     async def register(self, full_name: str, email: str, phone_number: str, password: str) -> dict:
+        if not settings.resend_api_key:
+            raise ServiceUnavailableError("Email verification is temporarily unavailable.")
+
         email = email.lower().strip()
         phone = phone_number.strip()
         
@@ -81,11 +85,11 @@ class AuthService:
             o.is_used = True
 
         # Generate 6-digit OTP code (10 minutes expiration)
-        code = str(random.randint(100000, 999999))
+        code = str(100000 + secrets.randbelow(900000))
         expires_at = _now() + timedelta(minutes=10)
         new_otp = OTP(
             identifier=email,
-            code=code,
+            code=hash_otp_code(code),
             expires_at=expires_at,
             is_used=False
         )
@@ -113,9 +117,10 @@ class AuthService:
         try:
             await send_email(to_email=email, subject="Your VastraX Verification Code", html_content=html_content)
         except Exception as exc:
-            logger.warning("Failed sending OTP email to %s: %s", email, exc)
+            logger.error("Verification email delivery failed for user %s (%s)", user.id, type(exc).__name__)
+            raise ServiceUnavailableError("Email verification is temporarily unavailable.") from exc
 
-        logger.info("Verification OTP sent to email %s for user %s (code: %s)", email, user.id, code)
+        logger.info("Verification email requested for user %s", user.id)
 
         return {
             "status": "requires_verification",
@@ -179,7 +184,7 @@ class AuthService:
             clean_code = (code or "").strip()
             otp = self.db.query(OTP).filter(
                 (OTP.identifier == user.email) | (OTP.identifier == user.id),
-                OTP.code == clean_code,
+                OTP.code == hash_otp_code(clean_code),
                 OTP.is_used == False
             ).order_by(OTP.created_at.desc()).first()
 

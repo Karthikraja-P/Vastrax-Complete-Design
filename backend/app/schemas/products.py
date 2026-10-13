@@ -2,7 +2,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Optional, Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ProductImageCreate(BaseModel):
@@ -21,14 +21,14 @@ class ProductImageResponse(BaseModel):
 class ProductVariantCreate(BaseModel):
     sku: str
     size: str
-    stock_qty: int = 0
+    stock_qty: int = Field(default=0, ge=0)
 
 
 class ProductVariantResponse(BaseModel):
     id: str
     sku: str
     size: str
-    stock_qty: int
+    stock_qty: int = Field(ge=0)
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -44,8 +44,8 @@ class ProductCreate(BaseModel):
     price_mrp: Decimal
     price_selling: Decimal
     description: Optional[str] = None
-    rating_average: Optional[Decimal] = Decimal("4.8")
-    rating_count: Optional[int] = 15
+    rating_average: Optional[Decimal] = Decimal("0.00")
+    rating_count: Optional[int] = 0
     is_featured: bool = False
     is_published: bool = True
     model_path: Optional[str] = None  # URL or S3 key for 3D model
@@ -85,8 +85,9 @@ class ProductResponse(BaseModel):
     price_mrp: Decimal
     price_selling: Decimal
     description: str | None
-    rating_average: Decimal = Decimal("4.8")
-    rating_count: int = 15
+    stock: int = 0
+    rating_average: Decimal = Decimal("0.00")
+    rating_count: int = 0
     is_featured: bool
     is_published: bool
     created_at: datetime
@@ -100,7 +101,7 @@ class ProductResponse(BaseModel):
 
 class StockUpdateIn(BaseModel):
     variant_id: str
-    stock_qty: int
+    stock_qty: int = Field(ge=0)
 
 
 class ImageUploadIn(BaseModel):

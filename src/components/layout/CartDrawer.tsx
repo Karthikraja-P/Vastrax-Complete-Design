@@ -1,8 +1,10 @@
-import React, { useState, useEffect, useCallback } from "react";
-import { X, Trash2, Plus, Minus, ArrowRight, ShieldCheck, ShoppingBag, Sparkles, CheckCircle2 } from "lucide-react";
+import Image from "next/image";
+import { useState } from "react";
+import { X, Trash2, Plus, Minus, ArrowRight, ShieldCheck, ShoppingBag, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { promosApi } from "@/lib/api";
-import { CartItem, getCart, updateCartQuantity as updateQty, removeFromCart as removeItemFromCart } from "@/lib/cart";
+import { CartItem, updateCartQuantity as updateQty, removeFromCart as removeItemFromCart } from "@/lib/cart";
+import { useCartItems } from "@/hooks/useCartItems";
 import { showToast } from "@/lib/toast";
 
 export type { CartItem };
@@ -14,42 +16,20 @@ interface CartDrawerProps {
 }
 
 export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
-  const [cartItems, setCartItems] = useState<CartItem[]>([]);
-
-  const loadCart = useCallback(() => {
-    const items = getCart();
-    setCartItems(items);
-  }, []);
-
-  // Sync cart on initial mount and when drawer opens
-  useEffect(() => {
-    loadCart();
-  }, [loadCart, isOpen]);
-
-  // Listen to cross-component cart events
-  useEffect(() => {
-    window.addEventListener("cart-updated", loadCart);
-    window.addEventListener("storage", loadCart);
-    return () => {
-      window.removeEventListener("cart-updated", loadCart);
-      window.removeEventListener("storage", loadCart);
-    };
-  }, [loadCart]);
+  const cartItems = useCartItems();
 
   const [promoCode, setPromoCode] = useState("");
   const [discountPercent, setDiscountPercent] = useState(0);
-  const [promoMessage, setPromoMessage] = useState("");
+  const [, setPromoMessage] = useState("");
   const [promoError, setPromoError] = useState("");
   const [promoApplied, setPromoApplied] = useState(false);
 
   const updateQuantity = (id: number | string, delta: number, size?: string) => {
-    const updated = updateQty(id, delta, size);
-    setCartItems(updated);
+    updateQty(id, delta, size);
   };
 
   const removeItem = (id: number | string, size?: string, name?: string) => {
-    const updated = removeItemFromCart(id, size);
-    setCartItems(updated);
+    removeItemFromCart(id, size);
     showToast({
       title: "Removed from Bag",
       description: name ? `${name} was removed from your bag.` : undefined,
@@ -159,7 +139,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                 className="flex gap-4 p-3 bg-background/60 rounded-xl border border-border/80 group hover:border-accent/30 transition-all"
               >
                 <div className="w-20 h-24 rounded-lg bg-surface-hover overflow-hidden shrink-0 border border-border/40">
-                  <img src={item.image} alt={item.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                  <Image width={1200} height={900} unoptimized src={item.image} alt={item.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                 </div>
                 
                 <div className="flex-1 flex flex-col justify-between py-0.5">

@@ -1,6 +1,7 @@
 import logging
 import resend
 from app.core.config import settings
+from app.core.exceptions import ServiceUnavailableError
 
 logger = logging.getLogger(__name__)
 
@@ -21,8 +22,7 @@ async def send_email(to_email: str, subject: str, html_content: str) -> dict:
     """
     
     if not settings.resend_api_key:
-        logger.warning("RESEND_API_KEY is not set. Email will not be sent.")
-        return {"error": "API key not configured", "status": "skipped"}
+        raise ServiceUnavailableError("Email delivery is temporarily unavailable")
 
     resend.api_key = settings.resend_api_key
     params = {
@@ -37,6 +37,6 @@ async def send_email(to_email: str, subject: str, html_content: str) -> dict:
         response = resend.Emails.send(params)
         logger.info(f"Email sent successfully to {to_email}. Response: {response}")
         return response
-    except Exception as e:
-        logger.error(f"Failed to send email to {to_email}: {str(e)}")
-        return {"error": str(e), "status": "failed"}
+    except Exception as exc:
+        logger.error("Email provider delivery failed (%s)", type(exc).__name__)
+        raise ServiceUnavailableError("Email delivery is temporarily unavailable") from exc

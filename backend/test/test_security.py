@@ -1,7 +1,10 @@
 import pytest
+from decimal import Decimal
+from types import SimpleNamespace
 from fastapi import HTTPException
 
 from app.core import rate_limit
+from app.core.exceptions import BadRequestError
 from app.api.routes.settings import AppSettingsSchema, PUBLIC_FIELDS
 from app.services import payment_service as ps
 
@@ -39,3 +42,14 @@ def test_default_webhook_secret_is_rejected(monkeypatch):
     assert ps._webhook_secret_is_default()
     monkeypatch.setattr(ps.settings, "razorpay_webhook_secret", "whsec_real_value")
     assert not ps._webhook_secret_is_default()
+
+
+def test_production_razorpay_failure_does_not_simulate(monkeypatch):
+    monkeypatch.setattr(ps.settings, "app_env", "production")
+
+    def fail_request(*args, **kwargs):
+        raise ps.requests.ConnectionError("provider unavailable")
+
+    monkeypatch.setattr(ps.requests, "post", fail_request)
+    with pytest.raises(BadRequestError, match="Online payments are not available"):
+        ps.PaymentService(db=None)._call_razorpay(SimpleNamespace(id="test-txn"), Decimal("10"))

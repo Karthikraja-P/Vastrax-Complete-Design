@@ -1,7 +1,9 @@
 "use client";
+import Image from "next/image";
 
-import { useState, useEffect } from "react";
-import { Search, Heart, Star, ShoppingBag, Menu, User, ChevronRight, SlidersHorizontal, Box, Bell } from "lucide-react";
+import { Suspense, useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
+import { Search, Heart, Star, ShoppingBag, User, ChevronRight, SlidersHorizontal, Box, Bell } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { AuthModal } from "@/components/auth/AuthModal";
 import { useSession } from "next-auth/react";
@@ -9,63 +11,29 @@ import Link from "next/link";
 import { CartDrawer } from "@/components/layout/CartDrawer";
 import { StylistDrawer } from "@/components/stylist/StylistDrawer";
 import { Product3DModal } from "@/components/3d/Product3DModal";
-import { productsApi, categoriesApi } from "@/lib/api";
+import type { AddToCartProduct } from "@/components/3d/Product3DModal";
+import { productsApi, categoriesApi, ProductItem, CategoryItem, ProductVariant, StorefrontProduct } from "@/lib/api";
 import { reportBackendReachable, reportBackendUnreachable } from "@/lib/backendStatus";
-import { addToCart as addCartItem, getCart } from "@/lib/cart";
+import { addToCart as addCartItem } from "@/lib/cart";
+import { useCartItems } from "@/hooks/useCartItems";
 import { showToast } from "@/lib/toast";
 import { performSignOut } from "@/lib/auth-utils";
+import StorefrontMobileControls from "@/components/layout/StorefrontMobileControls";
 
-// --- Mock Data ---
-
-const banners = [
-  {
-    title: "Coats for the season ahead",
-    subtitle: "COLD WEATHER",
-    desc: "Wool overcoats and layers built for real winters.",
-    image: "https://images.unsplash.com/photo-1539533018408-ea9fac8f14d0?q=80&w=1200&auto=format&fit=crop",
-    cta: "Shop outerwear"
-  },
-  {
-    title: "The Denim Collection",
-    subtitle: "NEW ARRIVALS",
-    desc: "Premium selvage denim crafted to last a lifetime.",
-    image: "https://images.unsplash.com/photo-1542272604-787c3835535d?q=80&w=1200&auto=format&fit=crop",
-    cta: "Shop Denim"
-  },
-  {
-    title: "Essential Basics",
-    subtitle: "EVERYDAY WEAR",
-    desc: "Elevate your daily uniform with premium cotton basics.",
-    image: "https://images.unsplash.com/photo-1556821840-3a63f95609a7?q=80&w=1200&auto=format&fit=crop",
-    cta: "Shop Basics"
-  }
-];
-
-const categories = [
-  { name: "All Categories", count: 120, icon: "❖" },
-  { name: "Dresses & Frocks", count: 16, icon: "👗" },
-  { name: "T-Shirts", count: 45, icon: "👕" },
-  { name: "Hoodies & Sweatshirts", count: 32, icon: "🧥" },
-  { name: "Jackets & Outerwear", count: 18, icon: "🧥" },
-  { name: "Pants & Trousers", count: 24, icon: "👖" },
-  { name: "Shirts", count: 15, icon: "👔" },
-  { name: "Shoes & Sneakers", count: 28, icon: "👟" },
-  { name: "Hats", count: 12, icon: "🧢" },
-];
-
-export default function CollectionsPage() {
+function CollectionsPageContent() {
+  const searchParams = useSearchParams();
   const [isAuthOpen, setIsAuthOpen] = useState(false);
-  const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
+  const [, setAuthMode] = useState<"signin" | "signup">("signin");
 
-  const [favorites, setFavorites] = useState<number[]>([]);
-  const [selectedProductForSize, setSelectedProductForSize] = useState<any | null>(null);
-  const [selected3DProduct, setSelected3DProduct] = useState<any | null>(null);
+  const [favorites, setFavorites] = useState<Array<string | number>>([]);
+  const [selectedProductForSize, setSelectedProductForSize] = useState<StorefrontProduct | null>(null);
+  const [selected3DProduct, setSelected3DProduct] = useState<StorefrontProduct | null>(null);
 
   const { data: session } = useSession();
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [userName, setUserName] = useState("");
+  const [isLoggedIn, setIsLoggedIn] = useState(Boolean(session?.user?.name));
+  const [userName, setUserName] = useState(session?.user?.name || "");
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
-  const [products, setProducts] = useState<any[]>([]);
+  const [products, setProducts] = useState<StorefrontProduct[]>([]);
   const [categoriesList, setCategoriesList] = useState<{ name: string; icon: string; count?: number }[]>([
     { name: "All Categories", icon: "❖" }
   ]);
@@ -74,40 +42,37 @@ export default function CollectionsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [sortBy, setSortBy] = useState("Recommended");
 
-  // Sync department filter from URL query param (?gender=Women, ?gender=Men, ?gender=Kids)
-  // Sync department and category filter from URL query params
+  // Keep filters synchronized with links, including query-only navigation.
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const params = new URLSearchParams(window.location.search);
-      const g = params.get("gender");
-      if (g) {
-        const formatted = g.charAt(0).toUpperCase() + g.slice(1).toLowerCase();
-        setSelectedDepartment(formatted);
-      }
-      const catParam = params.get("category");
-      if (catParam) {
-        setSelectedCategory(catParam);
-      }
-    }
-  }, []);
+    const gender = searchParams.get("gender");
+    const category = searchParams.get("category");
+    const search = searchParams.get("search");
+    const sort = searchParams.get("sort");
+    const timer = window.setTimeout(() => {
+      setSelectedDepartment(gender ? gender.charAt(0).toUpperCase() + gender.slice(1).toLowerCase() : "All");
+      setSelectedCategory(category || "All Categories");
+      setSearchQuery(search || "");
+      setSortBy(sort === "newest" ? "Newest Arrivals" : "Recommended");
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [searchParams]);
 
   useEffect(() => {
     async function fetchData() {
-      setLoading(true);
       try {
         const [data, cats] = await Promise.all([
           productsApi.list(),
           categoriesApi.list()
         ]);
 
-        const catMap = new Map((cats || []).map((c: any) => [String(c.id), c.name]));
+        const catMap = new Map((cats || []).map((c: CategoryItem) => [String(c.id), c.name]));
 
         if (cats && Array.isArray(cats)) {
           setCategoriesList([
             { name: "All Categories", icon: "❖" },
-            ...cats.map((c: any) => ({
+            ...cats.filter((c) => c.is_active !== false && Number(c.count || c.product_count || 0) > 0).map((c) => ({
               id: String(c.id),
               name: c.name,
               icon: /frock|dress|gown/i.test(c.name) ? "👗" : /shirt|top/i.test(c.name) ? "👔" : /pant|trouser|denim|jean/i.test(c.name) ? "👖" : "❖",
@@ -116,65 +81,58 @@ export default function CollectionsPage() {
           ]);
         }
 
-        const mapped = (data || []).map((p: any) => {
-          const fallbackImg = "https://images.unsplash.com/photo-1551028719-00167b16eac5?q=80&w=400&auto=format&fit=crop";
-          let img = p.image || p.images?.[0]?.s3_url || (typeof p.images?.[0] === 'string' ? p.images[0] : "");
-          if (!img || img === "") {
-            const pTitle = p.name || p.title || "";
-            if (/frock|dress|gown/i.test(pTitle)) img = "https://images.unsplash.com/photo-1572804013309-59a88b7e92f1?q=80&w=400&auto=format&fit=crop";
-            else img = fallbackImg;
-          }
+        const mapped = data.map((p: ProductItem): StorefrontProduct => {
+          const fallbackImg = "/product-placeholder.svg";
+          const firstImage = p.images?.[0];
+          let img = p.image || (typeof firstImage === "string" ? firstImage : firstImage?.s3_url || "");
+          if (!img || img === "") img = fallbackImg;
 
           const rawCatId = String(p.categoryId || p.category_id || "");
-          const resolvedCatName = catMap.get(rawCatId) || p.category?.name || p.category || "Apparel";
+          const resolvedCatName = catMap.get(rawCatId) || p.category_name || p.category || "Apparel";
 
           return {
             id: p.id,
-            name: p.name || p.title,
+            name: p.name || p.title || "Unnamed Piece",
             price: Number(p.price || p.price_selling || 0),
             originalPrice: p.originalPrice || p.price_mrp || p.compareAtPrice ? Number(p.originalPrice || p.price_mrp || p.compareAtPrice) : undefined,
-            rating: Number(p.rating_average || p.rating || 4.8),
-            ratingCount: Number(p.rating_count || 15),
+            rating: Number(p.rating_average || p.rating || 0),
+            ratingCount: Number(p.rating_count || 0),
             image: img,
-            gender: p.gender || "Women",
-            isNew: p.isNew || p.is_featured,
+            gender: p.gender || "",
+            isNew: Boolean(p.isNew || p.is_featured),
             categoryId: rawCatId,
+            stock: p.stock ?? p.inventoryCount,
+            isSale: Boolean(p.isSale),
             categoryName: resolvedCatName,
-            model3dUrl: p.model_path || p.model3dUrl || (/frock|dress|gown/i.test(p.name || "") ? "/models/3d/textured_garment.glb" : /pant|trouser/i.test(p.name || "") ? "/models/3d/garment_photo_textured.glb" : "/models/3d/garment2_textured.glb")
+            model3dUrl: p.model_path || p.model3dUrl,
+            variants: p.variants || [],
+            created_at: p.created_at
           };
         });
         setProducts(mapped);
       } catch (err) {
         console.error("Failed to fetch products:", err);
       } finally {
-        setLoading(false);
       }
     }
-    fetchData();
+    void Promise.resolve().then(fetchData);
   }, []);
 
   useEffect(() => {
-    if (session?.user?.name) {
-      setIsLoggedIn(true);
-      setUserName(session.user.name);
-    }
-  }, [session]);
-
-  useEffect(() => {
     async function loadWishlist() {
-      if ((session as any)?.accessToken) {
+      if (session?.accessToken) {
         // Fetch from backend if logged in
         try {
           const res = await fetch("/api/v1/users/me/wishlist", {
-            headers: { Authorization: `Bearer ${(session as any).accessToken}` }
+            headers: { Authorization: `Bearer ${session.accessToken}` }
           });
           reportBackendReachable();
           if (res.ok) {
             const data = await res.json();
-            setFavorites(data.map((item: any) => item.product_id));
+            setFavorites(data.map((item: { product_id: string | number }) => item.product_id));
             return;
           }
-        } catch (err) {
+        } catch {
           reportBackendUnreachable();
         }
       }
@@ -183,15 +141,17 @@ export default function CollectionsPage() {
       const saved = localStorage.getItem("vastrax_favorites");
       if (saved) {
         try {
-          const parsed = JSON.parse(saved);
-          setFavorites(parsed.map((f: any) => f.id));
-        } catch (e) { }
+          const parsed: unknown = JSON.parse(saved);
+          if (Array.isArray(parsed)) {
+            setFavorites(parsed.map((favorite: unknown) => typeof favorite === "object" && favorite !== null && "id" in favorite ? String(favorite.id) : String(favorite)));
+          }
+        } catch { }
       }
     }
-    loadWishlist();
+    void Promise.resolve().then(loadWishlist);
   }, [session]);
 
-  const toggleFavorite = async (product: any, e: React.MouseEvent) => {
+  const toggleFavorite = async (product: StorefrontProduct, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
 
@@ -199,12 +159,12 @@ export default function CollectionsPage() {
     const isFav = favorites.includes(product.id);
     setFavorites(prev => isFav ? prev.filter(id => id !== product.id) : [...prev, product.id]);
 
-    if ((session as any)?.accessToken) {
+    if (session?.accessToken) {
       // Sync with Backend if logged in
       try {
         await fetch(`/api/v1/users/me/wishlist/${product.id}`, {
           method: "POST",
-          headers: { Authorization: `Bearer ${(session as any).accessToken}` }
+          headers: { Authorization: `Bearer ${session.accessToken}` }
         });
         reportBackendReachable();
       } catch (err) {
@@ -214,10 +174,16 @@ export default function CollectionsPage() {
     } else {
       // Guest: Sync with LocalStorage
       const savedStr = localStorage.getItem("vastrax_favorites");
-      let currentFavs = savedStr ? JSON.parse(savedStr) : [];
+      let currentFavs: unknown[] = [];
+      try {
+        const parsed: unknown = savedStr ? JSON.parse(savedStr) : [];
+        if (Array.isArray(parsed)) currentFavs = parsed;
+      } catch {
+        currentFavs = [];
+      }
 
       if (isFav) {
-        currentFavs = currentFavs.filter((f: any) => f.id !== product.id);
+        currentFavs = currentFavs.filter((favorite) => typeof favorite !== "object" || favorite === null || !("id" in favorite) || String(favorite.id) !== String(product.id));
       } else {
         currentFavs.push({
           id: product.id,
@@ -231,10 +197,8 @@ export default function CollectionsPage() {
   };
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isStylistOpen, setIsStylistOpen] = useState(false);
-  const [activeBanner, setActiveBanner] = useState(0);
   const [isMobileFiltersOpen, setIsMobileFiltersOpen] = useState(false);
   const [isSortOpen, setIsSortOpen] = useState(false);
-  const [sortBy, setSortBy] = useState("Recommended");
   const sortOptions = ["Recommended", "Newest Arrivals", "Price: Low to High", "Price: High to Low", "Top Rated"];
 
   useEffect(() => {
@@ -243,33 +207,13 @@ export default function CollectionsPage() {
     return () => window.removeEventListener("open-stylist", handleOpenStylist);
   }, []);
 
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setActiveBanner((prev) => (prev + 1) % banners.length);
-    }, 5000);
-    return () => clearInterval(timer);
-  }, []);
-
-  const [bagItems, setBagItems] = useState<any[]>([]);
-
-  useEffect(() => {
-    const syncCart = () => {
-      setBagItems(getCart());
-    };
-    syncCart();
-    window.addEventListener("cart-updated", syncCart);
-    window.addEventListener("storage", syncCart);
-    return () => {
-      window.removeEventListener("cart-updated", syncCart);
-      window.removeEventListener("storage", syncCart);
-    };
-  }, []);
+  const bagItems = useCartItems();
 
   const isItemInBag = (productId: string | number) => {
     return bagItems.some((item) => String(item.id) === String(productId));
   };
 
-  const addItemToBag = (product: any, size = "M") => {
+  const addItemToBag = (product: AddToCartProduct, size = "M") => {
     const priceNum = typeof product.price === 'string'
       ? parseFloat(String(product.price).replace(/[^0-9.-]+/g, "")) || 0
       : Number(product.price) || 0;
@@ -281,7 +225,7 @@ export default function CollectionsPage() {
       quantity: 1,
       size: size,
       color: product.colour || "Default",
-      image: product.image
+      image: product.image || ""
     });
 
     showToast({
@@ -295,7 +239,7 @@ export default function CollectionsPage() {
     setSelectedProductForSize(null);
   };
 
-  const handleAddToBagClick = (product: any, e: React.MouseEvent) => {
+  const handleAddToBagClick = (product: StorefrontProduct, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
 
@@ -311,7 +255,7 @@ export default function CollectionsPage() {
     // 1. Category Filter
     if (selectedCategory !== "All Categories") {
       const pCatName = (p.categoryName || "").toLowerCase();
-      const pCatId = (p.categoryId || "").toLowerCase();
+      const pCatId = String(p.categoryId || "").toLowerCase();
       const selCat = selectedCategory.toLowerCase();
       const pName = (p.name || "").toLowerCase();
 
@@ -349,7 +293,7 @@ export default function CollectionsPage() {
 
     // 2. Department Filter
     if (selectedDepartment !== "All") {
-      const pG = (p.gender || "Women").toLowerCase();
+      const pG = (p.gender || "").toLowerCase();
       const sG = selectedDepartment.toLowerCase();
       if (pG !== sG && pG !== "unisex") return false;
     }
@@ -370,6 +314,7 @@ export default function CollectionsPage() {
     if (sortBy === "Price: Low to High") return a.price - b.price;
     if (sortBy === "Price: High to Low") return b.price - a.price;
     if (sortBy === "Top Rated") return (b.rating || 0) - (a.rating || 0);
+    if (sortBy === "Newest Arrivals") return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
     return 0;
   });
 
@@ -379,10 +324,8 @@ export default function CollectionsPage() {
       <header className="h-16 md:h-20 flex items-center justify-between relative px-3 sm:px-6 md:px-12 sticky top-2 md:top-4 bg-surface dark:bg-[#1a1a1a] z-50 rounded-[1.5rem] sm:rounded-[2rem] shadow-md border border-border dark:border-white/10 mx-2 md:mx-4 mt-2 md:mt-4">
         {/* Left Side: Navigation */}
         <div className="flex items-center gap-2 sm:gap-6 z-10">
-          <button className="md:hidden text-muted-foreground hover:text-foreground dark:text-white transition-colors p-1">
-            <Menu className="w-5 h-5 sm:w-6 sm:h-6" />
-          </button>
-          <nav className="hidden md:flex items-center gap-8">
+          <StorefrontMobileControls />
+          <nav className="hidden 2xl:flex items-center gap-8">
             <Link href="/storefront/collections?sort=newest" className="text-lg font-medium hover:text-[#e07a3f] transition-colors">New Arrivals</Link>
             <Link href="/storefront/collections?gender=Women" onClick={() => setSelectedDepartment("Women")} className={`text-lg font-medium hover:text-[#e07a3f] transition-colors ${selectedDepartment === "Women" ? "text-[#e07a3f] font-bold" : ""}`}>Women</Link>
             <Link href="/storefront/collections?gender=Men" onClick={() => setSelectedDepartment("Men")} className={`text-lg font-medium hover:text-[#e07a3f] transition-colors ${selectedDepartment === "Men" ? "text-[#e07a3f] font-bold" : ""}`}>Men</Link>
@@ -400,11 +343,14 @@ export default function CollectionsPage() {
 
         {/* Right Side: Actions */}
         <div className="flex items-center gap-1.5 sm:gap-4 md:gap-6 z-10">
+          {String(session?.user?.role || "").toLowerCase() === "admin" && (
+            <Link href="/" className="rounded-full border border-border px-3 py-2 text-xs font-semibold text-foreground hover:border-accent hover:text-accent">Admin</Link>
+          )}
           <ThemeToggle />
           <a href="/storefront/favorites" className="relative p-1 text-muted-foreground hover:text-[#e07a3f] transition-colors">
             <Heart className="w-5 h-5" />
           </a>
-          <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-surface dark:bg-[#222] border border-border dark:border-white/10 rounded-full transition-all text-sm w-48 lg:w-64 focus-within:border-[#e07a3f] focus-within:ring-1 focus-within:ring-[#e07a3f]">
+          <div className="hidden 2xl:flex items-center gap-2 px-3 py-1.5 bg-surface dark:bg-[#222] border border-border dark:border-white/10 rounded-full transition-all text-sm w-48 lg:w-64 focus-within:border-[#e07a3f] focus-within:ring-1 focus-within:ring-[#e07a3f]">
             <Search className="w-4 h-4 text-muted-foreground" />
             <input
               type="text"
@@ -412,9 +358,7 @@ export default function CollectionsPage() {
               className="flex-1 bg-transparent border-none outline-none text-foreground dark:text-white placeholder:text-muted-foreground"
             />
           </div>
-          <button className="md:hidden p-1 text-muted-foreground hover:text-[#e07a3f] transition-colors">
-            <Search className="w-5 h-5" />
-          </button>
+
 
           <div className="relative">
             <button
@@ -502,35 +446,12 @@ export default function CollectionsPage() {
 
           <div className="max-w-[1400px] mx-auto p-4 md:p-10">
 
-            {/* 1. Hero Banner Slider */}
-            <div className="relative w-full h-[250px] md:h-[350px] lg:h-[400px] rounded-[2rem] overflow-hidden mb-8 md:mb-12 border border-border dark:border-white/10">
-              {banners.map((banner, idx) => (
-                <div
-                  key={idx}
-                  className={`absolute inset-0 transition-opacity duration-1000 ease-in-out ${idx === activeBanner ? 'opacity-100 z-10' : 'opacity-0 z-0'}`}
-                >
-                  <img src={banner.image} alt={banner.title} className="w-full h-full object-cover mix-blend-screen opacity-50" />
-                  <div className="absolute inset-0 bg-gradient-to-r from-[#111] via-[#111]/80 to-transparent flex flex-col justify-center px-8 md:px-16 lg:px-20">
-                    <p className="text-[#e07a3f] text-xs font-bold tracking-[0.2em] uppercase mb-2 md:mb-4">{banner.subtitle}</p>
-                    <h2 className="text-3xl md:text-5xl lg:text-6xl font-semibold text-foreground dark:text-white mb-3 md:mb-4 max-w-xl leading-tight">{banner.title}</h2>
-                    <p className="text-muted-foreground text-sm md:text-lg mb-6 md:mb-8 max-w-md hidden md:block">{banner.desc}</p>
-                    <button className="bg-[#e07a3f] hover:bg-[#d06a2f] text-white px-6 md:px-8 py-2.5 md:py-3 rounded-full text-sm md:text-base font-medium w-fit transition-colors shadow-lg shadow-[#e07a3f]/20">
-                      {banner.cta}
-                    </button>
-                  </div>
-                </div>
-              ))}
-
-              {/* Banner Indicators */}
-              <div className="absolute bottom-6 right-6 md:right-10 flex gap-2 z-20 bg-surface dark:bg-[#111111]/80 backdrop-blur-sm px-3 py-2 rounded-full border border-border dark:border-white/10">
-                {banners.map((_, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => setActiveBanner(idx)}
-                    className={`h-1.5 rounded-full transition-all duration-300 ${idx === activeBanner ? 'w-8 bg-[#e07a3f]' : 'w-4 bg-white/30 hover:bg-white/50'}`}
-                  />
-                ))}
-              </div>
+            <div className="mb-8 rounded-3xl border border-border/50 bg-gradient-to-br from-surface to-accent/10 p-6 md:p-10">
+              <p className="text-xs font-bold uppercase tracking-[0.2em] text-accent">VastraX Collection</p>
+              <h1 className="mt-2 text-3xl font-semibold text-foreground">
+                {selectedDepartment === "All" ? "Browse products" : selectedDepartment + " collection"}
+              </h1>
+              <p className="mt-2 text-sm text-muted-foreground">{filteredProducts.length} products available</p>
             </div>
 
             {/* Layout Grid: Sidebar + Products */}
@@ -670,8 +591,7 @@ export default function CollectionsPage() {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6">
                   {filteredProducts.map((product) => {
-                    const isOutOfStock = (product.stock !== undefined && product.stock <= 0) || 
-                      (product.variants && product.variants.length > 0 && product.variants.every((v: any) => Number(v.stock_qty ?? 0) <= 0));
+                    const isOutOfStock = !product.variants?.length || product.variants.every((variant: ProductVariant) => Number(variant.stock_qty ?? 0) <= 0);
 
                     return (
                       <div key={product.id} className="bg-surface dark:bg-[#1c1c1c] rounded-3xl p-5 group relative border border-border/50 dark:border-white/5 hover:border-border dark:border-white/10 transition-colors flex flex-col h-[340px]">
@@ -701,7 +621,7 @@ export default function CollectionsPage() {
 
                         {/* Image */}
                         <a href={`/storefront/product?id=${product.id}`} className="relative w-full flex-1 mb-4 flex items-center justify-center overflow-hidden cursor-pointer rounded-2xl bg-black/5">
-                          <img
+                          <Image width={1200} height={900} unoptimized
                             src={product.image}
                             alt={product.name}
                             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out"
@@ -789,17 +709,17 @@ export default function CollectionsPage() {
             <h3 className="text-xl font-bold mb-2 text-foreground">Select Size</h3>
             <p className="text-sm text-muted-foreground mb-6 line-clamp-1">Choose a size for {selectedProductForSize.name}</p>
             <div className="grid grid-cols-4 gap-2 mb-6">
-              {['S', 'M', 'L', 'XL'].map(size => (
-                <button
-                  key={size}
-                  onClick={() => {
-                    addItemToBag(selectedProductForSize, size);
-                  }}
-                  className="py-2.5 border border-border/50 rounded-xl text-foreground font-medium hover:bg-accent hover:text-white hover:border-accent transition-colors"
-                >
-                  {size}
-                </button>
-              ))}
+              {(selectedProductForSize.variants || []).map((variant) => {
+                const size = variant.size || "";
+                const out = Number(variant.stock_qty ?? 0) <= 0;
+                return (
+                  <button key={variant.id || size} type="button" disabled={out}
+                    onClick={() => addItemToBag(selectedProductForSize, size)}
+                    className="py-2.5 border border-border/50 rounded-xl text-foreground font-medium hover:bg-accent hover:text-white hover:border-accent disabled:cursor-not-allowed disabled:opacity-40 transition-colors">
+                    {size}{out ? " (Out of stock)" : ""}
+                  </button>
+                );
+              })}
             </div>
             <button
               onClick={() => setSelectedProductForSize(null)}
@@ -811,5 +731,13 @@ export default function CollectionsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function CollectionsPage() {
+  return (
+    <Suspense fallback={<main className='min-h-screen bg-background' aria-busy='true' />}>
+      <CollectionsPageContent />
+    </Suspense>
   );
 }
