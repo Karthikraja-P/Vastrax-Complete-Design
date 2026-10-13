@@ -469,7 +469,7 @@ export default function VirtualTryOnPage() {
                     img.dataset.retried = "true";
                     img.src = tryOnResultUrl.startsWith("http")
                       ? tryOnResultUrl
-                      : `http://localhost:8090${tryOnResultUrl.startsWith("/") ? "" : "/"}${tryOnResultUrl}`;
+                      : window.location.origin + (tryOnResultUrl.startsWith("/") ? "" : "/") + tryOnResultUrl;
                   }
                 }}
               />

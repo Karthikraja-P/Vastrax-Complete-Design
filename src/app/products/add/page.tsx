@@ -414,6 +414,8 @@ export default function AddProductPage() {
                     <label className="block text-sm font-medium text-foreground mb-1.5">
                       SKU
                     </label>
+                    <p className="mb-2 text-xs text-muted-foreground">A unique internal code used to identify and track this product or size variant in inventory.</p>
+                    <p className="mb-2 text-xs text-muted-foreground">A unique internal code used to identify and track this product or size variant in inventory.</p>
                     <input
                       type="text"
                       value={sku}

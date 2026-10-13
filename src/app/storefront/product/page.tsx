@@ -137,7 +137,7 @@ function ProductContent() {
             variants: item.variants || []
           });
           if (item.colour) setActiveColor(item.colour);
-          setActiveSize(item.variants?.[0]?.size || (isSizeChart(item.size_chart) ? item.size_chart.rows[0]?.size || "" : ""));
+          setActiveSize((isSizeChart(item.size_chart) ? item.size_chart.rows[0]?.size : undefined) || item.variants?.[0]?.size || "");
           setActiveImageIndex(0);
           setIs3DMode(false);
           setResolvedProductKey(requestKey);
@@ -179,6 +179,7 @@ function ProductContent() {
           variants: item.variants || []
         });
         if (item.colour) setActiveColor(item.colour);
+        setActiveSize((isSizeChart(item.size_chart) ? item.size_chart.rows[0]?.size : undefined) || item.variants?.[0]?.size || "");
         setActiveImageIndex(0);
         setIs3DMode(false);
         setResolvedProductKey(requestKey);
@@ -265,9 +266,10 @@ function ProductContent() {
   );
   const currentStock = activeVariant ? Number(activeVariant.stock_qty ?? 0) : 0;
   const isOutOfStock = currentStock <= 0;
-  const availableSizes = product.variants?.length
-    ? product.variants.map((variant) => variant.size?.trim()).filter((size): size is string => Boolean(size))
-    : product.size_chart?.rows.map((row) => row.size).filter(Boolean) || [];
+  const chartSizes = product.size_chart?.rows.map((row) => row.size.trim()).filter(Boolean) || [];
+  const availableSizes = chartSizes.length
+    ? chartSizes
+    : product.variants?.map((variant) => variant.size?.trim()).filter((size): size is string => Boolean(size)) || [];
 
   const handleSubscribeNotify = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -542,15 +544,15 @@ function ProductContent() {
                 )}
 
                 <div className="flex items-center gap-2 mb-6">
-                  <div className="flex text-[#e07a3f]">
-                    <Star className="w-4 h-4 fill-current" />
-                    <Star className="w-4 h-4 fill-current" />
-                    <Star className="w-4 h-4 fill-current" />
-                    <Star className="w-4 h-4 fill-current" />
-                    <Star className="w-4 h-4 fill-current" />
-                  </div>
-                  <span className="text-xs font-bold text-foreground">{product.rating} / 5.0</span>
-                  <span className="text-xs text-foreground/50">({product.ratingCount || product.reviewsCount} Reviews)</span>
+                  {product.reviewsCount > 0 ? (
+                    <>
+                      <div className="flex text-[#e07a3f]" aria-label="Rated by customers">
+                        {[1, 2, 3, 4, 5].map((star) => <Star key={star} className={star <= Math.round(product.rating) ? "w-4 h-4 fill-current" : "w-4 h-4 text-muted-foreground/30"} />)}
+                      </div>
+                      <span className="text-xs font-bold text-foreground">{product.rating} / 5.0</span>
+                      <span className="text-xs text-foreground/50">({product.reviewsCount} Reviews)</span>
+                    </>
+                  ) : <span className="text-xs text-muted-foreground">No ratings yet</span>}
                 </div>
 
                 <div className="w-full h-[1px] bg-border/50 mb-6" />
@@ -564,6 +566,10 @@ function ProductContent() {
                   </div>
                   <div className="text-[10px] text-foreground/40 mt-1">Inclusive of all taxes • Fabric: {product.fabric}</div>
                 </div>
+
+                <Link href={"/storefront/product/" + encodeURIComponent(product.id) + "/tryon"} className="mb-6 inline-flex w-fit items-center gap-2 rounded-full border border-accent/40 px-4 py-2 text-sm font-semibold text-accent hover:bg-accent/10">
+                  Try this outfit virtually
+                </Link>
 
                 <div className="w-full h-[1px] bg-border/50 mb-6" />
 
@@ -606,7 +612,7 @@ function ProductContent() {
                               : 'border-border hover:border-foreground/40'
                           }`}
                         >
-                          {sz}
+                          <span className={szOos ? "line-through decoration-red-500 decoration-2" : ""}>{sz}</span>
                           {szOos && (
                             <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-red-500 border-2 border-background" title="Out of stock" />
                           )}
@@ -874,7 +880,7 @@ function ProductContent() {
                       <div>
                         <h3 className="text-lg font-bold text-foreground">Customer Reviews & Ratings</h3>
                         <p className="text-xs text-muted-foreground mt-0.5">
-                          Calculated dynamically from {reviewsList.length || product.reviewsCount} verified customer ratings
+                          {reviewsList.length > 0 ? "Based on customer-submitted reviews." : "No customer ratings yet."}
                         </p>
                       </div>
                     </div>

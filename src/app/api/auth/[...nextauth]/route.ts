@@ -52,13 +52,7 @@ const handler = NextAuth({
           ? `${process.env.INTERNAL_BACKEND_URL}/api/v1/auth/login`
           : "http://backend:8090/api/v1/auth/login";
 
-        const backendUrls = [
-          internalUrl,
-          "http://backend:8090/api/v1/auth/login",
-          "http://localhost:8090/api/v1/auth/login",
-          "http://localhost:8088/api/v1/auth/login",
-          "http://localhost:8000/api/v1/auth/login"
-        ];
+        const backendUrls = [...new Set([internalUrl])];
 
         for (const url of backendUrls) {
           try {

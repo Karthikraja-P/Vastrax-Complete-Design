@@ -11,27 +11,8 @@ interface DeletedCategory {
 }
 
 export default function DeletedCategoriesPage() {
-  // Mock initial soft-deleted categories or load from state
-  const [deletedCategories, setDeletedCategories] = useState<DeletedCategory[]>([
-    {
-      id: "del-cat-1",
-      name: "Vintage Footwear",
-      slug: "vintage-footwear",
-      desc: "Archived retro footwear collection",
-      products: 0,
-      deletedAt: "2 days ago",
-      originalStatus: "Inactive"
-    },
-    {
-      id: "del-cat-2",
-      name: "Spring Scarves 2025",
-      slug: "spring-scarves-2025",
-      desc: "Seasonal limited scarves line",
-      products: 2,
-      deletedAt: "1 week ago",
-      originalStatus: "Active"
-    }
-  ]);
+  // Deleted categories are not exposed by the API yet; never present sample records as real data.
+  const [deletedCategories, setDeletedCategories] = useState<DeletedCategory[]>([]);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [sortOrder, setSortOrder] = useState("default");

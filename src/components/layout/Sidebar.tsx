@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { LayoutDashboard, Package, Tags, ShoppingCart, Users, LayoutTemplate, UserCog, Settings, ChevronDown } from "lucide-react";
+import { LayoutDashboard, Package, ShoppingCart, Users, LayoutTemplate, UserCog, Settings, ChevronDown } from "lucide-react";
 import { useState } from "react";
 import { useSession } from "next-auth/react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -19,21 +19,12 @@ const navGroups = [
     title: "CATALOGUE",
     items: [
       {
-        name: "Products",
+        name: "Catalog",
         href: "/products",
         icon: Package,
         subItems: [
           { name: "All Products", href: "/products" },
-          { name: "Deleted", href: "/products/deleted" },
-        ],
-      },
-      {
-        name: "Categories",
-        href: "/categories",
-        icon: Tags,
-        subItems: [
-          { name: "All Categories", href: "/categories" },
-          { name: "Deleted", href: "/categories/deleted" },
+          { name: "Categories", href: "/categories" },
         ],
       },
     ],
@@ -91,9 +82,8 @@ export function Sidebar({ isCollapsed = false }: { isCollapsed?: boolean }) {
       }]
     : navGroups;
   const [openMenus, setOpenMenus] = useState<Record<string, boolean>>({
-    "Products": true,
-    "Users": true,
-    "Categories": true
+    "Catalog": true,
+    "Users": true
   });
 
   const toggleMenu = (name: string) => {

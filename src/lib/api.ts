@@ -447,7 +447,7 @@ export interface TryonResult {
   processing_time_ms?: number;
 }
 
-export const DEFAULT_API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8090";
+export const DEFAULT_API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
 
 interface TryonSubmitResponse {
   session_id?: string;
@@ -467,7 +467,11 @@ export const tryonApi = {
     return {
       session_id: res.session_id || `ses_${Date.now()}`,
       status: "COMPLETED",
-      result_image_url: res.result_image_url?.startsWith("http") ? res.result_image_url : `${DEFAULT_API_BASE.replace(/\/api\/v1\/?$/, "")}${res.result_image_url || ""}`,
+      result_image_url: res.result_image_url?.startsWith("http")
+        ? res.result_image_url
+        : res.result_image_url
+          ? (typeof window !== "undefined" ? "" : DEFAULT_API_BASE.replace("/api/v1", "")) + (res.result_image_url.startsWith("/") ? res.result_image_url : "/" + res.result_image_url)
+          : undefined,
       processing_time_ms: 1100,
     };
   },
@@ -482,12 +486,7 @@ export const tryonApi = {
     const token = typeof window !== "undefined" ? localStorage.getItem("vastrax_token") : null;
     const authHeaders: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
 
-    const endpoints = [
-      "/api/v1/try-on/",
-      "http://localhost:8090/api/v1/try-on/",
-      "http://localhost:8088/api/v1/try-on/",
-      "http://localhost:8000/api/v1/try-on/",
-    ];
+    const endpoints = ["/api/v1/try-on/"];
 
     let lastError: unknown = null;
     let gotResponse = false;
@@ -561,9 +560,6 @@ export const tryonApi = {
 
     const endpoints = [
       "/api/v1/try-on/combo",
-      "http://localhost:8090/api/v1/try-on/combo",
-      "http://localhost:8088/api/v1/try-on/combo",
-      "http://localhost:8000/api/v1/try-on/combo",
     ];
 
     let lastError: unknown = null;

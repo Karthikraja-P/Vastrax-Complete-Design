@@ -26,6 +26,17 @@ def _get_credentials() -> tuple[str, str, str]:
 _cached_token = None
 _token_expiry = None
 
+def _mock_shipping_enabled() -> bool:
+    try:
+        from app.core.config import settings
+        return str(settings.app_env).strip().lower() not in {"production", "prod"}
+    except Exception:
+        return os.getenv("APP_ENV", "development").strip().lower() not in {"production", "prod"}
+
+
+def _unavailable(operation: str) -> dict:
+    return {"status": 503, "message": f"Shiprocket is not configured or unavailable; {operation} was not completed."}
+
 def get_token() -> str:
     """
     Authenticate with Shiprocket API and cache the token.
@@ -83,7 +94,10 @@ def check_serviceability(delivery_pincode: str, total_weight: float = 0.5, cod: 
         except Exception as e:
             logger.error(f"Error checking Shiprocket serviceability: {e}")
 
-    # Simulated/Mock serviceability response
+    if not _mock_shipping_enabled():
+        return _unavailable("shipping availability could not be verified")
+
+    # Simulated serviceability is allowed only in non-production environments.
     # Standard rates based on general distance simulation
     try:
         deliv_int = int(delivery_pincode)
@@ -185,13 +199,16 @@ def create_shipment_order(order_id: str, customer_info: dict, items: list, total
         except Exception as e:
             logger.error(f"Error creating Shiprocket order: {e}")
 
-    # Mock response for successful shipment creation
+    if not _mock_shipping_enabled():
+        return None
+
+    # Non-production simulation only.
     import uuid
-    mock_shipment_id = f"{10000000 + abs(hash(order_id)) % 89999999}"
+    mock_shipment_id = f"MOCK-{10000000 + abs(hash(order_id)) % 89999999}"
     return {
         "order_id": order_id,
         "shipment_id": mock_shipment_id,
-        "awb_code": f"SR{uuid.uuid4().hex[:10].upper()}",
+        "awb_code": f"MOCK-SR{uuid.uuid4().hex[:10].upper()}",
         "courier_name": "Delhivery Direct (Mock)"
     }
 
@@ -201,7 +218,7 @@ def track_shipment(shipment_id: str) -> dict:
     Returns custom history timeline if real API isn't available.
     """
     token = get_token()
-    if token and not shipment_id.isdigit(): # Mock IDs are typical digits from our mock generator
+    if token and not shipment_id.startswith("MOCK-"):
         try:
             url = f"https://apiv2.shiprocket.in/v1/external/courier/track/shipment/{shipment_id}"
             headers = {"Authorization": f"Bearer {token}"}
@@ -211,8 +228,10 @@ def track_shipment(shipment_id: str) -> dict:
         except Exception as e:
             logger.error(f"Error tracking Shiprocket shipment: {e}")
 
-    # Simulated tracking milestones based on date/id
-    # Ensure tracking updates return standard formats
+    if not _mock_shipping_enabled():
+        return _unavailable("tracking was not retrieved")
+
+    # Simulated tracking milestones are non-production only.
     return {
         "status": 200,
         "tracking_data": {
@@ -234,7 +253,7 @@ def generate_label(shipment_id: str) -> dict:
     Generate printable shipping label PDF URL from Shiprocket.
     """
     token = get_token()
-    if token and not shipment_id.isdigit():
+    if token and not shipment_id.startswith("MOCK-"):
         try:
             url = "https://apiv2.shiprocket.in/v1/external/courier/generate/label"
             payload = {"shipment_id": [int(shipment_id)]}
@@ -245,7 +264,10 @@ def generate_label(shipment_id: str) -> dict:
         except Exception as e:
             logger.error(f"Error generating Shiprocket label: {e}")
 
-    # Mock shipping label PDF URL
+    if not _mock_shipping_enabled():
+        return _unavailable("a shipping label was not generated")
+
+    # Non-production simulation only.
     return {
         "status": 200,
         "label_url": "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf",
@@ -257,7 +279,7 @@ def schedule_pickup(shipment_id: str, pickup_date: str) -> dict:
     Schedule courier pickup for a shipment.
     """
     token = get_token()
-    if token and not shipment_id.isdigit():
+    if token and not shipment_id.startswith("MOCK-"):
         try:
             url = "https://apiv2.shiprocket.in/v1/external/courier/generate/pickup"
             payload = {
@@ -271,7 +293,10 @@ def schedule_pickup(shipment_id: str, pickup_date: str) -> dict:
         except Exception as e:
             logger.error(f"Error booking Shiprocket pickup: {e}")
 
-    # Mock scheduling success response
+    if not _mock_shipping_enabled():
+        return _unavailable("courier pickup was not scheduled")
+
+    # Non-production simulation only.
     return {
         "status": 200,
         "pickup_status": "Scheduled",
@@ -284,7 +309,7 @@ def cancel_shipment_by_awb(awb_code: str) -> dict:
     Cancel a shipment order in Shiprocket using its AWB code.
     """
     token = get_token()
-    if token and not awb_code.startswith("SR"): # Mock AWB starts with SR
+    if token and not awb_code.startswith("MOCK-SR"):
         try:
             url = "https://apiv2.shiprocket.in/v1/external/orders/cancel/shipment/awbs"
             payload = {"awbs": [awb_code]}
@@ -295,7 +320,10 @@ def cancel_shipment_by_awb(awb_code: str) -> dict:
         except Exception as e:
             logger.error(f"Error cancelling Shiprocket shipment: {e}")
 
-    # Mock cancellation success response
+    if not _mock_shipping_enabled():
+        return _unavailable("shipment cancellation was not completed")
+
+    # Non-production simulation only.
     return {
         "status": 200,
         "response": "Shipment cancelled successfully in Shiprocket aggregator (Simulated)"
@@ -316,13 +344,16 @@ def create_return_shipment(order_id: str, return_data: dict) -> dict:
         except Exception as e:
             logger.error(f"Error creating Shiprocket return shipment: {e}")
 
-    # Mock reverse shipment return response
+    if not _mock_shipping_enabled():
+        return _unavailable("a return shipment was not created")
+
+    # Non-production simulation only.
     import uuid
     return {
         "status": 200,
         "order_id": f"RET-{order_id}",
         "shipment_id": f"{30000000 + abs(hash(order_id)) % 89999999}",
-        "awb_code": f"RETSR{uuid.uuid4().hex[:10].upper()}",
+        "awb_code": f"MOCK-RETSR{uuid.uuid4().hex[:10].upper()}",
         "courier_name": "Delhivery Reverse Logistics (Mock)"
     }
 

@@ -31,44 +31,7 @@ export function Header({ toggleSidebar }: HeaderProps) {
   const { data: session } = useSession();
   const isAdmin = String(session?.user?.role || "").toLowerCase() === "admin";
 
-  const [notifications, setNotifications] = useState<HeaderNotification[]>([
-    {
-      id: "notif-1",
-      title: "New High-Value Order #ORD-2026-1048",
-      description: "Confirmed luxury order for ₹12,800.00 via Express Shipping.",
-      time: "10m ago",
-      type: "order",
-      read: false,
-      href: "/orders",
-    },
-    {
-      id: "notif-2",
-      title: "Low Inventory Alert",
-      description: "Cream Pullover Hoodie stock dropped below 5 units.",
-      time: "45m ago",
-      type: "stock",
-      read: false,
-      href: "/products",
-    },
-    {
-      id: "notif-3",
-      title: "AI Stylist Recommendation Spike",
-      description: "Over 48 clients generated virtual try-on combinations today.",
-      time: "2h ago",
-      type: "ai",
-      read: true,
-      href: "/storefront/home",
-    },
-    {
-      id: "notif-4",
-      title: "New VIP Customer Registered",
-      description: "Sophia Sterling created a luxury atelier account.",
-      time: "5h ago",
-      type: "user",
-      read: true,
-      href: "/users",
-    },
-  ]);
+  const [notifications, setNotifications] = useState<HeaderNotification[]>([]);
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
@@ -189,7 +152,9 @@ export function Header({ toggleSidebar }: HeaderProps) {
                       No recent alerts or notifications
                     </div>
                   ) : (
-                    notifications.map((n) => (
+                    notifications.length === 0 ? (
+                      <p className="px-4 py-6 text-center text-sm text-muted-foreground">No notifications yet.</p>
+                    ) : notifications.map((n) => (
                       <Link 
                         key={n.id}
                         href={n.href}

@@ -56,7 +56,7 @@ const mockCustomerOrders: OrderItem[] = [];
 
 export default function CustomerAccountPage() {
   return (
-    <React.Suspense fallback={<div className="min-h-screen bg-[#0c0d0e]" />}>
+    <React.Suspense fallback={<div className="min-h-screen bg-background" />}>
       <CustomerAccountContent />
     </React.Suspense>
   );
@@ -226,7 +226,7 @@ function CustomerAccountContent() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0c0d0e] text-[#ededed]">
+    <div className="min-h-screen bg-background text-foreground">
       <Header onOpenCart={() => setIsCartOpen(true)} />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
