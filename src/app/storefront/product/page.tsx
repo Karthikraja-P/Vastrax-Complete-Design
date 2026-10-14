@@ -3,7 +3,7 @@ import Image from "next/image";
 
 import { useState, useEffect, Suspense, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { Heart, Star, Ruler, Truck, ShieldCheck, Minus, Plus, ShoppingBag, RefreshCw, Check, Box, Bell } from "lucide-react";
+import { Heart, Star, Ruler, Truck, ShieldCheck, Minus, Plus, ShoppingBag, RefreshCw, Check, Box, Bell, Sparkles } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { AuthModal } from "@/components/auth/AuthModal";
 import { useSession } from "next-auth/react";
@@ -484,10 +484,11 @@ function ProductContent() {
               {/* Left: Image Gallery & 3D Interactive Viewer */}
               <div className="w-full lg:w-[55%]">
                 <div className="bg-[#f5f5f5] dark:bg-[#1a1a1a] rounded-[2.5rem] aspect-square relative flex items-center justify-center p-4 sm:p-8 transition-colors duration-300 overflow-hidden">
-                  {/* Top Left: Wishlist */}
+                  {/* Top Right: Wishlist */}
                   <button
                     onClick={(e) => toggleFavorite(product, e)}
-                    className="absolute top-6 left-6 w-12 h-12 rounded-full bg-white dark:bg-[#2a2a2a] flex items-center justify-center text-black/60 dark:text-white hover:text-[#e07a3f] transition-colors z-30 shadow-md border border-black/5 dark:border-white/10"
+                    aria-label={favorites.includes(String(product.id)) ? "Remove from favorites" : "Add to favorites"}
+                    className="absolute top-6 right-6 w-12 h-12 rounded-full bg-white dark:bg-[#2a2a2a] flex items-center justify-center text-black/60 dark:text-white hover:text-[#e07a3f] transition-colors z-30 shadow-md border border-black/5 dark:border-white/10"
                   >
                     <Heart className={`w-5 h-5 ${favorites.includes(String(product.id)) ? 'fill-[#e07a3f] text-[#e07a3f]' : ''}`} />
                   </button>
@@ -580,8 +581,11 @@ function ProductContent() {
                   <div className="text-[10px] text-foreground/40 mt-1">Inclusive of all taxes • Fabric: {product.fabric}</div>
                 </div>
 
-                <Link href={"/storefront/product/" + encodeURIComponent(product.id) + "/tryon"} className="mb-6 inline-flex w-fit items-center gap-2 rounded-full border border-accent/40 px-4 py-2 text-sm font-semibold text-accent hover:bg-accent/10">
-                  Try this outfit virtually
+                <Link href={"/storefront/product/" + encodeURIComponent(product.id) + "/tryon"} className="mb-6 block w-full rounded-2xl border border-accent/25 bg-surface px-4 py-4 transition-colors hover:border-accent/50 hover:bg-accent/5">
+                  <span className="flex items-center gap-3">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent/10 text-accent"><Sparkles className="h-5 w-5" /></span>
+                    <span><span className="block text-sm font-semibold text-foreground">Virtual Try-On</span><span className="mt-0.5 block text-xs text-muted-foreground">Upload a photo to preview how this outfit may look on you.</span></span>
+                  </span>
                 </Link>
 
                 <div className="w-full h-[1px] bg-border/50 mb-6" />
