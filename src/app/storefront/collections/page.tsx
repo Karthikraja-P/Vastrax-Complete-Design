@@ -38,7 +38,7 @@ function CollectionsPageContent() {
     { name: "All Categories", icon: "❖" }
   ]);
   const [selectedCategory, setSelectedCategory] = useState("All Categories");
-  const [selectedDepartment, setSelectedDepartment] = useState<string>("All");
+  const [selectedDepartment, setSelectedDepartment] = useState<string>("Women");
   const [searchQuery, setSearchQuery] = useState("");
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
@@ -46,12 +46,12 @@ function CollectionsPageContent() {
 
   // Keep filters synchronized with links, including query-only navigation.
   useEffect(() => {
-    const gender = searchParams.get("gender");
     const category = searchParams.get("category");
     const search = searchParams.get("search");
     const sort = searchParams.get("sort");
     const timer = window.setTimeout(() => {
-      setSelectedDepartment(gender ? gender.charAt(0).toUpperCase() + gender.slice(1).toLowerCase() : "All");
+      // The public storefront is currently women-only, including legacy links.
+      setSelectedDepartment("Women");
       setSelectedCategory(category || "All Categories");
       setSearchQuery(search || "");
       setSortBy(sort === "newest" ? "Newest Arrivals" : "Recommended");
@@ -67,12 +67,24 @@ function CollectionsPageContent() {
           categoriesApi.list()
         ]);
 
+        const womenData = data.filter((p: ProductItem) => String(p.gender || "").trim().toLowerCase() === "women");
         const catMap = new Map((cats || []).map((c: CategoryItem) => [String(c.id), c.name]));
+        const womenCategoryKeys = new Set<string>();
+        for (const product of womenData) {
+          const categoryId = String(product.categoryId || product.category_id || "").toLowerCase();
+          const categoryName = String(product.category_name || product.category || "").toLowerCase();
+          if (categoryId) womenCategoryKeys.add(categoryId);
+          if (categoryName) womenCategoryKeys.add(categoryName);
+        }
 
         if (cats && Array.isArray(cats)) {
           setCategoriesList([
             { name: "All Categories", icon: "❖" },
-            ...cats.filter((c) => c.is_active !== false && Number(c.count || c.product_count || 0) > 0).map((c) => ({
+            ...cats.filter((c) =>
+              c.is_active !== false &&
+              Number(c.count || c.product_count || 0) > 0 &&
+              [c.id, c.name, c.slug].some((key) => womenCategoryKeys.has(String(key || "").toLowerCase()))
+            ).map((c) => ({
               id: String(c.id),
               name: c.name,
               icon: /frock|dress|gown/i.test(c.name) ? "👗" : /shirt|top/i.test(c.name) ? "👔" : /pant|trouser|denim|jean/i.test(c.name) ? "👖" : "❖",
@@ -81,7 +93,7 @@ function CollectionsPageContent() {
           ]);
         }
 
-        const mapped = data.map((p: ProductItem): StorefrontProduct => {
+        const mapped = womenData.map((p: ProductItem): StorefrontProduct => {
           const fallbackImg = "/product-placeholder.svg";
           const firstImage = p.images?.[0];
           let img = p.image || (typeof firstImage === "string" ? firstImage : firstImage?.s3_url || "");
@@ -292,11 +304,7 @@ function CollectionsPageContent() {
     }
 
     // 2. Department Filter
-    if (selectedDepartment !== "All") {
-      const pG = (p.gender || "").toLowerCase();
-      const sG = selectedDepartment.toLowerCase();
-      if (pG !== sG && pG !== "unisex") return false;
-    }
+    if (String(p.gender || "").trim().toLowerCase() !== "women") return false;
 
     // 3. Search Query
     if (searchQuery.trim()) {
@@ -326,11 +334,9 @@ function CollectionsPageContent() {
         <div className="flex items-center gap-2 sm:gap-6 z-10">
           <StorefrontMobileControls />
           <nav className="hidden 2xl:flex items-center gap-8">
-            <Link href="/storefront/collections?sort=newest" className="text-lg font-medium hover:text-[#e07a3f] transition-colors">New Arrivals</Link>
+            <Link href="/storefront/collections?gender=Women&sort=newest" className="text-lg font-medium hover:text-[#e07a3f] transition-colors">New Arrivals</Link>
             <Link href="/storefront/collections?gender=Women" onClick={() => setSelectedDepartment("Women")} className={`text-lg font-medium hover:text-[#e07a3f] transition-colors ${selectedDepartment === "Women" ? "text-[#e07a3f] font-bold" : ""}`}>Women</Link>
-            <Link href="/storefront/collections?gender=Men" onClick={() => setSelectedDepartment("Men")} className={`text-lg font-medium hover:text-[#e07a3f] transition-colors ${selectedDepartment === "Men" ? "text-[#e07a3f] font-bold" : ""}`}>Men</Link>
-            <Link href="/storefront/collections?gender=Kids" onClick={() => setSelectedDepartment("Kids")} className={`text-lg font-medium hover:text-[#e07a3f] transition-colors ${selectedDepartment === "Kids" ? "text-[#e07a3f] font-bold" : ""}`}>Kids</Link>
-            <Link href="/storefront/collections" onClick={() => setSelectedDepartment("All")} className={`text-lg font-medium hover:text-[#e07a3f] transition-colors ${selectedDepartment === "All" ? "text-[#e07a3f] font-bold" : ""}`}>Collections</Link>
+            <Link href="/storefront/collections?gender=Women" onClick={() => setSelectedDepartment("Women")} className="text-lg font-medium hover:text-[#e07a3f] transition-colors">Collections</Link>
           </nav>
         </div>
 
@@ -474,7 +480,7 @@ function CollectionsPageContent() {
                   <div className="flex items-center justify-between mb-6">
                     <h3 className="font-bold text-lg">Filters</h3>
                     <button
-                      onClick={() => { setSelectedCategory("All Categories"); setSelectedDepartment("All"); setSearchQuery(""); setMinPrice(""); setMaxPrice(""); }}
+                      onClick={() => { setSelectedCategory("All Categories"); setSelectedDepartment("Women"); setSearchQuery(""); setMinPrice(""); setMaxPrice(""); }}
                       className="text-[#e07a3f] text-xs font-bold tracking-wider uppercase flex items-center gap-1 hover:underline">
                       Reset Filters
                     </button>
@@ -490,27 +496,6 @@ function CollectionsPageContent() {
                       placeholder="Search products..."
                       className="w-full bg-surface dark:bg-[#111111] border border-border dark:border-white/10 rounded-full py-3 pl-11 pr-4 text-sm text-foreground dark:text-white placeholder:text-muted-foreground focus:outline-none focus:border-[#e07a3f] transition-colors"
                     />
-                  </div>
-
-                  {/* Department */}
-                  <div className="mb-8">
-                    <h4 className="text-[10px] font-bold text-muted-foreground tracking-[0.2em] uppercase mb-3">Department</h4>
-                    <div className="flex flex-wrap gap-2">
-                      {["All", "Women", "Men", "Kids", "Unisex"].map((dept) => (
-                        <button
-                          key={dept}
-                          type="button"
-                          onClick={() => setSelectedDepartment(dept)}
-                          className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all ${
-                            selectedDepartment === dept
-                              ? "bg-[#e07a3f] text-white shadow-md shadow-[#e07a3f]/20"
-                              : "bg-surface dark:bg-[#111] border border-border dark:border-white/10 text-muted-foreground hover:text-foreground"
-                          }`}
-                        >
-                          {dept}
-                        </button>
-                      ))}
-                    </div>
                   </div>
 
                   {/* Category */}

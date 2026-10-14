@@ -80,23 +80,36 @@ export default function StorefrontHome() {
           return null;
         };
 
-        // Create category -> latest uploaded product image mapping
+        const womenProducts = Array.isArray(prods)
+          ? prods.filter((p) => String(p.gender || "").trim().toLowerCase() === "women")
+          : [];
+        const womenCategoryKeys = new Set<string>();
+        for (const product of womenProducts) {
+          const categoryId = String(product.category_id || product.categoryId || "").toLowerCase();
+          const categoryName = String(product.category_name || product.category || "").toLowerCase();
+          if (categoryId) womenCategoryKeys.add(categoryId);
+          if (categoryName) womenCategoryKeys.add(categoryName);
+        }
+
+        // Create category -> latest uploaded women's product image mapping
         const catLatestImageMap = new Map<string, string>();
-        if (Array.isArray(prods)) {
-          for (const p of prods) {
-            const img = getProductImage(p);
-            if (img) {
-              const catId = String(p.category_id || p.categoryId || "").toLowerCase();
-              const catName = String(p.category_name || p.category || "").toLowerCase();
-              if (catId && !catLatestImageMap.has(catId)) catLatestImageMap.set(catId, img);
-              if (catName && !catLatestImageMap.has(catName)) catLatestImageMap.set(catName, img);
-            }
+        for (const p of womenProducts) {
+          const img = getProductImage(p);
+          if (img) {
+            const catId = String(p.category_id || p.categoryId || "").toLowerCase();
+            const catName = String(p.category_name || p.category || "").toLowerCase();
+            if (catId && !catLatestImageMap.has(catId)) catLatestImageMap.set(catId, img);
+            if (catName && !catLatestImageMap.has(catName)) catLatestImageMap.set(catName, img);
           }
         }
 
         if (cats && Array.isArray(cats) && cats.length > 0) {
           const mapped = cats
-            .filter((c: CategoryItem) => c.is_active !== false && Number(c.count || c.product_count || 0) > 0)
+            .filter((c: CategoryItem) =>
+              c.is_active !== false &&
+              Number(c.count || c.product_count || 0) > 0 &&
+              [c.id, c.name, c.slug].some((key) => womenCategoryKeys.has(String(key || "").toLowerCase()))
+            )
             .map((c: CategoryItem, idx: number) => {
             const catId = String(c.id || "").toLowerCase();
             const catName = String(c.name || "").toLowerCase();
@@ -185,11 +198,9 @@ export default function StorefrontHome() {
         <div className="flex items-center gap-2 sm:gap-6 z-10">
           <StorefrontMobileControls />
           <nav className="hidden 2xl:flex items-center gap-8">
-            <Link href="/storefront/collections?sort=newest" className="text-lg font-medium hover:text-accent transition-colors">New Arrivals</Link>
+            <Link href="/storefront/collections?gender=Women&sort=newest" className="text-lg font-medium hover:text-accent transition-colors">New Arrivals</Link>
             <Link href="/storefront/collections?gender=Women" className="text-lg font-medium hover:text-accent transition-colors">Women</Link>
-            <Link href="/storefront/collections?gender=Men" className="text-lg font-medium hover:text-accent transition-colors">Men</Link>
-            <Link href="/storefront/collections?gender=Kids" className="text-lg font-medium hover:text-accent transition-colors">Kids</Link>
-            <Link href="/storefront/collections" className="text-lg font-medium hover:text-accent transition-colors">Collections</Link>
+            <Link href="/storefront/collections?gender=Women" className="text-lg font-medium hover:text-accent transition-colors">Collections</Link>
           </nav>
         </div>
 
@@ -315,8 +326,8 @@ export default function StorefrontHome() {
       {/* Hero Section Wrapper with Gap */}
       <div className="flex-1 bg-surface px-2 pb-2 md:px-4 md:pb-4 pt-4">
         <main className="relative h-full min-h-[calc(100vh-120px)] rounded-[2rem] md:rounded-[2.5rem] overflow-hidden bg-background shadow-sm border border-border/50">
-          <div className="absolute inset-0 z-0 bg-cover bg-center" style={{ backgroundImage: "url('/images/hero_editorial.jpg')" }} aria-hidden="true" />
-          <div className="absolute inset-0 z-0 bg-gradient-to-r from-background/90 via-background/75 to-background/20" aria-hidden="true" />
+          <div className="absolute inset-0 z-0 bg-cover bg-center" style={{ backgroundImage: "url('https://images.unsplash.com/photo-1490481651871-ab68de25d43d?q=80&w=2000&auto=format&fit=crop')" }} aria-hidden="true" />
+          <div className="absolute inset-0 z-0 bg-gradient-to-r from-background/90 via-background/65 to-background/30" aria-hidden="true" />
 
           <div className="relative z-10 h-full flex items-center px-6 md:px-12 max-w-7xl mx-auto py-20">
             <div className="max-w-xl text-foreground">
@@ -327,10 +338,10 @@ export default function StorefrontHome() {
                 Explore the products currently available in our store.
               </p>
               <div className="flex flex-wrap gap-4">
-                <Link href="/storefront/collections" className="inline-block px-10 py-4 bg-accent text-accent-foreground text-lg hover:bg-accent-hover rounded-full font-semibold transition-colors duration-300">
+                <Link href="/storefront/collections?gender=Women" className="inline-block px-10 py-4 bg-accent text-accent-foreground text-lg hover:bg-accent-hover rounded-full font-semibold transition-colors duration-300">
                   Shop Now &rarr;
                 </Link>
-                <Link href="/storefront/collections?sort=newest" className="inline-block px-10 py-4 bg-transparent border border-border text-foreground text-lg hover:bg-surface hover:border-foreground rounded-full font-semibold transition-colors duration-300">
+                <Link href="/storefront/collections?gender=Women&sort=newest" className="inline-block px-10 py-4 bg-transparent border border-border text-foreground text-lg hover:bg-surface hover:border-foreground rounded-full font-semibold transition-colors duration-300">
                   New Arrivals
                 </Link>
               </div>
@@ -347,7 +358,7 @@ export default function StorefrontHome() {
                 Shop by <span className="font-semibold">Category</span>
               </h2>
             </div>
-            <Link href="/storefront/collections" className="text-sm font-medium text-muted-foreground hover:text-accent transition-colors flex items-center gap-1">
+            <Link href="/storefront/collections?gender=Women" className="text-sm font-medium text-muted-foreground hover:text-accent transition-colors flex items-center gap-1">
               View All &rarr;
             </Link>
           </div>
@@ -369,7 +380,7 @@ export default function StorefrontHome() {
               className="flex gap-4 md:gap-8 overflow-x-auto pb-6 snap-x snap-mandatory [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
             >
               {categories.map((cat, idx) => (
-                <Link key={idx} href={`/storefront/collections?category=${encodeURIComponent(cat.name)}`} className="flex-shrink-0 w-52 md:w-[280px] snap-start group">
+                <Link key={idx} href={`/storefront/collections?gender=Women&category=${encodeURIComponent(cat.name)}`} className="flex-shrink-0 w-52 md:w-[280px] snap-start group">
                   <div className="bg-background rounded-2xl md:rounded-3xl p-5 md:p-8 shadow-sm border border-border/30 h-72 md:h-[360px] flex flex-col items-center justify-between transition-transform duration-300 group-hover:-translate-y-2 group-hover:shadow-md">
                     <div className="flex-1 w-full relative flex items-center justify-center overflow-hidden rounded-xl mb-4 md:mb-6">
                       <Image width={1200} height={900} unoptimized
@@ -442,7 +453,7 @@ export default function StorefrontHome() {
                         {col.title}
                       </h3>
                     </div>
-                    <Link href={`/storefront/collections`} className="w-10 h-10 md:w-12 md:h-12 rounded-full border border-white/40 flex items-center justify-center text-white hover:bg-white hover:text-black transition-all shrink-0">
+                    <Link href={`/storefront/collections?gender=Women`} className="w-10 h-10 md:w-12 md:h-12 rounded-full border border-white/40 flex items-center justify-center text-white hover:bg-white hover:text-black transition-all shrink-0">
                       <ArrowRight className="w-4 h-4 md:w-5 md:h-5" />
                     </Link>
                   </div>

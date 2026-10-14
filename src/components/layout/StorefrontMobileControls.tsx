@@ -6,11 +6,9 @@ import Link from "next/link";
 import { Menu, Search, X } from "lucide-react";
 
 const links = [
-  { label: "New Arrivals", href: "/storefront/collections?sort=newest" },
+  { label: "New Arrivals", href: "/storefront/collections?gender=Women&sort=newest" },
   { label: "Women", href: "/storefront/collections?gender=Women" },
-  { label: "Men", href: "/storefront/collections?gender=Men" },
-  { label: "Kids", href: "/storefront/collections?gender=Kids" },
-  { label: "Collections", href: "/storefront/collections" },
+  { label: "Collections", href: "/storefront/collections?gender=Women" },
 ];
 
 export default function StorefrontMobileControls() {

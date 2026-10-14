@@ -58,7 +58,9 @@ export default function FavoritesPage() {
       setLoading(true);
       try {
         const data = await productsApi.list();
-        const mapped = data.map((p): StorefrontProduct => {
+        const mapped = data
+          .filter((p) => String(p.gender || "").trim().toLowerCase() === "women")
+          .map((p): StorefrontProduct => {
           const fallbackImg = "/product-placeholder.svg";
           const firstImage = p.images?.[0];
           let img = p.image || (typeof firstImage === "string" ? firstImage : firstImage?.s3_url || "");
@@ -140,11 +142,9 @@ export default function FavoritesPage() {
         <div className="flex items-center gap-2 sm:gap-6 z-10">
           <StorefrontMobileControls />
           <nav className="hidden 2xl:flex items-center gap-8">
-            <Link href="/storefront/collections?sort=newest" className="text-lg font-medium hover:text-[#e07a3f] transition-colors">New Arrivals</Link>
+            <Link href="/storefront/collections?gender=Women&sort=newest" className="text-lg font-medium hover:text-[#e07a3f] transition-colors">New Arrivals</Link>
             <Link href="/storefront/collections?gender=Women" className="text-lg font-medium hover:text-[#e07a3f] transition-colors">Women</Link>
-            <Link href="/storefront/collections?gender=Men" className="text-lg font-medium hover:text-[#e07a3f] transition-colors">Men</Link>
-            <Link href="/storefront/collections?gender=Kids" className="text-lg font-medium hover:text-[#e07a3f] transition-colors">Kids</Link>
-            <Link href="/storefront/collections" className="text-lg font-medium hover:text-[#e07a3f] transition-colors">Collections</Link>
+            <Link href="/storefront/collections?gender=Women" className="text-lg font-medium hover:text-[#e07a3f] transition-colors">Collections</Link>
           </nav>
         </div>
 
@@ -278,7 +278,7 @@ export default function FavoritesPage() {
               Tap the heart icon on any product to save it here for later.
             </p>
             <Link
-              href="/storefront/collections"
+              href="/storefront/collections?gender=Women"
               className="px-8 py-3 bg-[#e07a3f] text-white rounded-full font-semibold hover:bg-[#d06a2f] transition-colors"
             >
               Browse Collections

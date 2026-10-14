@@ -379,7 +379,7 @@ function ProductContent() {
           {failed ? (
             <>
               <p className="text-sm text-muted-foreground">This product could not be loaded. Please return to the collection and try again.</p>
-              <Link href="/storefront/collections" className="rounded-full bg-[#e07a3f] px-5 py-2.5 text-sm font-semibold text-white">Back to collection</Link>
+              <Link href="/storefront/collections?gender=Women" className="rounded-full bg-[#e07a3f] px-5 py-2.5 text-sm font-semibold text-white">Back to collection</Link>
             </>
           ) : (
             <>
@@ -399,11 +399,9 @@ function ProductContent() {
         <div className="flex items-center gap-2 sm:gap-6 z-10">
           <StorefrontMobileControls />
           <nav className="hidden 2xl:flex items-center gap-8">
-            <Link href="/storefront/collections?sort=newest" className="text-lg font-medium hover:text-[#e07a3f] transition-colors">New Arrivals</Link>
+            <Link href="/storefront/collections?gender=Women&sort=newest" className="text-lg font-medium hover:text-[#e07a3f] transition-colors">New Arrivals</Link>
             <Link href="/storefront/collections?gender=Women" className="text-lg font-medium hover:text-[#e07a3f] transition-colors">Women</Link>
-            <Link href="/storefront/collections?gender=Men" className="text-lg font-medium hover:text-[#e07a3f] transition-colors">Men</Link>
-            <Link href="/storefront/collections?gender=Kids" className="text-lg font-medium hover:text-[#e07a3f] transition-colors">Kids</Link>
-            <Link href="/storefront/collections" className="text-lg font-medium hover:text-[#e07a3f] transition-colors">Collections</Link>
+            <Link href="/storefront/collections?gender=Women" className="text-lg font-medium hover:text-[#e07a3f] transition-colors">Collections</Link>
           </nav>
         </div>
 
@@ -453,9 +451,9 @@ function ProductContent() {
               <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></svg>
             </Link>
             <span className="text-foreground/30">&gt;</span>
-            <Link href="/storefront/collections" className="hover:text-foreground transition-colors">Collections</Link>
+            <Link href="/storefront/collections?gender=Women" className="hover:text-foreground transition-colors">Collections</Link>
             <span className="text-foreground/30">&gt;</span>
-            <Link href={"/storefront/collections?category=" + encodeURIComponent(product.categoryName)} className="hover:text-foreground transition-colors">{product.categoryName}</Link>
+            <Link href={"/storefront/collections?gender=Women&category=" + encodeURIComponent(product.categoryName)} className="hover:text-foreground transition-colors">{product.categoryName}</Link>
             <span className="text-foreground/30">&gt;</span>
             <span className="text-foreground font-bold truncate max-w-xs">{product.name}</span>
           </div>
