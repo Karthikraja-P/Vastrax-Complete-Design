@@ -13,7 +13,7 @@ import { StylistDrawer } from "@/components/stylist/StylistDrawer";
 import { GarmentViewer3D } from "@/components/3d/GarmentViewer3D";
 import { Product3DModal } from "@/components/3d/Product3DModal";
 
-import { productsApi, ProductReview, ProductItem, ProductVariant } from "@/lib/api";
+import { productsApi, fetchApi, ProductReview, ProductItem, ProductVariant } from "@/lib/api";
 import { addToCart as addCartItem } from "@/lib/cart";
 import { useCartItems } from "@/hooks/useCartItems";
 import { isSizeChart, SizeChart, SizeChartRow, WOMENS_SIZE_CHART } from "@/lib/sizeChart";
@@ -269,10 +269,17 @@ function ProductContent() {
     }
   };
 
-  const [notifyEmail, setNotifyEmail] = useState(session?.user?.email || "");
+  const [notifyEmail, setNotifyEmail] = useState("");
   const [isSubscribingNotify, setIsSubscribingNotify] = useState(false);
   const [isNotifySuccess, setIsNotifySuccess] = useState(false);
 
+  useEffect(() => {
+    let active = true;
+    fetchApi<{ email?: string }>("/users/me").then((profile) => {
+      if (active && profile.email) setNotifyEmail((current) => current || profile.email || "");
+    }).catch(() => { /* Guests can enter an email manually. */ });
+    return () => { active = false; };
+  }, [session]);
   // Derive stock for current active size
   const activeVariant = product.variants?.find(
     (v: ProductVariant) => v.size?.toUpperCase() === activeSize.toUpperCase()

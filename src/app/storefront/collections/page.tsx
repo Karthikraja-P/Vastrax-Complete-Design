@@ -11,7 +11,7 @@ import Link from "next/link";
 import { CartDrawer } from "@/components/layout/CartDrawer";
 import { StylistDrawer } from "@/components/stylist/StylistDrawer";
 import type { AddToCartProduct } from "@/components/3d/Product3DModal";
-import { productsApi, categoriesApi, ProductItem, CategoryItem, ProductVariant, StorefrontProduct } from "@/lib/api";
+import { productsApi, categoriesApi, fetchApi, ProductItem, CategoryItem, ProductVariant, StorefrontProduct } from "@/lib/api";
 import { reportBackendReachable, reportBackendUnreachable } from "@/lib/backendStatus";
 import { addToCart as addCartItem } from "@/lib/cart";
 import { useCartItems } from "@/hooks/useCartItems";
@@ -34,6 +34,7 @@ function CollectionsPageContent() {
   const [selectedProductForSize, setSelectedProductForSize] = useState<StorefrontProduct | null>(null);
   const [notifyProduct, setNotifyProduct] = useState<StorefrontProduct | null>(null);
   const [notifyEmail, setNotifyEmail] = useState("");
+  const [accountEmail, setAccountEmail] = useState("");
   const [notifySize, setNotifySize] = useState("");
   const [notifySuccess, setNotifySuccess] = useState(false);
 
@@ -53,6 +54,16 @@ function CollectionsPageContent() {
   const [sortBy, setSortBy] = useState("Recommended");
   const [pagination, setPagination] = useState({ filterKey: "", page: 1 });
   const productsPerPage = 12;
+
+  useEffect(() => {
+    let active = true;
+    fetchApi<{ email?: string }>("/users/me").then((profile) => {
+      if (!active || !profile.email) return;
+      setAccountEmail(profile.email);
+      setNotifyEmail((current) => current || profile.email || "");
+    }).catch(() => { if (active) setAccountEmail(""); });
+    return () => { active = false; };
+  }, [session]);
 
   // Keep filters synchronized with links, including query-only navigation.
   useEffect(() => {
@@ -631,7 +642,7 @@ function CollectionsPageContent() {
 
                           {/* Action Button: Notify if out of stock, else Add to Bag */}
                           {isOutOfStock ? (
-                            <button type="button" onClick={() => { const v=(product.variants||[]).find(x=>Number(x.stock_qty??0)<=0); setNotifySize(v?.size||product.variants?.[0]?.size||""); setNotifyEmail(session?.user?.email||""); setNotifySuccess(false); setNotifyProduct(product); }} aria-label="Notify me when back in stock" title="Notify Me When Available" className="w-11 h-11 rounded-full bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-500 hover:bg-red-500 hover:text-white transition-colors shrink-0 shadow-sm"><Bell className="w-4 h-4" /></button>
+                            <button type="button" onClick={() => { const v=(product.variants||[]).find(x=>Number(x.stock_qty??0)<=0); setNotifySize(v?.size||product.variants?.[0]?.size||""); setNotifyEmail(accountEmail); setNotifySuccess(false); setNotifyProduct(product); }} aria-label="Notify me when back in stock" title="Notify Me When Available" className="w-11 h-11 rounded-full bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-500 hover:bg-red-500 hover:text-white transition-colors shrink-0 shadow-sm"><Bell className="w-4 h-4" /></button>
                           ) : (
                             <button
                               onClick={(e) => handleAddToBagClick(product, e)}
