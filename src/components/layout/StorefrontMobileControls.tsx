@@ -9,7 +9,11 @@ const links = [
   { label: "Collections", href: "/storefront/collections?gender=Women" },
 ];
 
-export default function StorefrontMobileControls() {
+interface StorefrontMobileControlsProps {
+  showMenu?: boolean;
+}
+
+export default function StorefrontMobileControls({ showMenu = true }: StorefrontMobileControlsProps) {
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -25,7 +29,7 @@ export default function StorefrontMobileControls() {
 
   return (
     <div className="relative z-[60] flex items-center gap-1 2xl:hidden">
-      <button
+      {showMenu && <button
         type="button"
         aria-label={menuOpen ? "Close navigation menu" : "Open navigation menu"}
         aria-expanded={menuOpen}
@@ -36,7 +40,7 @@ export default function StorefrontMobileControls() {
         className="rounded-full p-2 text-foreground/80 transition-colors hover:bg-black/5 hover:text-accent dark:hover:bg-white/10"
       >
         {menuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-      </button>
+      </button>}
       <button
         type="button"
         aria-label={searchOpen ? "Close product search" : "Search products"}
@@ -50,7 +54,7 @@ export default function StorefrontMobileControls() {
         {searchOpen ? <X className="h-5 w-5" /> : <Search className="h-5 w-5" />}
       </button>
 
-      {menuOpen && (
+      {showMenu && menuOpen && (
         <nav aria-label="Store navigation" className="absolute left-0 top-full mt-3 w-[min(88vw,20rem)] rounded-2xl border border-border bg-background p-3 text-foreground shadow-xl dark:bg-[#1a1a1a]">
           {links.map((link) => (
             <Link

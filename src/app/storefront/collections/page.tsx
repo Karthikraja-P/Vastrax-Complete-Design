@@ -43,6 +43,8 @@ function CollectionsPageContent() {
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
   const [sortBy, setSortBy] = useState("Recommended");
+  const [pagination, setPagination] = useState({ filterKey: "", page: 1 });
+  const productsPerPage = 12;
 
   // Keep filters synchronized with links, including query-only navigation.
   useEffect(() => {
@@ -326,17 +328,27 @@ function CollectionsPageContent() {
     return 0;
   });
 
+  const pageFilterKey = JSON.stringify([selectedCategory, selectedDepartment, searchQuery, minPrice, maxPrice, sortBy]);
+  const totalPages = Math.ceil(filteredProducts.length / productsPerPage);
+  const currentPage = Math.min(
+    pagination.filterKey === pageFilterKey ? pagination.page : 1,
+    Math.max(totalPages, 1),
+  );
+  const changePage = (page: number) => {
+    setPagination({ filterKey: pageFilterKey, page: Math.max(1, Math.min(page, Math.max(totalPages, 1))) });
+  };
+  const paginatedProducts = filteredProducts.slice((currentPage - 1) * productsPerPage, currentPage * productsPerPage);
+
   return (
     <div className="min-h-screen bg-surface dark:bg-[#111111] text-foreground dark:text-white font-sans flex flex-col">
       {/* Reused Header Style */}
       <header className="h-16 md:h-20 flex items-center justify-between relative px-3 sm:px-6 md:px-12 sticky top-2 md:top-4 bg-surface dark:bg-[#1a1a1a] z-50 rounded-[1.5rem] sm:rounded-[2rem] shadow-md border border-border dark:border-white/10 mx-2 md:mx-4 mt-2 md:mt-4">
         {/* Left Side: Navigation */}
         <div className="flex items-center gap-2 sm:gap-6 z-10">
-          <StorefrontMobileControls />
-          <nav className="hidden 2xl:flex items-center gap-8">
-            <Link href="/storefront/collections?gender=Women&sort=newest" className="text-lg font-medium hover:text-[#e07a3f] transition-colors">New Arrivals</Link>
-            <Link href="/storefront/collections?gender=Women" onClick={() => setSelectedDepartment("Women")} className={`text-lg font-medium hover:text-[#e07a3f] transition-colors ${selectedDepartment === "Women" ? "text-[#e07a3f] font-bold" : ""}`}>Women</Link>
-            <Link href="/storefront/collections?gender=Women" onClick={() => setSelectedDepartment("Women")} className="text-lg font-medium hover:text-[#e07a3f] transition-colors">Collections</Link>
+          <StorefrontMobileControls showMenu={false} />
+          <nav aria-label="Store navigation" className="flex items-center gap-2 sm:gap-4 2xl:gap-8">
+            <Link href="/storefront/home" className="text-xs sm:text-sm 2xl:text-lg font-medium hover:text-[#e07a3f] transition-colors">Home</Link>
+            <Link href="/storefront/collections?gender=Women" onClick={() => setSelectedDepartment("Women")} className="text-xs sm:text-sm 2xl:text-lg font-medium hover:text-[#e07a3f] transition-colors">Collections</Link>
           </nav>
         </div>
 
@@ -574,8 +586,8 @@ function CollectionsPageContent() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6">
-                  {filteredProducts.map((product) => {
+                <div id="product-grid" className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6">
+                  {paginatedProducts.map((product) => {
                     const isOutOfStock = !product.variants?.length || product.variants.every((variant: ProductVariant) => Number(variant.stock_qty ?? 0) <= 0);
 
                     return (
@@ -659,14 +671,41 @@ function CollectionsPageContent() {
                   })}
                 </div>
 
-                {/* Pagination */}
-                <div className="flex items-center justify-center gap-2 mt-12">
-                  <button className="px-5 py-2.5 rounded-xl bg-surface dark:bg-[#1a1a1a] border border-border/50 dark:border-white/5 text-sm font-medium text-muted-foreground hover:text-foreground dark:text-white hover:bg-white/5 transition-colors">Previous</button>
-                  <button className="w-10 h-10 rounded-full bg-[#e07a3f] text-white text-sm font-bold flex items-center justify-center">1</button>
-                  <button className="w-10 h-10 rounded-full hover:bg-white/5 text-muted-foreground hover:text-foreground dark:text-white text-sm font-medium flex items-center justify-center transition-colors">2</button>
-                  <button className="w-10 h-10 rounded-full hover:bg-white/5 text-muted-foreground hover:text-foreground dark:text-white text-sm font-medium flex items-center justify-center transition-colors">3</button>
-                  <button className="px-5 py-2.5 rounded-xl bg-surface dark:bg-[#1a1a1a] border border-border/50 dark:border-white/5 text-sm font-medium text-muted-foreground hover:text-foreground dark:text-white hover:bg-white/5 transition-colors">Next</button>
-                </div>
+                {totalPages > 1 && (
+                  <nav aria-label="Collection pages" className="mt-12 flex flex-wrap items-center justify-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        changePage(currentPage - 1);
+                        document.getElementById("product-grid")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                      }}
+                      disabled={currentPage === 1}
+                      className="rounded-xl border border-border/50 bg-surface px-4 py-2.5 text-sm font-medium transition-colors hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/5 dark:bg-[#1a1a1a]"
+                    >Previous</button>
+                    {Array.from({ length: totalPages }, (_, index) => index + 1).map((page) => (
+                      <button
+                        key={page}
+                        type="button"
+                        aria-label={`Page ${page}`}
+                        aria-current={currentPage === page ? "page" : undefined}
+                        onClick={() => {
+                          changePage(page);
+                          document.getElementById("product-grid")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                        }}
+                        className={`flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold transition-colors ${currentPage === page ? "bg-[#e07a3f] text-white" : "text-muted-foreground hover:bg-white/5 hover:text-foreground dark:text-white"}`}
+                      >{page}</button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        changePage(currentPage + 1);
+                        document.getElementById("product-grid")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                      }}
+                      disabled={currentPage === totalPages}
+                      className="rounded-xl border border-border/50 bg-surface px-4 py-2.5 text-sm font-medium transition-colors hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/5 dark:bg-[#1a1a1a]"
+                    >Next</button>
+                  </nav>
+                )}
 
               </div>
             </div>
