@@ -214,7 +214,7 @@ function CollectionsPageContent() {
   const [isStylistOpen, setIsStylistOpen] = useState(false);
   const [isMobileFiltersOpen, setIsMobileFiltersOpen] = useState(false);
   const [isSortOpen, setIsSortOpen] = useState(false);
-  const sortOptions = ["Recommended", "Newest Arrivals", "Price: Low to High", "Price: High to Low", "Top Rated"];
+  const sortOptions = ["Recommended", "Newest Arrivals", "Price: Low to High", "Price: High to Low"];
   const availableColours = [...new Set(products.flatMap((product) => String(product.colour || "").split("|").map((colour) => colour.trim()).filter(Boolean)))].sort((a, b) => a.localeCompare(b));
 
   useEffect(() => {
@@ -320,7 +320,6 @@ function CollectionsPageContent() {
   }).sort((a, b) => {
     if (sortBy === "Price: Low to High") return a.price - b.price;
     if (sortBy === "Price: High to Low") return b.price - a.price;
-    if (sortBy === "Top Rated") return (b.rating || 0) - (a.rating || 0);
     if (sortBy === "Newest Arrivals") return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
     return 0;
   });
@@ -453,10 +452,8 @@ function CollectionsPageContent() {
 
             <div className="mb-8 rounded-3xl border border-border/50 bg-gradient-to-br from-surface to-accent/10 p-6 md:p-10">
               <p className="text-xs font-bold uppercase tracking-[0.2em] text-accent">VastraX Collection</p>
-              <h1 className="mt-2 text-3xl font-semibold text-foreground">
-                {selectedDepartment === "All" ? "Browse products" : selectedDepartment + " collection"}
-              </h1>
-              <p className="mt-2 text-sm text-muted-foreground">{filteredProducts.length} products available</p>
+              <h1 className="mt-2 text-3xl font-semibold text-foreground">Women&apos;s Collection</h1>
+              <p className="mt-2 text-sm text-muted-foreground">{filteredProducts.length} {filteredProducts.length === 1 ? "product" : "products"}</p>
             </div>
 
             {/* Layout Grid: Sidebar + Products */}
@@ -464,7 +461,6 @@ function CollectionsPageContent() {
 
               {/* Mobile Filter Toggle */}
               <div className="lg:hidden flex items-center justify-between">
-                <h1 className="text-2xl font-bold">Best Sellers <span className="text-sm font-normal text-muted-foreground ml-2">{filteredProducts.length} products</span></h1>
                 <button
                   onClick={() => setIsMobileFiltersOpen(!isMobileFiltersOpen)}
                   className="bg-surface dark:bg-[#1a1a1a] border border-border/50 dark:border-white/5 text-sm px-4 py-2 rounded-xl flex items-center gap-2 hover:bg-white/5 transition-colors"
@@ -539,12 +535,6 @@ function CollectionsPageContent() {
               {/* 3. Product Grid Area */}
               <div className="flex-1">
                 <div className="hidden lg:flex items-end justify-between mb-8">
-                  <div>
-                    <h1 className="text-3xl font-bold">
-                      {selectedDepartment !== "All" ? `${selectedDepartment}'s ${selectedCategory === "All Categories" ? "Collection" : selectedCategory}` : selectedCategory} 
-                      <span className="text-sm font-normal text-muted-foreground ml-2">{filteredProducts.length} products</span>
-                    </h1>
-                  </div>
                   <div className="relative">
                     <button
                       onClick={() => setIsSortOpen(!isSortOpen)}
