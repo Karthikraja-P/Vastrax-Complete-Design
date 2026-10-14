@@ -198,8 +198,6 @@ export default function StorefrontHome() {
         <div className="flex items-center gap-2 sm:gap-6 z-10">
           <StorefrontMobileControls />
           <nav className="hidden 2xl:flex items-center gap-8">
-            <Link href="/storefront/collections?gender=Women&sort=newest" className="text-lg font-medium hover:text-accent transition-colors">New Arrivals</Link>
-            <Link href="/storefront/collections?gender=Women" className="text-lg font-medium hover:text-accent transition-colors">Women</Link>
             <Link href="/storefront/collections?gender=Women" className="text-lg font-medium hover:text-accent transition-colors">Collections</Link>
           </nav>
         </div>
@@ -326,7 +324,7 @@ export default function StorefrontHome() {
       {/* Hero Section Wrapper with Gap */}
       <div className="flex-1 bg-surface px-2 pb-2 md:px-4 md:pb-4 pt-4">
         <main className="relative h-full min-h-[calc(100vh-120px)] rounded-[2rem] md:rounded-[2.5rem] overflow-hidden bg-background shadow-sm border border-border/50">
-          <div className="absolute inset-0 z-0 bg-cover bg-center" style={{ backgroundImage: "url('https://images.unsplash.com/photo-1490481651871-ab68de25d43d?q=80&w=2000&auto=format&fit=crop')" }} aria-hidden="true" />
+          <div className="absolute inset-0 z-0 bg-cover bg-center" style={{ backgroundImage: "url('/images/hero_hanger_dresses.jpg')" }} aria-hidden="true" />
           <div className="absolute inset-0 z-0 bg-gradient-to-r from-background/90 via-background/65 to-background/30" aria-hidden="true" />
 
           <div className="relative z-10 h-full flex items-center px-6 md:px-12 max-w-7xl mx-auto py-20">

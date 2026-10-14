@@ -6,8 +6,6 @@ import Link from "next/link";
 import { Menu, Search, X } from "lucide-react";
 
 const links = [
-  { label: "New Arrivals", href: "/storefront/collections?gender=Women&sort=newest" },
-  { label: "Women", href: "/storefront/collections?gender=Women" },
   { label: "Collections", href: "/storefront/collections?gender=Women" },
 ];
 
