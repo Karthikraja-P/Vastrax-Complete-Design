@@ -1,9 +1,12 @@
+import mimetypes
 import re
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
+
+mimetypes.add_type("image/webp", ".webp")
 
 
 class ProductImageFiles(StaticFiles):
