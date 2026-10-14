@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { LayoutDashboard, Package, ShoppingCart, Users, LayoutTemplate, UserCog, Settings, ChevronDown } from "lucide-react";
+import { LayoutDashboard, Package, ShoppingCart, Users, LayoutTemplate, UserCog, Settings, ChevronDown, Bell } from "lucide-react";
 import { useState } from "react";
 import { useSession } from "next-auth/react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -33,6 +33,7 @@ const navGroups = [
     title: "SALES",
     items: [
       { name: "Orders", href: "/orders", icon: ShoppingCart },
+      { name: "Restock Waitlist", href: "/stock-notifications", icon: Bell },
       { 
         name: "Users", 
         href: "/users",

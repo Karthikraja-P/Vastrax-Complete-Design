@@ -32,6 +32,10 @@ function CollectionsPageContent() {
 
   const [favorites, setFavorites] = useState<Array<string | number>>([]);
   const [selectedProductForSize, setSelectedProductForSize] = useState<StorefrontProduct | null>(null);
+  const [notifyProduct, setNotifyProduct] = useState<StorefrontProduct | null>(null);
+  const [notifyEmail, setNotifyEmail] = useState("");
+  const [notifySize, setNotifySize] = useState("");
+  const [notifySuccess, setNotifySuccess] = useState(false);
 
   const { data: session } = useSession();
   const [isLoggedIn, setIsLoggedIn] = useState(Boolean(session?.user?.name));
@@ -272,6 +276,12 @@ function CollectionsPageContent() {
       addItemToBag(product, "One Size");
     }
   };
+  const submitNotify = async (event: React.FormEvent) => {
+    event.preventDefault(); if (!notifyProduct) return;
+    try { await productsApi.subscribeStockNotification(notifyProduct.id, notifyEmail, notifySize || undefined); setNotifySuccess(true); }
+    catch (error) { showToast({ title: "Could not join waitlist", description: error instanceof Error ? error.message : "Please try again.", type: "error" }); }
+  };
+
   // Compute filtered & sorted products
   const filteredProducts = products.filter((p) => {
     // 1. Category Filter
@@ -621,13 +631,7 @@ function CollectionsPageContent() {
 
                           {/* Action Button: Notify if out of stock, else Add to Bag */}
                           {isOutOfStock ? (
-                            <Link
-                              href={`/storefront/product?id=${product.id}`}
-                              title="Sold Out - Notify Me When Available"
-                              className="w-11 h-11 rounded-full bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-500 hover:bg-red-500 hover:text-white transition-colors shrink-0 shadow-sm"
-                            >
-                              <Bell className="w-4 h-4" />
-                            </Link>
+                            <button type="button" onClick={() => { const v=(product.variants||[]).find(x=>Number(x.stock_qty??0)<=0); setNotifySize(v?.size||product.variants?.[0]?.size||""); setNotifyEmail(session?.user?.email||""); setNotifySuccess(false); setNotifyProduct(product); }} aria-label="Notify me when back in stock" title="Notify Me When Available" className="w-11 h-11 rounded-full bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-500 hover:bg-red-500 hover:text-white transition-colors shrink-0 shadow-sm"><Bell className="w-4 h-4" /></button>
                           ) : (
                             <button
                               onClick={(e) => handleAddToBagClick(product, e)}
@@ -691,6 +695,8 @@ function CollectionsPageContent() {
       <AuthModal isOpen={isAuthOpen} onClose={() => setIsAuthOpen(false)} />
       <CartDrawer isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} />
       <StylistDrawer isOpen={isStylistOpen} onClose={() => setIsStylistOpen(false)} />
+      {notifyProduct && <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/55 p-4" onClick={() => setNotifyProduct(null)}><section role="dialog" aria-modal="true" aria-labelledby="notify-title" className="w-full max-w-md rounded-2xl border border-border bg-surface p-6 shadow-2xl" onClick={e=>e.stopPropagation()}><button type="button" onClick={()=>setNotifyProduct(null)} className="float-right">×</button><h2 id="notify-title" className="mb-2 text-xl font-semibold">Notify Me When Available</h2><p className="mb-5 text-sm text-muted-foreground">{notifyProduct.name} is out of stock. Leave your email to receive an alert when restocked.</p>{notifySuccess ? <p role="status" className="rounded-xl bg-emerald-500/10 p-4">You&apos;re on the waitlist! We will email you the moment {notifySize ? "size "+notifySize : "this item"} arrives.</p> : <form onSubmit={submitNotify} className="space-y-4">{notifyProduct.variants?.length ? <label className="block text-sm">Size<select value={notifySize} onChange={e=>setNotifySize(e.target.value)} className="mt-1 w-full rounded-lg border bg-background p-2">{notifyProduct.variants.map(v=><option key={v.id||v.size} value={v.size||""}>{v.size||"One size"}</option>)}</select></label> : null}<label className="block text-sm">Email<input required type="email" value={notifyEmail} onChange={e=>setNotifyEmail(e.target.value)} className="mt-1 w-full rounded-lg border bg-background p-2" /></label><button className="w-full rounded-lg bg-accent p-3 text-white">Notify Me</button></form>}</section></div>}
+
       {/* Size Selection Modal */}
       {selectedProductForSize && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setSelectedProductForSize(null)}>
