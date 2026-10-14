@@ -19,6 +19,12 @@ import { showToast } from "@/lib/toast";
 import { performSignOut } from "@/lib/auth-utils";
 import StorefrontMobileControls from "@/components/layout/StorefrontMobileControls";
 
+const collectionImageOverrides: Record<string, string> = {
+  "vtx-8db7233b": "/storefront/product-cutouts/beige-coord-cutout.png",
+  "vtx-6b1eeb36": "/storefront/product-cutouts/pink-coord-cutout.png",
+  "vtx-f2b3a9a5": "/storefront/product-cutouts/skirt-and-top-cutout.png",
+};
+
 function CollectionsPageContent() {
   const searchParams = useSearchParams();
   const [isAuthOpen, setIsAuthOpen] = useState(false);
@@ -111,7 +117,7 @@ function CollectionsPageContent() {
             originalPrice,
             rating: Number(p.rating_average || p.rating || 0),
             ratingCount: Number(p.rating_count || 0),
-            image: img,
+            image: collectionImageOverrides[String(p.id)] || img,
             gender: p.gender || "",
             isNew: Boolean(p.isNew || p.is_featured),
             categoryId: rawCatId,
@@ -590,7 +596,7 @@ function CollectionsPageContent() {
                           <Image width={1200} height={900} unoptimized
                             src={product.image}
                             alt={product.name}
-                            className="w-full h-full object-contain p-2 md:p-3 transition-transform duration-300"
+                            className="w-full h-full scale-110 object-contain p-0 transition-transform duration-300"
                           />
                           {isOutOfStock && (
                             <span className="absolute bottom-2 left-2 z-10 bg-red-600/90 text-white text-[9px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider backdrop-blur-sm shadow-sm">
