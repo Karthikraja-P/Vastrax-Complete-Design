@@ -397,11 +397,11 @@ function ProductContent() {
       {/* Header */}
       <header className="h-16 md:h-20 flex items-center justify-between relative px-3 sm:px-6 md:px-12 sticky top-2 md:top-4 bg-surface z-50 rounded-[1.5rem] sm:rounded-[2rem] shadow-md border border-border/50 mx-2 md:mx-4 mt-2 md:mt-4 transition-colors duration-300">
         <div className="flex items-center gap-2 sm:gap-6 z-10">
-          <StorefrontMobileControls showMenu={false} inlineSearch />
           <nav aria-label="Store navigation" className="flex items-center gap-2 sm:gap-4 2xl:gap-8">
             <Link href="/storefront/home" className="text-xs sm:text-sm 2xl:text-lg font-medium hover:text-[#e07a3f] transition-colors">Home</Link>
             <Link href="/storefront/collections?gender=Women" className="text-xs sm:text-sm 2xl:text-lg font-medium hover:text-[#e07a3f] transition-colors">Collections</Link>
           </nav>
+          <StorefrontMobileControls showMenu={false} inlineSearch />
         </div>
 
         <div className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center pointer-events-none z-0">

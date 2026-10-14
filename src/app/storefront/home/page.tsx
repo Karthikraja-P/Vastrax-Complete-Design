@@ -196,11 +196,11 @@ export default function StorefrontHome() {
       <header className="h-16 md:h-20 flex items-center justify-between relative px-3 sm:px-6 md:px-12 sticky top-2 md:top-4 bg-background z-40 rounded-[1.5rem] sm:rounded-[2rem] shadow-sm border border-border/50 mx-2 md:mx-4 mt-2 md:mt-4">
         {/* Left Side: Navigation */}
         <div className="flex items-center gap-2 sm:gap-6 z-10">
-          <StorefrontMobileControls showMenu={false} inlineSearch />
           <nav aria-label="Store navigation" className="flex items-center gap-2 sm:gap-4 2xl:gap-8">
             <Link href="/storefront/home" className="text-xs sm:text-sm 2xl:text-lg font-medium hover:text-accent transition-colors">Home</Link>
             <Link href="/storefront/collections?gender=Women" className="text-xs sm:text-sm 2xl:text-lg font-medium hover:text-accent transition-colors">Collections</Link>
           </nav>
+          <StorefrontMobileControls showMenu={false} inlineSearch />
         </div>
 
         {/* Center: Logo */}
