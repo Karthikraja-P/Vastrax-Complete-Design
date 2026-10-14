@@ -3,7 +3,7 @@ import Image from "next/image";
 
 import { useState, useEffect, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { Heart, Star, Ruler, Truck, ShieldCheck, Minus, Plus, ShoppingBag, RefreshCw, Check, Box, Bell, Sparkles } from "lucide-react";
+import { Heart, Star, Ruler, Minus, Plus, ShoppingBag, RefreshCw, Check, Box, Bell, Sparkles, X } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { AuthModal } from "@/components/auth/AuthModal";
 import { useSession } from "next-auth/react";
@@ -16,7 +16,7 @@ import { Product3DModal } from "@/components/3d/Product3DModal";
 import { productsApi, fetchApi, ProductItem, ProductVariant } from "@/lib/api";
 import { addToCart as addCartItem } from "@/lib/cart";
 import { useCartItems } from "@/hooks/useCartItems";
-import { isSizeChart, SizeChart, SizeChartRow, WOMENS_SIZE_CHART } from "@/lib/sizeChart";
+import { isSizeChart, SizeChart, WOMENS_SIZE_CHART } from "@/lib/sizeChart";
 import { showToast } from "@/lib/toast";
 import StorefrontMobileControls from "@/components/layout/StorefrontMobileControls";
 import { useFavorites } from "@/hooks/useFavorites";
@@ -49,7 +49,7 @@ function ProductContent() {
   const [activeSize, setActiveSize] = useState('M');
   const [quantity, setQuantity] = useState(1);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
-  const [activeTab, setActiveTab] = useState('Description');
+  const [isSizeChartOpen, setIsSizeChartOpen] = useState(false);
   const { favorites, toggleFavorite: toggleFavoriteStore } = useFavorites();
 
   const { data: session } = useSession();
@@ -91,7 +91,6 @@ function ProductContent() {
     reviewsCount: 0,
   });
 
-  const [sizeChartUnit, setSizeChartUnit] = useState<"in" | "cm">("in");
 
   const getFallbackImage = () => "/product-placeholder.svg";
   const getProductSpecificModelUrl = (value?: string) => {
@@ -428,6 +427,13 @@ function ProductContent() {
                   >
                     <Heart className={`w-5 h-5 ${favorites.includes(String(product.id)) ? 'fill-[#e07a3f] text-[#e07a3f]' : ''}`} />
                   </button>
+                  <Link
+                    href={"/storefront/product/" + encodeURIComponent(product.id) + "/tryon"}
+                    className="absolute bottom-5 left-5 z-30 inline-flex items-center gap-2 rounded-full bg-white/95 px-4 py-2.5 text-sm font-semibold text-foreground shadow-md transition-colors hover:bg-white"
+                  >
+                    <Sparkles className="h-4 w-4 text-accent" />
+                    Virtual Try-On
+                  </Link>
                   {/* Product photo stays unobstructed; use the thumbnail below for 3D. */}
                   {is3DMode ? (
                     <div className="w-full h-full">
@@ -493,12 +499,18 @@ function ProductContent() {
 
               {/* Right: Product Details & purchase options */}
               <div className="w-full lg:w-[45%] flex flex-col pt-2">
-
-                {product.description && (
-                  <p className="text-foreground/70 text-sm leading-relaxed mb-6 max-w-md">
-                    {product.description}
+                <section className="mb-6">
+                  <h2 className="mb-3 text-xl font-bold text-foreground">Product Details</h2>
+                  <p className="mb-5 max-w-md text-sm leading-relaxed text-foreground/70">
+                    {product.description || "Description not available."}
                   </p>
-                )}
+                  <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">Specifications</h3>
+                  <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                    <dt className="text-muted-foreground">Fabric</dt><dd className="font-medium text-foreground">{product.fabric || "Not specified"}</dd>
+                    <dt className="text-muted-foreground">Colour</dt><dd className="font-medium text-foreground">{product.colour || "Not specified"}</dd>
+                    <dt className="text-muted-foreground">Category</dt><dd className="font-medium text-foreground">{product.categoryName || "Not specified"}</dd>
+                  </dl>
+                </section>
 
                 {product.reviewsCount > 0 && <div className="flex items-center gap-2 mb-6">
                       <div className="flex text-[#e07a3f]" aria-label="Rated by customers">
@@ -510,12 +522,7 @@ function ProductContent() {
 
                 <div className="w-full h-[1px] bg-border/50 mb-6" />
 
-                <Link href={"/storefront/product/" + encodeURIComponent(product.id) + "/tryon"} className="mb-6 block w-full rounded-2xl border border-accent/25 bg-surface px-4 py-4 transition-colors hover:border-accent/50 hover:bg-accent/5">
-                  <span className="flex items-center gap-3">
-                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent/10 text-accent"><Sparkles className="h-5 w-5" /></span>
-                    <span><span className="block text-sm font-semibold text-foreground">Virtual Try-On</span><span className="mt-0.5 block text-xs text-muted-foreground">Upload a photo to preview how this outfit may look on you.</span></span>
-                  </span>
-                </Link>
+                <div className="w-full h-[1px] bg-border/50 mb-6" />
 
                 <div className="w-full h-[1px] bg-border/50 mb-6" />
 
@@ -525,16 +532,11 @@ function ProductContent() {
                     <div className="text-sm font-bold text-foreground">Select Size</div>
                     <button
                       type="button"
-                      onClick={() => {
-                        setActiveTab('Size Chart');
-                        setTimeout(() => {
-                          document.getElementById('size-chart-section')?.scrollIntoView({ behavior: 'smooth' });
-                        }, 50);
-                      }}
-                      className="text-xs font-semibold text-[#e07a3f] hover:underline flex items-center gap-1.5 cursor-pointer bg-[#e07a3f]/10 px-3 py-1 rounded-full border border-[#e07a3f]/20 transition-all hover:bg-[#e07a3f]/20"
+                      onClick={() => setIsSizeChartOpen(true)}
+                      className="text-sm font-medium text-[#e07a3f] underline underline-offset-4 hover:text-[#c86830]"
                     >
-                      <Ruler className="w-3.5 h-3.5" />
-                      <span>Not sure about fit? Look into Size Chart</span>
+                      <Ruler className="w-4 h-4" />
+                      <span>Size Chart</span>
                     </button>
                   </div>
                   <div className="flex items-center gap-2">
@@ -662,160 +664,71 @@ function ProductContent() {
                   )}
                 </div>
 
-                {/* Trust Badges */}
-                <div className="grid grid-cols-2 gap-y-3 gap-x-2 text-[10px] text-[#e07a3f]/80">
-                  <div className="flex items-center gap-2">
-                    <Truck className="w-3.5 h-3.5" />
-                    <span>Free shipping on all premium orders</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <RefreshCw className="w-3.5 h-3.5" />
-                    <span>Free 30-day returns</span>
-                  </div>
-                  <div className="flex items-center gap-2 col-span-2">
-                    <ShieldCheck className="w-3.5 h-3.5" />
-                    <span>Secure checkout, encrypted end to end</span>
-                  </div>
-                </div>
+
 
               </div>
             </div>
 
-            {/* Tabs Section */}
-            <div className="mt-16 border-t border-border/50 pt-8">
-              <div className="flex items-center gap-8 border-b border-border/50 mb-8 px-2 overflow-x-auto">
-                {['Description', 'Size Chart', 'Specifications'].map(tab => (
-                  <button
-                    key={tab}
-                    onClick={() => setActiveTab(tab)}
-                    className={`pb-4 text-sm font-medium relative transition-colors shrink-0 ${activeTab === tab ? 'text-foreground font-bold' : 'text-foreground/40 hover:text-foreground/70'}`}
-                  >
-                    {tab}
-                    {activeTab === tab && (
-                      <div className="absolute bottom-0 left-0 w-full h-0.5 bg-[#e07a3f]" />
-                    )}
-                  </button>
-                ))}
-              </div>
 
-              {activeTab === 'Description' && (
-                <div className="px-2 max-w-4xl space-y-4 pb-8 text-foreground">
-                  <h3 className="text-lg font-bold">Product Details</h3>
-                  <p className="text-foreground/70 text-sm leading-relaxed">{product.description}</p>
-                </div>
-              )}
-
-              {activeTab === 'Size Chart' && (
-                <div id="size-chart-section" className="px-2 max-w-4xl space-y-6 pb-8 text-foreground animate-in fade-in">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/50 pb-4">
-                    <div>
-                      <h3 className="text-xl font-bold flex items-center gap-2">
-                        <Ruler className="w-5 h-5 text-[#e07a3f]" />
-                        <span>VASTRAX WOMEN’S SIZE GUIDE</span>
-                      </h3>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Displaying measurements in {sizeChartUnit === 'in' ? 'Inches (in)' : 'Centimeters (cm)'}. Match with your body measurements for optimum comfort.
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-1 bg-surface border border-border p-1 rounded-full">
-                      <button
-                        type="button"
-                        onClick={() => setSizeChartUnit('in')}
-                        className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${sizeChartUnit === 'in' ? 'bg-[#e07a3f] text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
-                      >
-                        Inches (in)
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setSizeChartUnit('cm')}
-                        className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${sizeChartUnit === 'cm' ? 'bg-[#e07a3f] text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
-                      >
-                        CM (cm)
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Size Chart Table */}
-                  <div className="overflow-x-auto border border-border rounded-2xl bg-surface/50 p-4 shadow-sm">
-                    {product.size_chart === WOMENS_SIZE_CHART && sizeChartUnit === 'in' ? (
-                      <Image src="/images/vastrax-womens-size-guide.svg" alt="Vastrax women’s size guide with bust, waist, and hip measurements for sizes XS to 4XL" width={834} height={1390} className="mx-auto h-auto w-full max-w-[834px] rounded-xl" />
-                    ) : (() => {
-                      const activeSizeChart = product.size_chart;
-                      if (!activeSizeChart?.headers?.length || !activeSizeChart.rows?.length) {
-                        return <p className="text-sm text-muted-foreground">No size chart has been added for this product.</p>;
-                      }
-                      return (
-                        <table className="w-full text-sm text-left border-collapse">
-                          <thead>
-                            <tr className="border-b border-border text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                              {activeSizeChart.headers?.map((h: string, idx: number) => (
-                                <th key={idx} className="py-3 px-4">{sizeChartUnit === 'cm' ? h.replace('(in)', '(cm)') : h}</th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-border/40">
-                            {activeSizeChart.rows?.map((row: SizeChartRow, rIdx: number) => (
-                              <tr key={rIdx} className={`hover:bg-[#e07a3f]/5 transition-colors ${activeSize === row.size ? 'bg-[#e07a3f]/15 font-bold' : ''}`}>
-                                <td className="py-3 px-4 text-[#e07a3f] font-bold">{row.size}</td>
-                                {Object.keys(row).filter(k => k !== 'size').map((k, cIdx) => {
-                                  let val = row[k];
-                                  if (sizeChartUnit === 'cm' && typeof val === 'string' && val.includes('-')) {
-                                    const parts = val.split('-').map(p => Math.round(parseFloat(p.trim()) * 2.54));
-                                    val = `${parts[0]} - ${parts[1]}`;
-                                  } else if (sizeChartUnit === 'cm' && !isNaN(parseFloat(val))) {
-                                    val = `${Math.round(parseFloat(val) * 2.54)}`;
-                                  }
-                                  return (
-                                    <td key={cIdx} className="py-3 px-4 text-foreground/90">{val}</td>
-                                  );
-                                })}
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      );
-                    })()}
-                  </div>
-
-                  <p className="px-1 text-xs text-muted-foreground">All values are approximate body measurements, not finished garment measurements.</p>
-
-                  {/* Measurement Instructions */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
-                    <div className="p-4 rounded-xl bg-surface border border-border space-y-1">
-                      <h4 className="text-xs font-bold text-[#e07a3f] uppercase tracking-wider">1. Bust / Chest</h4>
-                      <p className="text-xs text-muted-foreground">Measure under arms around the fullest part of your chest line.</p>
-                    </div>
-                    <div className="p-4 rounded-xl bg-surface border border-border space-y-1">
-                      <h4 className="text-xs font-bold text-[#e07a3f] uppercase tracking-wider">2. Waist</h4>
-                      <p className="text-xs text-muted-foreground">Measure around your natural waistline, keeping tape comfortably snug.</p>
-                    </div>
-                    <div className="p-4 rounded-xl bg-surface border border-border space-y-1">
-                      <h4 className="text-xs font-bold text-[#e07a3f] uppercase tracking-wider">3. Hips</h4>
-                      <p className="text-xs text-muted-foreground">Stand with feet together and measure around the fullest hip curve.</p>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {activeTab === 'Specifications' && (
-                <div className="px-2 max-w-4xl space-y-3 pb-8 text-sm">
-                  <div className="grid grid-cols-2 max-w-md gap-2">
-                    <span className="text-muted-foreground">Fabric:</span>
-                    <span className="font-semibold">{product.fabric}</span>
-                    <span className="text-muted-foreground">Colour:</span>
-                    <span className="font-semibold">{product.colour}</span>
-                    <span className="text-muted-foreground">Category:</span>
-                    <span className="font-semibold">{product.categoryName}</span>
-                  </div>
-                </div>
-              )}
-
-
-            </div>
           </main>
 
         </div>
       </div>
+
+      {isSizeChartOpen && (
+        <div
+          className="fixed inset-0 z-[120] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm"
+          role="presentation"
+          onClick={() => setIsSizeChartOpen(false)}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="size-chart-title"
+            className="relative max-h-[88vh] w-full max-w-[380px] overflow-y-auto rounded-2xl bg-white p-4 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setIsSizeChartOpen(false)}
+              aria-label="Close size chart"
+              className="absolute right-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-white/95 text-foreground shadow"
+            >
+              <X className="h-5 w-5" />
+            </button>
+            <h2 id="size-chart-title" className="sr-only">Vastrax size chart</h2>
+            {product.size_chart === WOMENS_SIZE_CHART ? (
+              <Image
+                src="/images/vastrax-womens-size-guide.svg"
+                alt="Vastrax women’s size guide with bust, waist, and hip measurements for sizes XS to 4XL"
+                width={834}
+                height={1390}
+                className="mx-auto h-auto max-h-[78vh] w-auto max-w-full object-contain"
+              />
+            ) : product.size_chart?.headers?.length && product.size_chart.rows.length ? (
+              <div className="pt-10">
+                <h3 className="mb-4 text-center text-lg font-bold text-foreground">Size Chart</h3>
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse text-left text-sm">
+                    <thead><tr className="border-b border-border text-xs font-bold uppercase text-muted-foreground">
+                      {product.size_chart.headers.map((header, index) => <th key={index} className="px-2 py-3">{header}</th>)}
+                    </tr></thead>
+                    <tbody className="divide-y divide-border/50">
+                      {product.size_chart.rows.map((row, index) => (
+                        <tr key={index}>
+                          {Object.entries(row).map(([key, value]) => <td key={key} className="px-2 py-3">{value}</td>)}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : (
+              <p className="pt-10 text-center text-sm text-muted-foreground">No size chart is available for this product.</p>
+            )}
+          </section>
+        </div>
+      )}
 
       <AuthModal
         isOpen={isAuthOpen}
