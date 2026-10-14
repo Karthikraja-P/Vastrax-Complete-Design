@@ -599,11 +599,13 @@ function CollectionsPageContent() {
                               <Box className="w-4 h-4 text-[#38bdf8] group-hover/3d:scale-110 transition-transform" />
                             </button>
                           </div>
-                          <div className="bg-background dark:bg-[#2a2a2a] px-2.5 py-1 rounded-full flex items-center gap-1.5">
-                            <Star className="w-3 h-3 fill-[#e07a3f] text-[#e07a3f]" />
-                            <span className="text-[10px] font-bold text-foreground dark:text-white">{product.rating}</span>
-                            <span className="text-[9px] text-muted-foreground">({product.ratingCount || 15})</span>
-                          </div>
+                          {(product.ratingCount ?? 0) > 0 && (
+                            <div className="bg-background dark:bg-[#2a2a2a] px-2.5 py-1 rounded-full flex items-center gap-1.5" aria-label={`${product.rating} out of 5 from ${product.ratingCount} reviews`}>
+                              <Star className="w-3 h-3 fill-[#e07a3f] text-[#e07a3f]" />
+                              <span className="text-[10px] font-bold text-foreground dark:text-white">{product.rating}</span>
+                              <span className="text-[9px] text-muted-foreground">({product.ratingCount})</span>
+                            </div>
+                          )}
                         </div>
 
                         {/* Image */}

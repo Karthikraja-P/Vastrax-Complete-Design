@@ -1,8 +1,8 @@
 "use client";
 import Image from "next/image";
 
-import { useState, useRef, useEffect } from "react";
-import { User, ShoppingBag, ChevronRight, ChevronLeft, ArrowRight, Heart } from "lucide-react";
+import { useState, useEffect } from "react";
+import { User, ShoppingBag, ChevronRight, ArrowRight, Heart } from "lucide-react";
 import { AuthModal } from "@/components/auth/AuthModal";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { CartDrawer } from "@/components/layout/CartDrawer";
@@ -145,50 +145,12 @@ export default function StorefrontHome() {
   const [isStylistOpen, setIsStylistOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [activeCollection, setActiveCollection] = useState(0);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const [canScrollLeft, setCanScrollLeft] = useState(false);
-  const [canScrollRight, setCanScrollRight] = useState(true);
 
   useEffect(() => {
     const handleOpenStylist = () => setIsStylistOpen(true);
     window.addEventListener("open-stylist", handleOpenStylist);
     return () => window.removeEventListener("open-stylist", handleOpenStylist);
   }, []);
-
-  const handleScroll = () => {
-    if (scrollRef.current) {
-      const { scrollLeft, scrollWidth, clientWidth } = scrollRef.current;
-      setCanScrollLeft(scrollLeft > 0);
-      setCanScrollRight(scrollLeft < scrollWidth - clientWidth - 5);
-    }
-  };
-
-  useEffect(() => {
-    handleScroll();
-    window.addEventListener("resize", handleScroll);
-    return () => window.removeEventListener("resize", handleScroll);
-  }, []);
-
-  const scrollRight = () => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollBy({ left: 350, behavior: "smooth" });
-    }
-  };
-
-  const scrollLeft = () => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollBy({ left: -350, behavior: "smooth" });
-    }
-  };
-
-  const getCollectionHeight = (idx: number) => {
-    const diff = Math.abs(idx - activeCollection);
-    if (diff === 0) return "100%";
-    if (diff === 1) return "90%";
-    if (diff === 2) return "80%";
-    if (diff === 3) return "70%";
-    return "65%";
-  };
 
   return (
     <div className="min-h-screen bg-surface text-foreground font-sans flex flex-col">
@@ -348,26 +310,12 @@ export default function StorefrontHome() {
             </Link>
           </div>
 
-          <div className="relative group/slider mt-4 max-w-7xl mx-auto px-6 md:px-12">
-            {canScrollLeft && (
-              <button
-                onClick={scrollLeft}
-                className="absolute -left-6 top-1/2 -translate-y-1/2 z-10 w-12 h-12 bg-background border border-border shadow-lg rounded-full hidden md:flex items-center justify-center text-foreground hover:text-accent hover:border-accent transition-all opacity-0 group-hover/slider:opacity-100"
-                aria-label="Scroll left"
-              >
-                <ChevronLeft className="w-6 h-6 mr-1" />
-              </button>
-            )}
-
-            <div
-              ref={scrollRef}
-              onScroll={handleScroll}
-              className="flex gap-4 md:gap-8 overflow-x-auto pb-6 snap-x snap-mandatory [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
-            >
+          <div className="mt-4 max-w-7xl mx-auto px-6 md:px-12">
+            <div className="grid gap-4 md:gap-6 pb-2 [grid-template-columns:repeat(auto-fit,minmax(min(100%,17rem),1fr))]">
               {categories.map((cat, idx) => (
-                <Link key={idx} href={`/storefront/collections?gender=Women&category=${encodeURIComponent(cat.name)}`} className="flex-shrink-0 w-52 md:w-[280px] snap-start group">
-                  <div className="bg-background rounded-2xl md:rounded-3xl p-5 md:p-8 shadow-sm border border-border/30 h-72 md:h-[360px] flex flex-col items-center justify-between transition-transform duration-300 group-hover:-translate-y-2 group-hover:shadow-md">
-                    <div className="flex-1 w-full relative flex items-center justify-center overflow-hidden rounded-xl mb-4 md:mb-6">
+                <Link key={idx} href={`/storefront/collections?gender=Women&category=${encodeURIComponent(cat.name)}`} className="group min-w-0">
+                  <div className="bg-background rounded-2xl md:rounded-3xl p-4 md:p-5 shadow-sm border border-border/50 h-72 md:h-[360px] flex flex-col transition-all duration-300 group-hover:-translate-y-1 group-hover:shadow-lg group-hover:border-accent/40">
+                    <div className="flex-1 w-full relative flex items-center justify-center overflow-hidden rounded-xl mb-4">
                       <Image width={1200} height={900} unoptimized
                         src={cat.image}
                         alt={cat.name}
@@ -378,17 +326,8 @@ export default function StorefrontHome() {
                   </div>
                 </Link>
               ))}
+              {categories.length === 0 && <p className="col-span-full rounded-2xl border border-dashed border-border p-10 text-center text-sm text-muted-foreground">Categories will appear here as products are added.</p>}
             </div>
-
-            {canScrollRight && (
-              <button
-                onClick={scrollRight}
-                className="absolute -right-6 top-1/2 -translate-y-1/2 z-10 w-12 h-12 bg-background border border-border shadow-lg rounded-full hidden md:flex items-center justify-center text-foreground hover:text-accent hover:border-accent transition-all opacity-0 group-hover/slider:opacity-100"
-                aria-label="Scroll right"
-              >
-                <ChevronRight className="w-6 h-6 ml-1" />
-              </button>
-            )}
           </div>
         </section>
 
@@ -403,7 +342,6 @@ export default function StorefrontHome() {
 
           <div className="relative group/colSlider max-w-7xl mx-auto px-6 md:px-12">
             <div
-              ref={scrollRef} // Reusing the same ref or we can just scroll the target directly
               className="h-[400px] md:h-[500px] flex items-center justify-start gap-2 md:gap-4 w-full overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] py-4"
             >
               {collections.map((col, idx) => {
@@ -415,9 +353,9 @@ export default function StorefrontHome() {
                     onMouseEnter={() => setActiveCollection(idx)}
                   onClick={() => setActiveCollection(idx)}
                   className={`relative overflow-hidden bg-[#1f1f1f] rounded-2xl md:rounded-[2rem] cursor-pointer transition-all duration-500 ease-[cubic-bezier(0.25,1,0.5,1)] flex items-end shrink-0
-                    ${isActive ? 'w-[280px] md:w-[450px] lg:w-[550px]' : 'w-20 md:w-28 lg:w-36'}
+                    ${isActive ? 'flex-1 basis-0 min-w-[190px]' : 'w-14 md:w-20 lg:w-24'}
                   `}
-                  style={{ height: getCollectionHeight(idx) }}
+                  style={{ height: "100%" }}
                 >
                   <Image width={1200} height={900} unoptimized
                     src={String(col.image || "/placeholder.svg")}
@@ -433,7 +371,7 @@ export default function StorefrontHome() {
                   {/* Active Content */}
                   <div className={`relative z-10 w-full p-6 md:p-10 flex items-end justify-between transition-opacity duration-500 delay-100 ${isActive ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
                     <div className="min-w-0 pr-4">
-                      <p className="text-white/70 text-[10px] md:text-xs font-bold tracking-[0.2em] mb-2">{col.id} / 06</p>
+                      <p className="text-white/70 text-[10px] md:text-xs font-bold tracking-[0.2em] mb-2">COLLECTION {col.id}</p>
                       <h3 className="text-white text-lg md:text-3xl font-light tracking-widest truncate drop-shadow-md">
                         {col.title}
                       </h3>
@@ -445,6 +383,7 @@ export default function StorefrontHome() {
                 </div>
                 );
               })}
+              {collections.length === 0 && <div className="flex h-full w-full items-center justify-center rounded-3xl border border-dashed border-border text-sm text-muted-foreground">Curated collections will appear here as products are added.</div>}
             </div>
 
             {/* Scroll Right Arrow */}

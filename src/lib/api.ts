@@ -293,6 +293,10 @@ export const productsApi = {
     }
   },
 
+  async getReviewEligibility(productId: string | number): Promise<{ eligible: boolean; already_reviewed: boolean }> {
+    return await fetchApi<{ eligible: boolean; already_reviewed: boolean }>(`/products/${productId}/reviews/eligibility`);
+  },
+
   async createReview(productId: string | number, data: { rating: number; comment?: string }): Promise<ProductReview> {
     return await fetchApi<ProductReview>(`/products/${productId}/reviews`, {
       method: "POST",

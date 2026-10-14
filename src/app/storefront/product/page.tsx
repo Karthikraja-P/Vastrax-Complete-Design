@@ -202,6 +202,7 @@ function ProductContent() {
   const [newRating, setNewRating] = useState(5);
   const [newComment, setNewComment] = useState("");
   const [isSubmittingReview, setIsSubmittingReview] = useState(false);
+  const [reviewEligibility, setReviewEligibility] = useState<{ productId: string; eligible: boolean; already_reviewed: boolean } | null>(null);
 
   const loadReviews = useCallback(async () => {
     if (!productId) return;
@@ -212,6 +213,15 @@ function ProductContent() {
   useEffect(() => {
     void Promise.resolve().then(loadReviews);
   }, [loadReviews]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!session || !productId) return () => { cancelled = true; };
+    productsApi.getReviewEligibility(productId)
+      .then((eligibility) => { if (!cancelled) setReviewEligibility({ productId, ...eligibility }); })
+      .catch(() => { if (!cancelled) setReviewEligibility({ productId, eligible: false, already_reviewed: false }); });
+    return () => { cancelled = true; };
+  }, [productId, session]);
 
   const handleReviewSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -540,17 +550,13 @@ function ProductContent() {
                   </p>
                 )}
 
-                <div className="flex items-center gap-2 mb-6">
-                  {product.reviewsCount > 0 ? (
-                    <>
+                {product.reviewsCount > 0 && <div className="flex items-center gap-2 mb-6">
                       <div className="flex text-[#e07a3f]" aria-label="Rated by customers">
                         {[1, 2, 3, 4, 5].map((star) => <Star key={star} className={star <= Math.round(product.rating) ? "w-4 h-4 fill-current" : "w-4 h-4 text-muted-foreground/30"} />)}
                       </div>
                       <span className="text-xs font-bold text-foreground">{product.rating} / 5.0</span>
                       <span className="text-xs text-foreground/50">({product.reviewsCount} Reviews)</span>
-                    </>
-                  ) : <span className="text-xs text-muted-foreground">No ratings yet</span>}
-                </div>
+                </div>}
 
                 <div className="w-full h-[1px] bg-border/50 mb-6" />
 
@@ -860,7 +866,7 @@ function ProductContent() {
               {activeTab === 'Reviews' && (
                 <div className="px-2 max-w-4xl space-y-8 pb-12">
                   {/* Rating Summary Header */}
-                  <div className="bg-surface border border-border/50 rounded-2xl p-6 flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-sm">
+                  {reviewsList.length > 0 ? <div className="bg-surface border border-border/50 rounded-2xl p-6 flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-sm">
                     <div className="flex items-center gap-6">
                       <div className="text-center bg-background/50 border border-border/50 rounded-xl px-6 py-4">
                         <span className="text-4xl font-extrabold text-foreground">{product.rating}</span>
@@ -881,10 +887,10 @@ function ProductContent() {
                         </p>
                       </div>
                     </div>
-                  </div>
+                  </div> : <p className="rounded-2xl border border-border/50 bg-surface p-5 text-sm text-muted-foreground">No customer ratings yet. Ratings are open to verified buyers after delivery.</p>}
 
                   {/* Write a Review Form */}
-                  <form onSubmit={handleReviewSubmit} className="bg-surface border border-border/50 rounded-2xl p-6 space-y-4 shadow-sm">
+                  {reviewEligibility?.productId === productId && reviewEligibility.eligible ? <form onSubmit={handleReviewSubmit} className="bg-surface border border-border/50 rounded-2xl p-6 space-y-4 shadow-sm">
                     <h4 className="text-sm font-bold uppercase tracking-wider text-foreground">Write a Customer Review</h4>
                     <div className="flex items-center gap-3">
                       <span className="text-xs text-muted-foreground font-medium">Your Rating:</span>
@@ -920,7 +926,10 @@ function ProductContent() {
                         {isSubmittingReview ? "Publishing Review..." : "Submit Review"}
                       </button>
                     </div>
-                  </form>
+                  </form> : <div className="rounded-2xl border border-border/50 bg-surface p-5 text-sm text-muted-foreground">
+                    {!session ? <button type="button" onClick={() => { setAuthMode("signin"); setIsAuthOpen(true); }} className="text-accent underline underline-offset-4">Sign in</button> : reviewEligibility?.productId === productId && reviewEligibility.already_reviewed ? "You have already reviewed this product." : "After this product is marked delivered on your order, you can leave a verified rating here."}
+                    {!session && " to check your purchase and review eligibility."}
+                  </div>}
 
                   {/* Reviews List */}
                   <div className="space-y-4">

@@ -162,6 +162,15 @@ def get_product_reviews(product_id: str, db: Session = Depends(get_db)):
     return ProductService(db).list_reviews(product_id)
 
 
+@router.get("/{product_id}/reviews/eligibility")
+def get_product_review_eligibility(
+    product_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return ProductService(db).review_eligibility(product_id, current_user)
+
+
 @router.post("/{product_id}/reviews", status_code=status.HTTP_201_CREATED)
 def create_product_review(
     product_id: str,
