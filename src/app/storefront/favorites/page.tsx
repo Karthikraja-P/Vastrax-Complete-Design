@@ -2,7 +2,7 @@
 import Image from "next/image";
 
 import { useState, useEffect } from "react";
-import { Heart, ShoppingBag, User, Box } from "lucide-react";
+import { Heart, ShoppingBag, User } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { AuthModal } from "@/components/auth/AuthModal";
 import { useSession } from "next-auth/react";
@@ -10,9 +10,6 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { performSignOut } from "@/lib/auth-utils";
 import { CartDrawer } from "@/components/layout/CartDrawer";
-import { StylistDrawer } from "@/components/stylist/StylistDrawer";
-import { Product3DModal } from "@/components/3d/Product3DModal";
-import type { AddToCartProduct } from "@/components/3d/Product3DModal";
 import { productsApi, StorefrontProduct } from "@/lib/api";
 import { useFavorites } from "@/hooks/useFavorites";
 import { addToCart as addCartItem } from "@/lib/cart";
@@ -42,16 +39,8 @@ export default function FavoritesPage() {
   const { toggleFavorite, isFavorite } = useFavorites();
 
   const [isCartOpen, setIsCartOpen] = useState(false);
-  const [isStylistOpen, setIsStylistOpen] = useState(false);
-
-  useEffect(() => {
-    const handleOpenStylist = () => setIsStylistOpen(true);
-    window.addEventListener("open-stylist", handleOpenStylist);
-    return () => window.removeEventListener("open-stylist", handleOpenStylist);
-  }, []);
 
   const [selectedProductForSize, setSelectedProductForSize] = useState<StorefrontProduct | null>(null);
-  const [selected3DProduct, setSelected3DProduct] = useState<StorefrontProduct | null>(null);
 
   useEffect(() => {
     async function fetchData() {
@@ -70,13 +59,11 @@ export default function FavoritesPage() {
             id: p.id,
             name: p.name || p.title || "Product",
             price: Number(p.price || p.price_selling || 0),
-            originalPrice: p.originalPrice || p.price_mrp || p.compareAtPrice ? Number(p.originalPrice || p.price_mrp || p.compareAtPrice) : undefined,
             rating: Number(p.rating || p.rating_average || 0),
             image: img,
             isNew: Boolean(p.isNew || p.is_featured),
             categoryId: p.categoryId || p.category_id,
             categoryName: p.category_name || p.category || "Apparel",
-            model3dUrl: p.model_path || p.model3dUrl
           };
         });
         setProducts(mapped);
@@ -95,7 +82,7 @@ export default function FavoritesPage() {
     return bagItems.some((item) => String(item.id) === String(productId));
   };
 
-  const addItemToBag = (product: AddToCartProduct, size = "M") => {
+  const addItemToBag = (product: StorefrontProduct, size = "M") => {
     const priceNum = typeof product.price === 'string'
       ? parseFloat(String(product.price).replace(/[^0-9.-]+/g, "")) || 0
       : Number(product.price) || 0;
@@ -220,13 +207,6 @@ export default function FavoritesPage() {
             )}
           </div>
 
-          <button
-            onClick={() => setIsStylistOpen(true)}
-            className="hidden md:flex items-center gap-2 px-4 py-2 rounded-full bg-[#e07a3f]/10 text-[#e07a3f] border border-[#e07a3f]/30 hover:bg-[#e07a3f] hover:text-white transition-all text-xs font-bold uppercase tracking-wider"
-          >
-            AI Stylist
-          </button>
-
           <button 
             onClick={() => setIsCartOpen(true)}
             aria-label="Open Shopping Bag"
@@ -289,13 +269,6 @@ export default function FavoritesPage() {
                     >
                       <Heart className="w-4 h-4 fill-current" />
                     </button>
-                    <button
-                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); setSelected3DProduct(product); }}
-                      title="Interactive 3D Preview"
-                      className="w-8 h-8 rounded-full bg-background dark:bg-[#2a2a2a] flex items-center justify-center text-muted-foreground hover:text-[#38bdf8] transition-colors shadow-sm cursor-pointer group/3d"
-                    >
-                      <Box className="w-4 h-4 text-[#38bdf8] group-hover/3d:scale-110 transition-transform" />
-                    </button>
                   </div>
 
                   <Link href={`/storefront/product?id=${product.id}`} className="w-full h-full">
@@ -314,7 +287,6 @@ export default function FavoritesPage() {
                     </Link>
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-lg font-bold">₹{product.price.toLocaleString()}</span>
-                      {product.originalPrice && <span className="text-xs text-muted-foreground line-through">₹{product.originalPrice.toLocaleString()}</span>}
                     </div>
                   </div>
 
@@ -341,20 +313,6 @@ export default function FavoritesPage() {
         initialMode={authMode}
       />
       <CartDrawer isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} />
-      <StylistDrawer isOpen={isStylistOpen} onClose={() => setIsStylistOpen(false)} />
-
-      {selected3DProduct && (
-        <Product3DModal
-          isOpen={!!selected3DProduct}
-          onClose={() => setSelected3DProduct(null)}
-          product={selected3DProduct}
-          onAddToBag={(prod) => {
-            addItemToBag(prod, "M");
-            setSelected3DProduct(null);
-          }}
-        />
-      )}
-
       {/* Size Selection Modal */}
       {selectedProductForSize && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setSelectedProductForSize(null)}>
