@@ -1,11 +1,4 @@
-"""
-Vastra AI Style Advisor.
-
-Modes:
-  • OpenAI  — real OpenAI API (e.g. gpt-4o-mini) when OPENAI_API_KEY is provided
-  • Claude  — real Anthropic API when ANTHROPIC_API_KEY starts with "sk-ant-"
-  • Mock    — scripted fashion intelligence fallback when keys are absent
-"""
+"""Vastra AI Stylist service. Shopper conversations use MiniMax M3 only."""
 import json
 import logging
 import os

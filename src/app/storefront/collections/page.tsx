@@ -345,7 +345,7 @@ function CollectionsPageContent() {
       <header className="h-16 md:h-20 flex items-center justify-between relative px-3 sm:px-6 md:px-12 sticky top-2 md:top-4 bg-surface dark:bg-[#1a1a1a] z-50 rounded-[1.5rem] sm:rounded-[2rem] shadow-md border border-border dark:border-white/10 mx-2 md:mx-4 mt-2 md:mt-4">
         {/* Left Side: Navigation */}
         <div className="flex items-center gap-2 sm:gap-6 z-10">
-          <StorefrontMobileControls showMenu={false} />
+          <StorefrontMobileControls showMenu={false} inlineSearch />
           <nav aria-label="Store navigation" className="flex items-center gap-2 sm:gap-4 2xl:gap-8">
             <Link href="/storefront/home" className="text-xs sm:text-sm 2xl:text-lg font-medium hover:text-[#e07a3f] transition-colors">Home</Link>
             <Link href="/storefront/collections?gender=Women" onClick={() => setSelectedDepartment("Women")} className="text-xs sm:text-sm 2xl:text-lg font-medium hover:text-[#e07a3f] transition-colors">Collections</Link>
@@ -368,16 +368,6 @@ function CollectionsPageContent() {
           <a href="/storefront/favorites" className="relative p-1 text-muted-foreground hover:text-[#e07a3f] transition-colors">
             <Heart className="w-5 h-5" />
           </a>
-          <div className="hidden 2xl:flex items-center gap-2 px-3 py-1.5 bg-surface dark:bg-[#222] border border-border dark:border-white/10 rounded-full transition-all text-sm w-48 lg:w-64 focus-within:border-[#e07a3f] focus-within:ring-1 focus-within:ring-[#e07a3f]">
-            <Search className="w-4 h-4 text-muted-foreground" />
-            <input
-              type="text"
-              placeholder="Search"
-              className="flex-1 bg-transparent border-none outline-none text-foreground dark:text-white placeholder:text-muted-foreground"
-            />
-          </div>
-
-
           <div className="relative">
             <button
               onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}

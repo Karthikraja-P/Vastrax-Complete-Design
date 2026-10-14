@@ -2,7 +2,7 @@
 import Image from "next/image";
 
 import { useState, useRef, useEffect } from "react";
-import { User, ShoppingBag, Search, ChevronRight, ChevronLeft, ArrowRight, Heart } from "lucide-react";
+import { User, ShoppingBag, ChevronRight, ChevronLeft, ArrowRight, Heart } from "lucide-react";
 import { AuthModal } from "@/components/auth/AuthModal";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { CartDrawer } from "@/components/layout/CartDrawer";
@@ -196,7 +196,7 @@ export default function StorefrontHome() {
       <header className="h-16 md:h-20 flex items-center justify-between relative px-3 sm:px-6 md:px-12 sticky top-2 md:top-4 bg-background z-40 rounded-[1.5rem] sm:rounded-[2rem] shadow-sm border border-border/50 mx-2 md:mx-4 mt-2 md:mt-4">
         {/* Left Side: Navigation */}
         <div className="flex items-center gap-2 sm:gap-6 z-10">
-          <StorefrontMobileControls showMenu={false} />
+          <StorefrontMobileControls showMenu={false} inlineSearch />
           <nav aria-label="Store navigation" className="flex items-center gap-2 sm:gap-4 2xl:gap-8">
             <Link href="/storefront/home" className="text-xs sm:text-sm 2xl:text-lg font-medium hover:text-accent transition-colors">Home</Link>
             <Link href="/storefront/collections?gender=Women" className="text-xs sm:text-sm 2xl:text-lg font-medium hover:text-accent transition-colors">Collections</Link>
@@ -229,20 +229,6 @@ export default function StorefrontHome() {
               <span className="absolute -top-1 -right-1 bg-[#e07a3f] text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center font-bold shadow-sm">{favorites.length}</span>
             )}
           </button>
-          <div className="hidden 2xl:flex items-center gap-2 px-3 py-1.5 bg-surface border border-border rounded-full transition-all text-sm w-48 lg:w-64 focus-within:border-accent focus-within:ring-1 focus-within:ring-accent">
-            <Search className="w-4 h-4 text-muted-foreground" />
-            <input
-              type="text"
-              placeholder="Search garments..."
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && (e.target as HTMLInputElement).value.trim()) {
-                  router.push(`/storefront/collections?search=${encodeURIComponent((e.target as HTMLInputElement).value.trim())}`);
-                }
-              }}
-              className="flex-1 bg-transparent border-none outline-none text-foreground placeholder:text-muted-foreground text-sm"
-            />
-          </div>
-
           <div className="relative">
             <button
               onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
