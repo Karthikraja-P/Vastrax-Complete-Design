@@ -16,7 +16,7 @@ import { Product3DModal } from "@/components/3d/Product3DModal";
 import { productsApi, ProductReview, ProductItem, ProductVariant } from "@/lib/api";
 import { addToCart as addCartItem } from "@/lib/cart";
 import { useCartItems } from "@/hooks/useCartItems";
-import { isSizeChart, SizeChart, SizeChartRow } from "@/lib/sizeChart";
+import { isSizeChart, SizeChart, SizeChartRow, WOMENS_SIZE_CHART } from "@/lib/sizeChart";
 import { showToast } from "@/lib/toast";
 import StorefrontMobileControls from "@/components/layout/StorefrontMobileControls";
 import { useFavorites } from "@/hooks/useFavorites";
@@ -66,6 +66,7 @@ function ProductContent() {
     model_path?: string;
     stock?: number;
     size_chart?: SizeChart;
+    gender?: string;
     variants?: ProductVariant[];
   }>({
     id: "",
@@ -133,11 +134,12 @@ function ProductContent() {
             reviewsCount: Number(item.rating_count || item.reviewsCount || 0),
             model3dUrl: modelUrl,
             stock: item.stock ?? item.inventoryCount ?? 0,
-            size_chart: isSizeChart(item.size_chart) ? item.size_chart : undefined,
+            size_chart: isSizeChart(item.size_chart) ? item.size_chart : String(item.gender || "").toLowerCase() === "women" ? WOMENS_SIZE_CHART : undefined,
+            gender: item.gender || "",
             variants: item.variants || []
           });
           if (item.colour) setActiveColor(item.colour);
-          setActiveSize((isSizeChart(item.size_chart) ? item.size_chart.rows[0]?.size : undefined) || item.variants?.[0]?.size || "");
+          setActiveSize(item.variants?.[0]?.size || (isSizeChart(item.size_chart) ? item.size_chart.rows[0]?.size : undefined) || "");
           setActiveImageIndex(0);
           setIs3DMode(false);
           setResolvedProductKey(requestKey);
@@ -175,11 +177,12 @@ function ProductContent() {
           model3dUrl: modelUrl,
           model_path: item.model_path,
           stock: item.stock ?? item.inventoryCount ?? 0,
-          size_chart: isSizeChart(item.size_chart) ? item.size_chart : undefined,
+          size_chart: isSizeChart(item.size_chart) ? item.size_chart : String(item.gender || "").toLowerCase() === "women" ? WOMENS_SIZE_CHART : undefined,
+          gender: item.gender || "",
           variants: item.variants || []
         });
         if (item.colour) setActiveColor(item.colour);
-        setActiveSize((isSizeChart(item.size_chart) ? item.size_chart.rows[0]?.size : undefined) || item.variants?.[0]?.size || "");
+        setActiveSize(item.variants?.[0]?.size || (isSizeChart(item.size_chart) ? item.size_chart.rows[0]?.size : undefined) || "");
         setActiveImageIndex(0);
         setIs3DMode(false);
         setResolvedProductKey(requestKey);
@@ -831,6 +834,8 @@ function ProductContent() {
                       );
                     })()}
                   </div>
+
+                  <p className="px-1 text-xs text-muted-foreground">All values are approximate body measurements, not finished garment measurements.</p>
 
                   {/* Measurement Instructions */}
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">

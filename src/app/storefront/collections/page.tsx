@@ -595,7 +595,7 @@ function CollectionsPageContent() {
                             type="button"
                             onClick={(e) => toggleFavorite(product, e)}
                             aria-label={favorites.includes(product.id) ? `Remove ${product.name} from favorites` : `Add ${product.name} to favorites`}
-                            className="w-8 h-8 rounded-full bg-white/80 flex items-center justify-center text-[#6f6257] hover:text-[#b95625] transition-colors"
+                            className="ml-auto w-10 h-10 rounded-full bg-white/90 flex items-center justify-center text-[#6f6257] hover:text-[#b95625] transition-colors shadow-sm"
                           >
                             <Heart className={`w-4 h-4 ${favorites.includes(product.id) ? 'fill-[#e07a3f] text-[#e07a3f]' : ''}`} />
                           </button>
