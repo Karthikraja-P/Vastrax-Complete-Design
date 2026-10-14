@@ -17,6 +17,7 @@ from app.models.business import StockMovement
 from app.models.product_image import ProductImage
 from app.models.product_variant import ProductVariant
 from app.schemas.products import ProductCreate, ProductResponse, ProductUpdate
+from app.services.product_image_storage import store_product_image
 
 logger = get_logger(__name__)
 
@@ -128,7 +129,7 @@ class ProductService:
         for img_data in payload.images:
             self.db.add(ProductImage(
                 product_id=product.id,
-                s3_url=img_data.s3_url,
+                s3_url=store_product_image(img_data.s3_url),
                 display_order=img_data.display_order,
             ))
         for var_data in payload.variants:
@@ -177,7 +178,7 @@ class ProductService:
             for img_data in payload.images:
                 self.db.add(ProductImage(
                     product_id=product.id,
-                    s3_url=img_data.s3_url,
+                    s3_url=store_product_image(img_data.s3_url),
                     display_order=img_data.display_order,
                 ))
 
