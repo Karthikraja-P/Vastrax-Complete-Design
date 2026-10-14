@@ -2,7 +2,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Optional, Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class ProductImageCreate(BaseModel):
@@ -20,8 +20,15 @@ class ProductImageResponse(BaseModel):
 
 class ProductVariantCreate(BaseModel):
     sku: str
-    size: str
+    size: str = Field(min_length=1)
     stock_qty: int = Field(default=0, ge=0)
+
+    @field_validator("size", mode="before")
+    @classmethod
+    def require_nonblank_size(cls, value: object) -> object:
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError("Each product variant must have a size.")
+        return value.strip()
 
 
 class ProductVariantResponse(BaseModel):
@@ -50,7 +57,7 @@ class ProductCreate(BaseModel):
     is_published: bool = True
     model_path: Optional[str] = None  # URL or S3 key for 3D model
     images: list[ProductImageCreate] = []
-    variants: list[ProductVariantCreate] = []
+    variants: list[ProductVariantCreate] = Field(min_length=1)
 
 
 class ProductUpdate(BaseModel):
@@ -70,7 +77,7 @@ class ProductUpdate(BaseModel):
     is_published: Optional[bool] = None
     model_path: Optional[str] = None
     images: Optional[list[ProductImageCreate]] = None
-    variants: Optional[list[ProductVariantCreate]] = None
+    variants: Optional[list[ProductVariantCreate]] = Field(default=None, min_length=1)
 
 
 class ProductResponse(BaseModel):
@@ -110,4 +117,3 @@ class ImageUploadIn(BaseModel):
 class ModelUploadIn(BaseModel):
     filename: str
     content_type: str
-

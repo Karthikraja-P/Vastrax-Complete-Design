@@ -1,7 +1,7 @@
 "use client";
 import Image from "next/image";
 
-import { useState, useEffect, Suspense, useCallback } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Heart, Star, Ruler, Truck, ShieldCheck, Minus, Plus, ShoppingBag, RefreshCw, Check, Box, Bell, Sparkles } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -13,13 +13,23 @@ import { StylistDrawer } from "@/components/stylist/StylistDrawer";
 import { GarmentViewer3D } from "@/components/3d/GarmentViewer3D";
 import { Product3DModal } from "@/components/3d/Product3DModal";
 
-import { productsApi, fetchApi, ProductReview, ProductItem, ProductVariant } from "@/lib/api";
+import { productsApi, fetchApi, ProductItem, ProductVariant } from "@/lib/api";
 import { addToCart as addCartItem } from "@/lib/cart";
 import { useCartItems } from "@/hooks/useCartItems";
 import { isSizeChart, SizeChart, SizeChartRow, WOMENS_SIZE_CHART } from "@/lib/sizeChart";
 import { showToast } from "@/lib/toast";
 import StorefrontMobileControls from "@/components/layout/StorefrontMobileControls";
 import { useFavorites } from "@/hooks/useFavorites";
+
+function resolveSizeChart(value: unknown, gender?: string): SizeChart | undefined {
+  if (isSizeChart(value)) {
+    const hasMeasurements = value.rows.some((row) =>
+      Object.entries(row).some(([key, cell]) => key !== "size" && String(cell ?? "").trim().length > 0)
+    );
+    if (hasMeasurements) return value;
+  }
+  return String(gender || "").toLowerCase() === "women" ? WOMENS_SIZE_CHART : undefined;
+}
 
 function ProductContent() {
   const searchParams = useSearchParams();
@@ -53,7 +63,6 @@ function ProductContent() {
     name: string;
     categoryName: string;
     price: number;
-    originalPrice?: number;
     description: string;
     fabric: string;
     colour: string;
@@ -124,7 +133,6 @@ function ProductContent() {
             name: item.name || item.title || "Product",
             categoryName: catName,
             price: Number(item.price_selling || item.price || 0),
-            originalPrice: item.price_mrp || item.originalPrice ? Number(item.price_mrp || item.originalPrice) : undefined,
             description: item.description || "",
             fabric: item.fabric || "",
             colour: item.colour || "Default",
@@ -134,7 +142,7 @@ function ProductContent() {
             reviewsCount: Number(item.rating_count || item.reviewsCount || 0),
             model3dUrl: modelUrl,
             stock: item.stock ?? item.inventoryCount ?? 0,
-            size_chart: isSizeChart(item.size_chart) ? item.size_chart : String(item.gender || "").toLowerCase() === "women" ? WOMENS_SIZE_CHART : undefined,
+            size_chart: resolveSizeChart(item.size_chart, item.gender),
             gender: item.gender || "",
             variants: item.variants || []
           });
@@ -165,7 +173,6 @@ function ProductContent() {
           name: item.name || item.title || "Product",
           categoryName: catName,
           price: Number(item.price_selling || item.price || 0),
-          originalPrice: item.price_mrp || item.originalPrice ? Number(item.price_mrp || item.originalPrice) : undefined,
           description: item.description || "",
           fabric: item.fabric || "",
           colour: item.colour || "Default",
@@ -177,7 +184,7 @@ function ProductContent() {
           model3dUrl: modelUrl,
           model_path: item.model_path,
           stock: item.stock ?? item.inventoryCount ?? 0,
-          size_chart: isSizeChart(item.size_chart) ? item.size_chart : String(item.gender || "").toLowerCase() === "women" ? WOMENS_SIZE_CHART : undefined,
+          size_chart: resolveSizeChart(item.size_chart, item.gender),
           gender: item.gender || "",
           variants: item.variants || []
         });
@@ -201,74 +208,6 @@ function ProductContent() {
     };
   }, [productId]);
 
-  const [reviewsList, setReviewsList] = useState<ProductReview[]>([]);
-  const [newRating, setNewRating] = useState(5);
-  const [newComment, setNewComment] = useState("");
-  const [isSubmittingReview, setIsSubmittingReview] = useState(false);
-  const [reviewEligibility, setReviewEligibility] = useState<{ productId: string; eligible: boolean; already_reviewed: boolean } | null>(null);
-
-  const loadReviews = useCallback(async () => {
-    if (!productId) return;
-    const revs = await productsApi.getReviews(productId);
-    setReviewsList(revs);
-  }, [productId]);
-
-  useEffect(() => {
-    void Promise.resolve().then(loadReviews);
-  }, [loadReviews]);
-
-  useEffect(() => {
-    let cancelled = false;
-    if (!session || !productId) return () => { cancelled = true; };
-    productsApi.getReviewEligibility(productId)
-      .then((eligibility) => { if (!cancelled) setReviewEligibility({ productId, ...eligibility }); })
-      .catch(() => { if (!cancelled) setReviewEligibility({ productId, eligible: false, already_reviewed: false }); });
-    return () => { cancelled = true; };
-  }, [productId, session]);
-
-  const handleReviewSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!session) {
-      setAuthMode("signin");
-      setIsAuthOpen(true);
-      return;
-    }
-    if (isSubmittingReview) return;
-    setIsSubmittingReview(true);
-    try {
-      await productsApi.createReview(product.id, { rating: newRating, comment: newComment });
-      showToast({
-        title: "Review Submitted",
-        description: "Thank you for your rating! Your review is now live.",
-        type: "gold",
-      });
-      setNewComment("");
-
-      // Refresh product details & reviews list to update dynamic rating average
-      const [item, revs] = await Promise.all([
-        productsApi.getById(product.id),
-        productsApi.getReviews(product.id)
-      ]);
-      if (item) {
-        setProduct((prev) => ({
-          ...prev,
-          rating: Number(item.rating_average || item.rating || prev.rating),
-          ratingCount: Number(item.rating_count || revs.length),
-          reviewsCount: Number(item.rating_count || revs.length),
-        }));
-      }
-      setReviewsList(revs);
-    } catch (err: unknown) {
-      showToast({
-        title: "Submission Failed",
-        description: err instanceof Error ? err.message : "Could not submit review. Please try again.",
-        type: "error",
-      });
-    } finally {
-      setIsSubmittingReview(false);
-    }
-  };
-
   const [notifyEmail, setNotifyEmail] = useState("");
   const [isSubscribingNotify, setIsSubscribingNotify] = useState(false);
   const [isNotifySuccess, setIsNotifySuccess] = useState(false);
@@ -287,9 +226,8 @@ function ProductContent() {
   const currentStock = activeVariant ? Number(activeVariant.stock_qty ?? 0) : 0;
   const isOutOfStock = currentStock <= 0;
   const chartSizes = product.size_chart?.rows.map((row) => row.size.trim()).filter(Boolean) || [];
-  const availableSizes = chartSizes.length
-    ? chartSizes
-    : product.variants?.map((variant) => variant.size?.trim()).filter((size): size is string => Boolean(size)) || [];
+  const variantSizes = product.variants?.map((variant) => variant.size?.trim()).filter((size): size is string => Boolean(size)) || [];
+  const availableSizes = variantSizes.length ? variantSizes : chartSizes;
 
   const handleSubscribeNotify = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -472,8 +410,6 @@ function ProductContent() {
             <span className="text-foreground/30">&gt;</span>
             <Link href="/storefront/collections?gender=Women" className="hover:text-foreground transition-colors">Collections</Link>
             <span className="text-foreground/30">&gt;</span>
-            <Link href={"/storefront/collections?gender=Women&category=" + encodeURIComponent(product.categoryName)} className="hover:text-foreground transition-colors">{product.categoryName}</Link>
-            <span className="text-foreground/30">&gt;</span>
             <span className="text-foreground font-bold truncate max-w-xs">{product.name}</span>
           </div>
 
@@ -549,10 +485,6 @@ function ProductContent() {
 
               {/* Right: Product Info */}
               <div className="w-full lg:w-[45%] flex flex-col pt-2">
-                <div className="flex items-start justify-between mb-3">
-                  <span className="text-[#e07a3f] text-[10px] font-bold tracking-[0.2em] uppercase">{product.categoryName}</span>
-                </div>
-
                 <h1 className="text-3xl lg:text-4xl font-bold mb-4 leading-[1.15] text-foreground">{product.name}</h1>
 
                 {product.description && (
@@ -574,9 +506,6 @@ function ProductContent() {
                 <div className="mb-6">
                   <div className="flex items-baseline gap-3">
                     <span className="text-4xl font-bold text-foreground">₹{product.price.toLocaleString()}</span>
-                    {product.originalPrice && (
-                      <span className="text-lg text-muted-foreground line-through">₹{product.originalPrice.toLocaleString()}</span>
-                    )}
                   </div>
                   <div className="text-[10px] text-foreground/40 mt-1">Inclusive of all taxes • Fabric: {product.fabric}</div>
                 </div>
@@ -755,7 +684,7 @@ function ProductContent() {
             {/* Tabs Section */}
             <div className="mt-16 border-t border-border/50 pt-8">
               <div className="flex items-center gap-8 border-b border-border/50 mb-8 px-2 overflow-x-auto">
-                {['Description', 'Size Chart', 'Specifications', 'Reviews'].map(tab => (
+                {['Description', 'Size Chart', 'Specifications'].map(tab => (
                   <button
                     key={tab}
                     onClick={() => setActiveTab(tab)}
@@ -782,7 +711,7 @@ function ProductContent() {
                     <div>
                       <h3 className="text-xl font-bold flex items-center gap-2">
                         <Ruler className="w-5 h-5 text-[#e07a3f]" />
-                        <span>Garment Size Chart & Measurement Guide</span>
+                        <span>VASTRAX WOMEN’S SIZE GUIDE</span>
                       </h3>
                       <p className="text-xs text-muted-foreground mt-1">
                         Displaying measurements in {sizeChartUnit === 'in' ? 'Inches (in)' : 'Centimeters (cm)'}. Match with your body measurements for optimum comfort.
@@ -808,7 +737,9 @@ function ProductContent() {
 
                   {/* Size Chart Table */}
                   <div className="overflow-x-auto border border-border rounded-2xl bg-surface/50 p-4 shadow-sm">
-                    {(() => {
+                    {product.size_chart === WOMENS_SIZE_CHART && sizeChartUnit === 'in' ? (
+                      <Image src="/images/vastrax-womens-size-guide.svg" alt="Vastrax women’s size guide with bust, waist, and hip measurements for sizes XS to 4XL" width={834} height={1390} className="mx-auto h-auto w-full max-w-[834px] rounded-xl" />
+                    ) : (() => {
                       const activeSizeChart = product.size_chart;
                       if (!activeSizeChart?.headers?.length || !activeSizeChart.rows?.length) {
                         return <p className="text-sm text-muted-foreground">No size chart has been added for this product.</p>;
@@ -879,114 +810,7 @@ function ProductContent() {
                 </div>
               )}
 
-              {activeTab === 'Reviews' && (
-                <div className="px-2 max-w-4xl space-y-8 pb-12">
-                  {/* Rating Summary Header */}
-                  {reviewsList.length > 0 ? <div className="bg-surface border border-border/50 rounded-2xl p-6 flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-sm">
-                    <div className="flex items-center gap-6">
-                      <div className="text-center bg-background/50 border border-border/50 rounded-xl px-6 py-4">
-                        <span className="text-4xl font-extrabold text-foreground">{product.rating}</span>
-                        <div className="flex text-[#e07a3f] justify-center mt-1">
-                          {[1, 2, 3, 4, 5].map((star) => (
-                            <Star
-                              key={star}
-                              className={`w-3.5 h-3.5 ${star <= Math.round(product.rating) ? 'fill-current text-[#e07a3f]' : 'text-muted-foreground/30'}`}
-                            />
-                          ))}
-                        </div>
-                        <span className="text-[10px] text-muted-foreground mt-1 block">out of 5.0</span>
-                      </div>
-                      <div>
-                        <h3 className="text-lg font-bold text-foreground">Customer Reviews & Ratings</h3>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          {reviewsList.length > 0 ? "Based on customer-submitted reviews." : "No customer ratings yet."}
-                        </p>
-                      </div>
-                    </div>
-                  </div> : <p className="rounded-2xl border border-border/50 bg-surface p-5 text-sm text-muted-foreground">No customer ratings yet. Ratings are open to verified buyers after delivery.</p>}
 
-                  {/* Write a Review Form */}
-                  {reviewEligibility?.productId === productId && reviewEligibility.eligible ? <form onSubmit={handleReviewSubmit} className="bg-surface border border-border/50 rounded-2xl p-6 space-y-4 shadow-sm">
-                    <h4 className="text-sm font-bold uppercase tracking-wider text-foreground">Write a Customer Review</h4>
-                    <div className="flex items-center gap-3">
-                      <span className="text-xs text-muted-foreground font-medium">Your Rating:</span>
-                      <div className="flex items-center gap-1">
-                        {[1, 2, 3, 4, 5].map((star) => (
-                          <button
-                            key={star}
-                            type="button"
-                            onClick={() => setNewRating(star)}
-                            className="p-1 focus:outline-none hover:scale-110 transition-transform"
-                          >
-                            <Star className={`w-5 h-5 ${star <= newRating ? 'fill-[#e07a3f] text-[#e07a3f]' : 'text-muted-foreground/40'}`} />
-                          </button>
-                        ))}
-                      </div>
-                      <span className="text-xs font-bold text-[#e07a3f] ml-1">{newRating} Stars</span>
-                    </div>
-
-                    <textarea
-                      rows={3}
-                      value={newComment}
-                      onChange={(e) => setNewComment(e.target.value)}
-                      placeholder="Share your experience with this luxury garment (fit, fabric quality, styling)..."
-                      className="w-full bg-background border border-border rounded-xl p-3 text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-[#e07a3f] transition-colors resize-none"
-                    />
-
-                    <div className="flex justify-end">
-                      <button
-                        type="submit"
-                        disabled={isSubmittingReview}
-                        className="px-5 py-2.5 rounded-full bg-[#e07a3f] hover:bg-[#c86830] text-white text-xs font-bold uppercase tracking-wider transition-all disabled:opacity-50 cursor-pointer shadow-md"
-                      >
-                        {isSubmittingReview ? "Publishing Review..." : "Submit Review"}
-                      </button>
-                    </div>
-                  </form> : <div className="rounded-2xl border border-border/50 bg-surface p-5 text-sm text-muted-foreground">
-                    {!session ? <button type="button" onClick={() => { setAuthMode("signin"); setIsAuthOpen(true); }} className="text-accent underline underline-offset-4">Sign in</button> : reviewEligibility?.productId === productId && reviewEligibility.already_reviewed ? "You have already reviewed this product." : "After this product is marked delivered on your order, you can leave a verified rating here."}
-                    {!session && " to check your purchase and review eligibility."}
-                  </div>}
-
-                  {/* Reviews List */}
-                  <div className="space-y-4">
-                    <h4 className="text-sm font-bold uppercase tracking-wider text-foreground">Verified Reviews ({reviewsList.length})</h4>
-                    {reviewsList.length === 0 ? (
-                      <div className="bg-surface border border-border/50 rounded-2xl p-8 text-center text-xs text-muted-foreground">
-                        No customer reviews yet. Be the first to share your rating above!
-                      </div>
-                    ) : (
-                      reviewsList.map((rev) => (
-                        <div key={rev.id} className="bg-surface border border-border/50 rounded-2xl p-5 space-y-2 shadow-sm">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              <div className="w-7 h-7 rounded-full bg-[#e07a3f]/20 border border-[#e07a3f]/40 flex items-center justify-center text-[#e07a3f] text-xs font-bold uppercase">
-                                {rev.user_name.charAt(0)}
-                              </div>
-                              <span className="text-xs font-semibold text-foreground">{rev.user_name}</span>
-                            </div>
-                            <span className="text-[10px] text-muted-foreground/70">
-                              {new Date(rev.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
-                            </span>
-                          </div>
-
-                          <div className="flex text-[#e07a3f] gap-0.5">
-                            {[1, 2, 3, 4, 5].map((star) => (
-                              <Star
-                                key={star}
-                                className={`w-3 h-3 ${star <= rev.rating ? 'fill-current text-[#e07a3f]' : 'text-muted-foreground/30'}`}
-                              />
-                            ))}
-                          </div>
-
-                          {rev.comment && (
-                            <p className="text-xs text-foreground/80 leading-relaxed pt-1">{rev.comment}</p>
-                          )}
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              )}
             </div>
           </main>
 

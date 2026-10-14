@@ -34,3 +34,33 @@ def test_remote_image_url_is_preserved():
 def test_unsupported_data_url_is_rejected():
     with pytest.raises(BadRequestError):
         product_image_storage.store_product_image("data:image/svg+xml;base64,PHN2Zz4=")
+
+
+def test_product_creation_requires_at_least_one_size():
+    from pydantic import ValidationError
+    from app.schemas.products import ProductCreate
+
+    base = {
+        "category_id": "cat", "name": "Dress",
+        "price_mrp": 100, "price_selling": 100,
+    }
+    with pytest.raises(ValidationError):
+        ProductCreate.model_validate(base)
+    with pytest.raises(ValidationError):
+        ProductCreate.model_validate({**base, "variants": []})
+
+
+def test_product_size_cannot_be_blank():
+    from pydantic import ValidationError
+    from app.schemas.products import ProductVariantCreate
+
+    with pytest.raises(ValidationError):
+        ProductVariantCreate(sku="sku", size="   ")
+
+
+def test_product_update_cannot_remove_all_sizes():
+    from pydantic import ValidationError
+    from app.schemas.products import ProductUpdate
+
+    with pytest.raises(ValidationError):
+        ProductUpdate.model_validate({"variants": []})
