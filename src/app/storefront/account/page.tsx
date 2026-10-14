@@ -372,7 +372,7 @@ function CustomerAccountContent() {
                         {order.items.map((item, i) => (
                           <div key={i} className="flex items-center justify-between gap-4">
                             <div className="flex items-center gap-4">
-                              <Image width={1200} height={900} unoptimized src={item.image} alt={item.name} className="w-12 h-16 object-cover rounded-lg border border-border" />
+                              <Image width={1200} height={900} unoptimized src={item.image} alt={item.name} className="w-12 h-16 object-contain rounded-lg border border-border bg-[#f8f7f4] p-0.5" />
                               <div>
                                 <h4 className="text-sm font-semibold text-foreground">{item.name}</h4>
                                 <p className="text-xs text-muted-foreground">{item.variant}</p>
@@ -409,7 +409,7 @@ function CustomerAccountContent() {
                   {favorites.map((item) => (
                     <div key={item.id} className="group bg-surface/60 border border-border/80 rounded-2xl overflow-hidden flex flex-col justify-between">
                       <div className="aspect-[3/4] overflow-hidden bg-surface-hover relative">
-                        <Image width={1200} height={900} unoptimized src={item.image || "/placeholder.svg"} alt={item.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                        <Image width={1200} height={900} unoptimized src={item.image || "/placeholder.svg"} alt={item.name} className="w-full h-full object-contain bg-[#f8f7f4] p-1" />
                         <button 
                           onClick={() => toggleFavorite(item.id)}
                           className="absolute top-3 right-3 p-2 rounded-full bg-white/20 backdrop-blur-md hover:bg-white/40 transition-colors z-10"

@@ -315,11 +315,11 @@ export default function StorefrontHome() {
               {categories.map((cat, idx) => (
                 <Link key={idx} href={`/storefront/collections?gender=Women&category=${encodeURIComponent(cat.name)}`} className="group min-w-0">
                   <div className="bg-background rounded-2xl md:rounded-3xl p-4 md:p-5 shadow-sm border border-border/50 h-72 md:h-[360px] flex flex-col transition-all duration-300 group-hover:-translate-y-1 group-hover:shadow-lg group-hover:border-accent/40">
-                    <div className="flex-1 w-full relative flex items-center justify-center overflow-hidden rounded-xl mb-4">
+                    <div className="flex-1 w-full relative flex items-center justify-center overflow-hidden rounded-xl mb-4 bg-[#f8f7f4]">
                       <Image width={1200} height={900} unoptimized
                         src={cat.image}
                         alt={cat.name}
-                        className="w-full h-full object-cover dark:opacity-90"
+                        className="w-full h-full object-contain p-2"
                       />
                     </div>
                     <h3 className="text-sm md:text-base font-semibold text-foreground text-center">{cat.name}</h3>
@@ -352,7 +352,7 @@ export default function StorefrontHome() {
                     key={idx}
                     onMouseEnter={() => setActiveCollection(idx)}
                   onClick={() => setActiveCollection(idx)}
-                  className={`relative overflow-hidden bg-[#1f1f1f] rounded-2xl md:rounded-[2rem] cursor-pointer transition-all duration-500 ease-[cubic-bezier(0.25,1,0.5,1)] flex items-end shrink-0
+                    className={`relative overflow-hidden bg-[#f8f7f4] rounded-2xl md:rounded-[2rem] cursor-pointer transition-all duration-500 ease-[cubic-bezier(0.25,1,0.5,1)] flex items-end shrink-0
                     ${isActive ? 'flex-1 basis-0 min-w-[190px]' : 'w-14 md:w-20 lg:w-24'}
                   `}
                   style={{ height: "100%" }}
@@ -360,23 +360,23 @@ export default function StorefrontHome() {
                   <Image width={1200} height={900} unoptimized
                     src={String(col.image || "/placeholder.svg")}
                     alt={String(col.title || "Collection")}
-                    className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 hover:scale-105 opacity-90"
+                    className="absolute inset-0 w-full h-full object-contain p-3 md:p-5 bg-[#f8f7f4] transition-transform duration-500"
                   />
 
                   {/* Inactive Vertical Text */}
                   <div className={`absolute inset-0 flex items-center justify-center transition-opacity duration-300 ${isActive ? 'opacity-0' : 'opacity-100 delay-200'}`}>
-                    <span className="text-white/80 text-xs md:text-sm tracking-[0.3em] -rotate-90 whitespace-nowrap font-medium">{col.id}</span>
+                    <span className="text-foreground/70 text-xs md:text-sm tracking-[0.3em] -rotate-90 whitespace-nowrap font-medium">{col.id}</span>
                   </div>
 
                   {/* Active Content */}
                   <div className={`relative z-10 w-full p-6 md:p-10 flex items-end justify-between transition-opacity duration-500 delay-100 ${isActive ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
                     <div className="min-w-0 pr-4">
-                      <p className="text-white/70 text-[10px] md:text-xs font-bold tracking-[0.2em] mb-2">COLLECTION {col.id}</p>
-                      <h3 className="text-white text-lg md:text-3xl font-light tracking-widest truncate drop-shadow-md">
+                      <p className="text-foreground/60 text-[10px] md:text-xs font-bold tracking-[0.2em] mb-2">COLLECTION {col.id}</p>
+                      <h3 className="text-foreground text-lg md:text-3xl font-light tracking-widest truncate">
                         {col.title}
                       </h3>
                     </div>
-                    <Link href={`/storefront/collections?gender=Women`} className="w-10 h-10 md:w-12 md:h-12 rounded-full border border-white/40 flex items-center justify-center text-white hover:bg-white hover:text-black transition-all shrink-0">
+                    <Link href={`/storefront/collections?gender=Women`} className="w-10 h-10 md:w-12 md:h-12 rounded-full border border-foreground/30 flex items-center justify-center text-foreground hover:bg-foreground hover:text-background transition-all shrink-0">
                       <ArrowRight className="w-4 h-4 md:w-5 md:h-5" />
                     </Link>
                   </div>

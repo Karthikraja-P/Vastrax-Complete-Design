@@ -315,7 +315,7 @@ export default function VirtualTryOnPage() {
                         isSelected ? "bg-[#D4AF37]/20 border border-[#D4AF37]" : "hover:bg-white/5 border border-transparent"
                       }`}
                     >
-                      <Image width={1200} height={900} unoptimized src={String(pImg || "/placeholder.svg")} alt={String(p.name || "Product")} className="w-10 h-12 object-cover rounded bg-white" />
+              <Image width={1200} height={900} unoptimized src={String(pImg || "/placeholder.svg")} alt={String(p.name || "Product")} className="w-10 h-12 object-contain rounded bg-[#f8f7f4] p-0.5" />
                       <div>
                         <p className="text-xs font-semibold text-white truncate max-w-[180px]">{p.name}</p>
                         <p className="text-[10px] text-slate-400">₹{(p.price_selling || p.price)?.toLocaleString()}</p>
@@ -327,7 +327,7 @@ export default function VirtualTryOnPage() {
             )}
 
             <div className="flex gap-4 items-center">
-              <Image width={1200} height={900} unoptimized src={String(productImgUrl || "/placeholder.svg")} alt={String(product.name || "Product")} className="w-20 h-24 object-cover rounded-lg border border-slate-700 bg-white" />
+              <Image width={1200} height={900} unoptimized src={String(productImgUrl || "/placeholder.svg")} alt={String(product.name || "Product")} className="w-20 h-24 object-contain rounded-lg border border-slate-700 bg-[#f8f7f4] p-1" />
               <div>
                 <h4 className="text-sm font-semibold text-white">{product.name}</h4>
                 <span className="text-[9px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 mt-1 inline-block">
@@ -352,7 +352,7 @@ export default function VirtualTryOnPage() {
 
               {selectedTop ? (
                 <div className="flex items-center gap-4">
-                  <Image width={1200} height={900} unoptimized src={getGarmentImage(selectedTop)} alt={selectedTop.name || "Selected garment"} className="w-16 h-20 object-cover rounded-lg border border-[#D4AF37] bg-white" />
+                  <Image width={1200} height={900} unoptimized src={getGarmentImage(selectedTop)} alt={selectedTop.name || "Selected garment"} className="w-16 h-20 object-contain rounded-lg border border-[#D4AF37] bg-[#f8f7f4] p-1" />
                   <div>
                     <p className="text-xs font-semibold text-white">{selectedTop.name}</p>
                     <p className="text-[10px] text-slate-400 mt-1">Will be draped in pass 1, then your pants in pass 2.</p>
@@ -370,7 +370,7 @@ export default function VirtualTryOnPage() {
                         onClick={() => setSelectedTop(top)}
                         className="flex-shrink-0 flex flex-col items-center gap-1 p-1 border border-slate-700 rounded-lg hover:border-[#D4AF37] transition-colors"
                       >
-                        <Image width={1200} height={900} unoptimized src={getGarmentImage(top)} alt={top.name || "Garment"} className="w-14 h-16 object-cover rounded bg-white" />
+                        <Image width={1200} height={900} unoptimized src={getGarmentImage(top)} alt={top.name || "Garment"} className="w-14 h-16 object-contain rounded bg-[#f8f7f4] p-0.5" />
                         <span className="text-[8px] text-slate-400 w-14 truncate text-center">{top.name}</span>
                       </button>
                     ))}

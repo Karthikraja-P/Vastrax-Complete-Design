@@ -499,7 +499,7 @@ function ProductContent() {
                     <Image width={1200} height={900} unoptimized
                       src={product.images?.[activeImageIndex] || product.image}
                       alt={product.name}
-                      className="w-full h-full object-cover rounded-2xl drop-shadow-2xl animate-fade-in"
+                    className="w-full h-full object-contain rounded-2xl bg-[#f8f7f4] p-2 md:p-4 animate-fade-in"
                     />
                   )}
                 </div>
@@ -513,11 +513,11 @@ function ProductContent() {
                         setActiveImageIndex(idx);
                         setIs3DMode(false);
                       }}
-                      className={`relative flex-shrink-0 w-20 h-24 rounded-xl overflow-hidden border-2 transition-all ${
+                      className={`relative flex-shrink-0 w-20 h-24 rounded-xl overflow-hidden border-2 transition-all bg-[#f8f7f4] ${
                         !is3DMode && activeImageIndex === idx ? 'border-[#e07a3f] shadow-md' : 'border-transparent opacity-70 hover:opacity-100'
                       }`}
                     >
-                      <Image width={1200} height={900} unoptimized src={img} alt={`${product.name} ${idx + 1}`} className="w-full h-full object-cover" />
+                      <Image width={1200} height={900} unoptimized src={img} alt={`${product.name} ${idx + 1}`} className="w-full h-full object-contain p-1" />
                     </button>
                   ))}
 

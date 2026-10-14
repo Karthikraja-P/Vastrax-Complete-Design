@@ -609,11 +609,11 @@ function CollectionsPageContent() {
                         </div>
 
                         {/* Image */}
-                        <a href={`/storefront/product?id=${product.id}`} className="relative w-full flex-1 mb-4 flex items-center justify-center overflow-hidden cursor-pointer rounded-2xl bg-black/5">
+                        <a href={`/storefront/product?id=${product.id}`} className="relative w-full flex-1 mb-4 flex items-center justify-center overflow-hidden cursor-pointer rounded-2xl bg-[#f8f7f4]">
                           <Image width={1200} height={900} unoptimized
                             src={product.image}
                             alt={product.name}
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out"
+                            className="w-full h-full object-contain p-2 md:p-3 transition-transform duration-300"
                           />
                           {isOutOfStock && (
                             <span className="absolute bottom-2 left-2 z-10 bg-red-600/90 text-white text-[9px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider backdrop-blur-sm shadow-sm">

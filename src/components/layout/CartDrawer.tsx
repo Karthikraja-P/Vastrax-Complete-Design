@@ -139,7 +139,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                 className="flex gap-4 p-3 bg-background/60 rounded-xl border border-border/80 group hover:border-accent/30 transition-all"
               >
                 <div className="w-20 h-24 rounded-lg bg-surface-hover overflow-hidden shrink-0 border border-border/40">
-                  <Image width={1200} height={900} unoptimized src={item.image} alt={item.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                  <Image width={1200} height={900} unoptimized src={item.image} alt={item.name} className="w-full h-full object-contain bg-[#f8f7f4] p-1" />
                 </div>
                 
                 <div className="flex-1 flex flex-col justify-between py-0.5">

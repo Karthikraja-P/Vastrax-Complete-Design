@@ -277,7 +277,7 @@ export default function FavoritesPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 md:gap-8">
             {favoriteProducts.map((product) => (
               <div key={product.id} className="group relative flex flex-col h-full">
-                <div className="relative w-full aspect-[3/4] mb-4 flex items-center justify-center overflow-hidden cursor-pointer rounded-2xl bg-black/5 dark:bg-white/5">
+                <div className="relative w-full aspect-[3/4] mb-4 flex items-center justify-center overflow-hidden cursor-pointer rounded-2xl bg-[#f8f7f4]">
                   <div className="absolute top-4 right-4 z-20 flex flex-col gap-2">
                     <button
                       onClick={(e) => {
@@ -302,7 +302,7 @@ export default function FavoritesPage() {
                     <Image width={1200} height={900} unoptimized
                       src={product.image}
                       alt={product.name}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out"
+                      className="w-full h-full object-contain p-2 transition-transform duration-300"
                     />
                   </Link>
                 </div>
