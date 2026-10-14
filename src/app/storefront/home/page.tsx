@@ -20,6 +20,7 @@ import StorefrontMobileControls from "@/components/layout/StorefrontMobileContro
 
 interface StoreCategory {
   id?: string;
+  productId?: string | number;
   name: string;
   title?: string;
   slug: string;
@@ -132,6 +133,7 @@ export default function StorefrontHome() {
             .filter((product) => getProductImage(product))
             .map((product, idx) => ({
               id: String(idx + 1).padStart(2, "0"),
+              productId: product.id,
               name: product.name || product.title || "Collection",
               title: product.name || product.title || "Collection",
               slug: String(product.name || product.title || "collection").toLowerCase().replace(/[^a-z0-9]+/g, "-"),
@@ -143,6 +145,7 @@ export default function StorefrontHome() {
             .filter((product) => getProductImage(product))
             .map((product, idx) => ({
               id: String(idx + 1).padStart(2, "0"),
+              productId: product.id,
               name: product.name || product.title || "Collection",
               title: product.name || product.title || "Collection",
               slug: String(product.name || product.title || "collection").toLowerCase().replace(/[^a-z0-9]+/g, "-"),
@@ -395,7 +398,7 @@ export default function StorefrontHome() {
                         {col.title}
                       </h3>
                     </div>
-                    <Link href={`/storefront/collections?gender=Women&search=${encodeURIComponent(col.title || col.name)}`} aria-label={`Shop ${col.title || col.name}`} className="w-10 h-10 md:w-12 md:h-12 rounded-full border border-foreground/30 flex items-center justify-center text-foreground hover:bg-foreground hover:text-background transition-all shrink-0">
+                    <Link href={col.productId ? `/storefront/product?id=${encodeURIComponent(col.productId)}` : "/storefront/collections?gender=Women"} aria-label={`View ${col.title || col.name}`} className="w-10 h-10 md:w-12 md:h-12 rounded-full border border-foreground/30 flex items-center justify-center text-foreground hover:bg-foreground hover:text-background transition-all shrink-0">
                       <ArrowRight className="w-4 h-4 md:w-5 md:h-5" />
                     </Link>
                   </div>

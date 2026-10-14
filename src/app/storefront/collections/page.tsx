@@ -3,7 +3,7 @@ import Image from "next/image";
 
 import { Suspense, useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
-import { Search, Heart, Star, ShoppingBag, User, ChevronRight, SlidersHorizontal, Bell } from "lucide-react";
+import { Heart, Star, ShoppingBag, User, ChevronRight, SlidersHorizontal, Bell } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { AuthModal } from "@/components/auth/AuthModal";
 import { useSession } from "next-auth/react";
@@ -38,7 +38,6 @@ function CollectionsPageContent() {
   const [selectedCategory, setSelectedCategory] = useState("All Categories");
   const [selectedColour, setSelectedColour] = useState("All Colors");
   const [selectedDepartment, setSelectedDepartment] = useState<string>("Women");
-  const [searchQuery, setSearchQuery] = useState("");
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
   const [sortBy, setSortBy] = useState("Recommended");
@@ -48,13 +47,11 @@ function CollectionsPageContent() {
   // Keep filters synchronized with links, including query-only navigation.
   useEffect(() => {
     const category = searchParams.get("category");
-    const search = searchParams.get("search");
     const sort = searchParams.get("sort");
     const timer = window.setTimeout(() => {
       // The public storefront is currently women-only, including legacy links.
       setSelectedDepartment("Women");
       setSelectedCategory(category || "All Categories");
-      setSearchQuery(search || "");
       setSortBy(sort === "newest" ? "Newest Arrivals" : "Recommended");
     }, 0);
     return () => window.clearTimeout(timer);
@@ -121,7 +118,7 @@ function CollectionsPageContent() {
             stock: p.stock ?? p.inventoryCount,
             isSale: Boolean(p.isSale) && Boolean(originalPrice),
             categoryName: resolvedCatName,
-            colour: p.colour || p.variants?.find((variant) => variant.colour || variant.color)?.colour || p.variants?.find((variant) => variant.colour || variant.color)?.color || "",
+            colour: [...new Set([p.colour, ...(p.variants || []).map((variant) => variant.colour || variant.color)].map((value) => String(value || "").trim()).filter(Boolean))].join(" | "),
             model3dUrl: p.model_path || p.model3dUrl,
             variants: p.variants || [],
             created_at: p.created_at
@@ -218,6 +215,7 @@ function CollectionsPageContent() {
   const [isMobileFiltersOpen, setIsMobileFiltersOpen] = useState(false);
   const [isSortOpen, setIsSortOpen] = useState(false);
   const sortOptions = ["Recommended", "Newest Arrivals", "Price: Low to High", "Price: High to Low", "Top Rated"];
+  const availableColours = [...new Set(products.flatMap((product) => String(product.colour || "").split("|").map((colour) => colour.trim()).filter(Boolean)))].sort((a, b) => a.localeCompare(b));
 
   useEffect(() => {
     const handleOpenStylist = () => setIsStylistOpen(true);
@@ -312,14 +310,7 @@ function CollectionsPageContent() {
     // 2. Department Filter
     if (String(p.gender || "").trim().toLowerCase() !== "women") return false;
 
-    if (selectedColour !== "All Colors" && String(p.colour || "").trim().toLowerCase() !== selectedColour.toLowerCase()) return false;
-
-    // 3. Search Query
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      const matchSearch = p.name.toLowerCase().includes(q) || (p.categoryName && p.categoryName.toLowerCase().includes(q));
-      if (!matchSearch) return false;
-    }
+    if (selectedColour !== "All Colors" && !String(p.colour || "").split("|").some((colour) => colour.trim().toLowerCase() === selectedColour.toLowerCase())) return false;
 
     // 4. Price Filter
     if (minPrice && p.price < Number(minPrice)) return false;
@@ -334,7 +325,7 @@ function CollectionsPageContent() {
     return 0;
   });
 
-  const pageFilterKey = JSON.stringify([selectedCategory, selectedDepartment, selectedColour, searchQuery, minPrice, maxPrice, sortBy]);
+  const pageFilterKey = JSON.stringify([selectedCategory, selectedDepartment, selectedColour, minPrice, maxPrice, sortBy]);
   const totalPages = Math.ceil(filteredProducts.length / productsPerPage);
   const currentPage = Math.min(
     pagination.filterKey === pageFilterKey ? pagination.page : 1,
@@ -488,7 +479,7 @@ function CollectionsPageContent() {
                   <div className="flex items-center justify-between mb-6">
                     <h3 className="font-bold text-lg">Filters</h3>
                     <button
-                      onClick={() => { setSelectedCategory("All Categories"); setSelectedDepartment("Women"); setSelectedColour("All Colors"); setSearchQuery(""); setMinPrice(""); setMaxPrice(""); }}
+                      onClick={() => { setSelectedCategory("All Categories"); setSelectedDepartment("Women"); setSelectedColour("All Colors"); setMinPrice(""); setMaxPrice(""); }}
                       className="text-[#e07a3f] text-xs font-bold tracking-wider uppercase flex items-center gap-1 hover:underline">
                       Reset Filters
                     </button>
@@ -503,22 +494,10 @@ function CollectionsPageContent() {
                       className="w-full bg-surface dark:bg-[#111111] border border-border dark:border-white/10 rounded-xl px-3 py-3 text-sm text-foreground dark:text-white focus:outline-none focus:border-[#e07a3f]"
                     >
                       <option value="All Colors">All Colors</option>
-                      {[...new Set(products.map((product) => String(product.colour || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b)).map((colour) => (
-                        <option key={colour} value={colour}>{colour}</option>
+                      {availableColours.map((colour) => (
+                        <option key={colour} value={colour}>{colour.replace(/\b\w/g, (letter) => letter.toUpperCase())}</option>
                       ))}
                     </select>
-                  </div>
-
-                  {/* Search */}
-                  <div className="relative mb-6">
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                    <input
-                      type="text"
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      placeholder="Search products..."
-                      className="w-full bg-surface dark:bg-[#111111] border border-border dark:border-white/10 rounded-full py-3 pl-11 pr-4 text-sm text-foreground dark:text-white placeholder:text-muted-foreground focus:outline-none focus:border-[#e07a3f] transition-colors"
-                    />
                   </div>
 
                   {/* Category */}

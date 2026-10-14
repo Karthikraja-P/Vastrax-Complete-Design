@@ -327,6 +327,11 @@ function EditProductContent() {
       setActiveTab("basic");
       return;
     }
+    if (!colour.trim()) {
+      showToast("Please enter the product colour so customers can filter by colour.");
+      setActiveTab("basic");
+      return;
+    }
     if (!priceSelling || isNaN(parseFloat(priceSelling))) {
       showToast("Please enter a valid selling price");
       setActiveTab("pricing");
@@ -557,13 +562,14 @@ function EditProductContent() {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-1.5">
-                      Colour
+                      Colour <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="text"
                       value={colour}
                       onChange={(e) => setColour(e.target.value)}
                       placeholder="e.g. Ivory, Midnight Blue"
+                      required
                       className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent focus:ring-1 focus:ring-accent outline-none transition-all text-foreground"
                     />
                   </div>
