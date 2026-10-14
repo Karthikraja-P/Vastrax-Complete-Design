@@ -314,15 +314,18 @@ export default function StorefrontHome() {
             <div className="grid gap-4 md:gap-6 pb-2 [grid-template-columns:repeat(auto-fit,minmax(min(100%,17rem),1fr))]">
               {categories.map((cat, idx) => (
                 <Link key={idx} href={`/storefront/collections?gender=Women&category=${encodeURIComponent(cat.name)}`} className="group min-w-0">
-                  <div className="bg-background rounded-2xl md:rounded-3xl p-4 md:p-5 shadow-sm border border-border/50 h-72 md:h-[360px] flex flex-col transition-all duration-300 group-hover:-translate-y-1 group-hover:shadow-lg group-hover:border-accent/40">
-                    <div className="flex-1 w-full relative flex items-center justify-center overflow-hidden rounded-xl mb-4 bg-[#f8f7f4]">
+                  <div className="overflow-hidden rounded-2xl md:rounded-3xl border border-border/50 bg-[#f6f4f0] transition-all duration-300 group-hover:-translate-y-1 group-hover:shadow-lg group-hover:border-accent/40">
+                    <div className="relative aspect-[4/5] w-full overflow-hidden bg-[#f6f4f0]">
                       <Image width={1200} height={900} unoptimized
                         src={cat.image}
                         alt={cat.name}
-                        className="w-full h-full object-contain p-2"
+                        className="h-full w-full object-contain p-3 md:p-5"
                       />
                     </div>
-                    <h3 className="text-sm md:text-base font-semibold text-foreground text-center">{cat.name}</h3>
+                    <div className="flex items-center justify-between gap-3 bg-background px-4 py-4 md:px-6">
+                      <h3 className="text-sm md:text-base font-semibold text-foreground">{cat.name}</h3>
+                      <ArrowRight aria-hidden="true" className="h-4 w-4 shrink-0 text-accent transition-transform group-hover:translate-x-1" />
+                    </div>
                   </div>
                 </Link>
               ))}
