@@ -481,11 +481,18 @@ function ProductContent() {
                     </button>
                   )}
                 </div>
+
+                <div className="mt-6 px-1">
+                  <h1 className="text-2xl md:text-3xl font-bold leading-tight text-foreground">{product.name}</h1>
+                  <div className="mt-2 flex items-baseline gap-3">
+                    <span className="text-2xl md:text-3xl font-bold text-foreground">₹{product.price.toLocaleString()}</span>
+                    <span className="text-xs text-foreground/40">Inclusive of all taxes</span>
+                  </div>
+                </div>
               </div>
 
-              {/* Right: Product Info */}
+              {/* Right: Product Details & purchase options */}
               <div className="w-full lg:w-[45%] flex flex-col pt-2">
-                <h1 className="text-3xl lg:text-4xl font-bold mb-4 leading-[1.15] text-foreground">{product.name}</h1>
 
                 {product.description && (
                   <p className="text-foreground/70 text-sm leading-relaxed mb-6 max-w-md">
@@ -502,13 +509,6 @@ function ProductContent() {
                 </div>}
 
                 <div className="w-full h-[1px] bg-border/50 mb-6" />
-
-                <div className="mb-6">
-                  <div className="flex items-baseline gap-3">
-                    <span className="text-4xl font-bold text-foreground">₹{product.price.toLocaleString()}</span>
-                  </div>
-                  <div className="text-[10px] text-foreground/40 mt-1">Inclusive of all taxes • Fabric: {product.fabric}</div>
-                </div>
 
                 <Link href={"/storefront/product/" + encodeURIComponent(product.id) + "/tryon"} className="mb-6 block w-full rounded-2xl border border-accent/25 bg-surface px-4 py-4 transition-colors hover:border-accent/50 hover:bg-accent/5">
                   <span className="flex items-center gap-3">
