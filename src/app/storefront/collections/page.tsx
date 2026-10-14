@@ -214,16 +214,8 @@ function CollectionsPageContent() {
   const [isStylistOpen, setIsStylistOpen] = useState(false);
   const [isMobileFiltersOpen, setIsMobileFiltersOpen] = useState(false);
   const [isSortOpen, setIsSortOpen] = useState(false);
-  const [activeShowcaseIndex, setActiveShowcaseIndex] = useState(0);
   const sortOptions = ["Recommended", "Newest Arrivals", "Price: Low to High", "Price: High to Low"];
   const availableColours = [...new Set(products.flatMap((product) => String(product.colour || "").split("|").map((colour) => colour.trim()).filter(Boolean)))].sort((a, b) => a.localeCompare(b));
-  const showcaseProduct = products.length ? products[activeShowcaseIndex % products.length] : null;
-
-  useEffect(() => {
-    if (products.length < 2) return;
-    const timer = window.setInterval(() => setActiveShowcaseIndex((index) => (index + 1) % products.length), 5000);
-    return () => window.clearInterval(timer);
-  }, [products.length]);
 
   useEffect(() => {
     const handleOpenStylist = () => setIsStylistOpen(true);
@@ -458,39 +450,6 @@ function CollectionsPageContent() {
 
           <div className="max-w-[1400px] mx-auto p-4 md:p-10">
 
-            {showcaseProduct && (
-              <section aria-label="Featured collection" className="relative mb-8 grid min-h-[180px] overflow-hidden rounded-3xl border border-[#dedbd4] bg-[linear-gradient(135deg,#f5f3ee_0%,#e9e6df_100%)] md:min-h-[220px] md:grid-cols-[0.9fr_1.1fr]">
-                <div className="flex flex-col items-start justify-center p-5 md:p-8">
-                  <span className="mb-2 inline-flex rounded-full bg-white/70 px-3 py-1.5 text-[9px] font-bold uppercase tracking-[0.18em] text-[#6f6257]">Featured piece</span>
-                  <h1 className="max-w-lg text-2xl font-semibold leading-tight text-[#29231f] md:text-3xl">{showcaseProduct.name}</h1>
-                  <p className="mt-2 text-base font-semibold text-[#29231f]">₹{showcaseProduct.price.toLocaleString()}</p>
-                  <Link href={`/storefront/product?id=${showcaseProduct.id}`} className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-[#5c5148] transition-colors hover:text-[#b95625]">
-                    View product <ChevronRight className="h-4 w-4" />
-                  </Link>
-                  {products.length > 1 && (
-                    <div className="mt-4 flex items-center gap-2" aria-label={`Slide ${activeShowcaseIndex + 1} of ${products.length}`}>
-                      {products.map((product, index) => (
-                        <button key={product.id} type="button" onClick={() => setActiveShowcaseIndex(index)} aria-label={`Show ${product.name}`} aria-current={index === activeShowcaseIndex ? "true" : undefined} className={`h-2 rounded-full transition-all ${index === activeShowcaseIndex ? "w-7 bg-[#e07a3f]" : "w-2 bg-[#29231f]/25 hover:bg-[#29231f]/50"}`} />
-                      ))}
-                    </div>
-                  )}
-                </div>
-                <div className="relative min-h-[180px] overflow-hidden bg-[linear-gradient(135deg,#f5f3ee_0%,#e9e6df_100%)] md:min-h-full">
-                  <Image width={1200} height={900} unoptimized src={showcaseProduct.image} alt={showcaseProduct.name} className="h-full w-full object-contain p-3 transition-transform duration-500 md:p-5" />
-                  {products.length > 1 && (
-                    <button type="button" onClick={(event) => { event.preventDefault(); setActiveShowcaseIndex((index) => (index - 1 + products.length) % products.length); }} aria-label="Previous featured product" className="absolute left-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/90 text-[#29231f] shadow transition-colors hover:bg-white">
-                      <ChevronRight className="h-5 w-5 rotate-180" />
-                    </button>
-                  )}
-                  {products.length > 1 && (
-                    <button type="button" onClick={(event) => { event.preventDefault(); setActiveShowcaseIndex((index) => (index + 1) % products.length); }} aria-label="Next featured product" className="absolute right-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/90 text-[#29231f] shadow transition-colors hover:bg-white">
-                      <ChevronRight className="h-5 w-5" />
-                    </button>
-                  )}
-                </div>
-              </section>
-            )}
-
             {/* Layout Grid: Sidebar + Products */}
             <div className="flex flex-col lg:flex-row gap-8 lg:gap-10">
 
@@ -606,19 +565,19 @@ function CollectionsPageContent() {
                     const isOutOfStock = !product.variants?.length || product.variants.every((variant: ProductVariant) => Number(variant.stock_qty ?? 0) <= 0);
 
                     return (
-                      <div key={product.id} className="bg-surface dark:bg-[#1c1c1c] rounded-3xl p-5 group relative border border-border/50 dark:border-white/5 hover:border-border dark:border-white/10 transition-colors flex flex-col h-[340px]">
+                      <div key={product.id} className="rounded-3xl border border-[#dedbd4] bg-[linear-gradient(135deg,#f5f3ee_0%,#e9e6df_100%)] p-5 group relative transition-shadow hover:shadow-md flex flex-col h-[340px]">
                         {/* Top icons */}
                         <div className="flex items-start justify-between z-10 relative mb-4 shrink-0">
                           <div className="flex items-center gap-1.5">
                             <button
                               onClick={(e) => toggleFavorite(product, e)}
-                              className="w-8 h-8 rounded-full bg-background dark:bg-[#2a2a2a] flex items-center justify-center text-muted-foreground hover:text-[#e07a3f] transition-colors"
+                              className="w-8 h-8 rounded-full bg-white/80 flex items-center justify-center text-[#6f6257] hover:text-[#b95625] transition-colors"
                             >
                               <Heart className={`w-4 h-4 ${favorites.includes(product.id) ? 'fill-[#e07a3f] text-[#e07a3f]' : ''}`} />
                             </button>
                           </div>
                           {(product.ratingCount ?? 0) > 0 && (
-                            <div className="bg-background dark:bg-[#2a2a2a] px-2.5 py-1 rounded-full flex items-center gap-1.5" aria-label={`${product.rating} out of 5 from ${product.ratingCount} reviews`}>
+                            <div className="bg-white/80 px-2.5 py-1 rounded-full flex items-center gap-1.5" aria-label={`${product.rating} out of 5 from ${product.ratingCount} reviews`}>
                               <Star className="w-3 h-3 fill-[#e07a3f] text-[#e07a3f]" />
                               <span className="text-[10px] font-bold text-foreground dark:text-white">{product.rating}</span>
                               <span className="text-[9px] text-muted-foreground">({product.ratingCount})</span>
@@ -627,7 +586,7 @@ function CollectionsPageContent() {
                         </div>
 
                         {/* Image */}
-                        <a href={`/storefront/product?id=${product.id}`} className="relative w-full flex-1 mb-4 flex items-center justify-center overflow-hidden cursor-pointer rounded-2xl border border-[#dedbd4] bg-[linear-gradient(135deg,#f5f3ee_0%,#e9e6df_100%)]">
+                        <a href={`/storefront/product?id=${product.id}`} className="relative w-full flex-1 mb-4 flex items-center justify-center overflow-hidden cursor-pointer rounded-2xl bg-[linear-gradient(135deg,#f5f3ee_0%,#e9e6df_100%)]">
                           <Image width={1200} height={900} unoptimized
                             src={product.image}
                             alt={product.name}
@@ -644,13 +603,13 @@ function CollectionsPageContent() {
                         <div className="flex items-end justify-between relative z-10 shrink-0">
                           <div className="flex-1 pr-4">
                             <a href={`/storefront/product?id=${product.id}`} className="hover:text-[#e07a3f] transition-colors">
-                              <h3 className="text-sm font-medium text-foreground/90 mb-1.5 line-clamp-1">{product.name}</h3>
+                              <h3 className="text-sm font-medium text-[#29231f] mb-1.5 line-clamp-1">{product.name}</h3>
                             </a>
                             <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-lg font-bold">₹{product.price.toLocaleString()}</span>
-                              {product.originalPrice && <span className="text-xs text-muted-foreground line-through">₹{product.originalPrice.toLocaleString()}</span>}
-                              {product.isSale && <span className="text-[9px] bg-[#e07a3f]/20 text-[#e07a3f] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">SALE</span>}
-                              {product.isNew && <span className="text-[9px] bg-white/10 text-foreground dark:text-white px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">NEW</span>}
+                              <span className="text-lg font-bold text-[#29231f]">₹{product.price.toLocaleString()}</span>
+                              {product.originalPrice && <span className="text-xs text-[#6f6257] line-through">₹{product.originalPrice.toLocaleString()}</span>}
+                              {product.isSale && <span className="text-[9px] bg-[#e07a3f]/15 text-[#9b4a23] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">SALE</span>}
+                              {product.isNew && <span className="text-[9px] bg-white/70 text-[#5c5148] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">NEW</span>}
                             </div>
                           </div>
 
@@ -666,13 +625,13 @@ function CollectionsPageContent() {
                           ) : (
                             <button
                               onClick={(e) => handleAddToBagClick(product, e)}
-                              className="w-11 h-11 rounded-full bg-background dark:bg-[#2a2a2a] flex items-center justify-center text-foreground dark:text-white relative overflow-hidden group/btn shrink-0 shadow-sm"
+                              className="w-11 h-11 rounded-full bg-white/85 flex items-center justify-center text-[#29231f] relative overflow-hidden group/btn shrink-0 shadow-sm"
                             >
                               {/* Semi-circle hover effect */}
                               <div className={`absolute inset-x-0 bottom-0 bg-[#e07a3f] transition-all duration-300 ease-out ${isItemInBag(product.id) ? 'h-full' : 'h-0 group-hover/btn:h-1/2 rounded-t-full'}`} />
 
                               {/* Icon */}
-                              <ShoppingBag className={`w-4 h-4 relative z-10 transition-transform duration-300 ${isItemInBag(product.id) ? 'scale-110 text-white' : 'group-hover/btn:-translate-y-0.5'}`} />
+                              <ShoppingBag className={`w-4 h-4 relative z-10 transition-transform duration-300 ${isItemInBag(product.id) ? 'scale-110 text-white' : 'text-[#29231f] group-hover/btn:-translate-y-0.5'}`} />
                             </button>
                           )}
                         </div>
