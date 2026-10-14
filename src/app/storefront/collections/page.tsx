@@ -3,14 +3,13 @@ import Image from "next/image";
 
 import { Suspense, useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
-import { Search, Heart, Star, ShoppingBag, User, ChevronRight, SlidersHorizontal, Box, Bell } from "lucide-react";
+import { Search, Heart, Star, ShoppingBag, User, ChevronRight, SlidersHorizontal, Bell } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { AuthModal } from "@/components/auth/AuthModal";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { CartDrawer } from "@/components/layout/CartDrawer";
 import { StylistDrawer } from "@/components/stylist/StylistDrawer";
-import { Product3DModal } from "@/components/3d/Product3DModal";
 import type { AddToCartProduct } from "@/components/3d/Product3DModal";
 import { productsApi, categoriesApi, ProductItem, CategoryItem, ProductVariant, StorefrontProduct } from "@/lib/api";
 import { reportBackendReachable, reportBackendUnreachable } from "@/lib/backendStatus";
@@ -27,7 +26,6 @@ function CollectionsPageContent() {
 
   const [favorites, setFavorites] = useState<Array<string | number>>([]);
   const [selectedProductForSize, setSelectedProductForSize] = useState<StorefrontProduct | null>(null);
-  const [selected3DProduct, setSelected3DProduct] = useState<StorefrontProduct | null>(null);
 
   const { data: session } = useSession();
   const [isLoggedIn, setIsLoggedIn] = useState(Boolean(session?.user?.name));
@@ -38,6 +36,7 @@ function CollectionsPageContent() {
     { name: "All Categories", icon: "❖" }
   ]);
   const [selectedCategory, setSelectedCategory] = useState("All Categories");
+  const [selectedColour, setSelectedColour] = useState("All Colors");
   const [selectedDepartment, setSelectedDepartment] = useState<string>("Women");
   const [searchQuery, setSearchQuery] = useState("");
   const [minPrice, setMinPrice] = useState("");
@@ -104,11 +103,15 @@ function CollectionsPageContent() {
           const rawCatId = String(p.categoryId || p.category_id || "");
           const resolvedCatName = catMap.get(rawCatId) || p.category_name || p.category || "Apparel";
 
+          const sellingPrice = Number(p.price || p.price_selling || 0);
+          const listedPrice = Number(p.originalPrice || p.price_mrp || p.compareAtPrice || 0);
+          const originalPrice = listedPrice > sellingPrice ? listedPrice : undefined;
+
           return {
             id: p.id,
             name: p.name || p.title || "Unnamed Piece",
-            price: Number(p.price || p.price_selling || 0),
-            originalPrice: p.originalPrice || p.price_mrp || p.compareAtPrice ? Number(p.originalPrice || p.price_mrp || p.compareAtPrice) : undefined,
+            price: sellingPrice,
+            originalPrice,
             rating: Number(p.rating_average || p.rating || 0),
             ratingCount: Number(p.rating_count || 0),
             image: img,
@@ -116,8 +119,9 @@ function CollectionsPageContent() {
             isNew: Boolean(p.isNew || p.is_featured),
             categoryId: rawCatId,
             stock: p.stock ?? p.inventoryCount,
-            isSale: Boolean(p.isSale),
+            isSale: Boolean(p.isSale) && Boolean(originalPrice),
             categoryName: resolvedCatName,
+            colour: p.colour || p.variants?.find((variant) => variant.colour || variant.color)?.colour || p.variants?.find((variant) => variant.colour || variant.color)?.color || "",
             model3dUrl: p.model_path || p.model3dUrl,
             variants: p.variants || [],
             created_at: p.created_at
@@ -308,6 +312,8 @@ function CollectionsPageContent() {
     // 2. Department Filter
     if (String(p.gender || "").trim().toLowerCase() !== "women") return false;
 
+    if (selectedColour !== "All Colors" && String(p.colour || "").trim().toLowerCase() !== selectedColour.toLowerCase()) return false;
+
     // 3. Search Query
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
@@ -328,7 +334,7 @@ function CollectionsPageContent() {
     return 0;
   });
 
-  const pageFilterKey = JSON.stringify([selectedCategory, selectedDepartment, searchQuery, minPrice, maxPrice, sortBy]);
+  const pageFilterKey = JSON.stringify([selectedCategory, selectedDepartment, selectedColour, searchQuery, minPrice, maxPrice, sortBy]);
   const totalPages = Math.ceil(filteredProducts.length / productsPerPage);
   const currentPage = Math.min(
     pagination.filterKey === pageFilterKey ? pagination.page : 1,
@@ -482,10 +488,25 @@ function CollectionsPageContent() {
                   <div className="flex items-center justify-between mb-6">
                     <h3 className="font-bold text-lg">Filters</h3>
                     <button
-                      onClick={() => { setSelectedCategory("All Categories"); setSelectedDepartment("Women"); setSearchQuery(""); setMinPrice(""); setMaxPrice(""); }}
+                      onClick={() => { setSelectedCategory("All Categories"); setSelectedDepartment("Women"); setSelectedColour("All Colors"); setSearchQuery(""); setMinPrice(""); setMaxPrice(""); }}
                       className="text-[#e07a3f] text-xs font-bold tracking-wider uppercase flex items-center gap-1 hover:underline">
                       Reset Filters
                     </button>
+                  </div>
+
+                  <div className="mb-8">
+                    <label htmlFor="collection-color-filter" className="block text-[10px] font-bold text-muted-foreground tracking-[0.2em] uppercase mb-4">Color</label>
+                    <select
+                      id="collection-color-filter"
+                      value={selectedColour}
+                      onChange={(event) => setSelectedColour(event.target.value)}
+                      className="w-full bg-surface dark:bg-[#111111] border border-border dark:border-white/10 rounded-xl px-3 py-3 text-sm text-foreground dark:text-white focus:outline-none focus:border-[#e07a3f]"
+                    >
+                      <option value="All Colors">All Colors</option>
+                      {[...new Set(products.map((product) => String(product.colour || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b)).map((colour) => (
+                        <option key={colour} value={colour}>{colour}</option>
+                      ))}
+                    </select>
                   </div>
 
                   {/* Search */}
@@ -590,13 +611,6 @@ function CollectionsPageContent() {
                               className="w-8 h-8 rounded-full bg-background dark:bg-[#2a2a2a] flex items-center justify-center text-muted-foreground hover:text-[#e07a3f] transition-colors"
                             >
                               <Heart className={`w-4 h-4 ${favorites.includes(product.id) ? 'fill-[#e07a3f] text-[#e07a3f]' : ''}`} />
-                            </button>
-                            <button
-                              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setSelected3DProduct(product); }}
-                              title="Interactive 3D Preview"
-                              className="w-8 h-8 rounded-full bg-background dark:bg-[#2a2a2a] flex items-center justify-center text-muted-foreground hover:text-[#38bdf8] transition-colors shadow-sm cursor-pointer group/3d"
-                            >
-                              <Box className="w-4 h-4 text-[#38bdf8] group-hover/3d:scale-110 transition-transform" />
                             </button>
                           </div>
                           {(product.ratingCount ?? 0) > 0 && (
@@ -708,16 +722,6 @@ function CollectionsPageContent() {
       <AuthModal isOpen={isAuthOpen} onClose={() => setIsAuthOpen(false)} />
       <CartDrawer isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} />
       <StylistDrawer isOpen={isStylistOpen} onClose={() => setIsStylistOpen(false)} />
-      <Product3DModal
-        isOpen={!!selected3DProduct}
-        onClose={() => setSelected3DProduct(null)}
-        product={selected3DProduct}
-        onAddToBag={(prod) => {
-          addItemToBag(prod, "M");
-          setSelected3DProduct(null);
-        }}
-      />
-
       {/* Size Selection Modal */}
       {selectedProductForSize && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setSelectedProductForSize(null)}>
