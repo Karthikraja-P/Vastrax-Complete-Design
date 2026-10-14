@@ -214,8 +214,16 @@ function CollectionsPageContent() {
   const [isStylistOpen, setIsStylistOpen] = useState(false);
   const [isMobileFiltersOpen, setIsMobileFiltersOpen] = useState(false);
   const [isSortOpen, setIsSortOpen] = useState(false);
+  const [activeShowcaseIndex, setActiveShowcaseIndex] = useState(0);
   const sortOptions = ["Recommended", "Newest Arrivals", "Price: Low to High", "Price: High to Low"];
   const availableColours = [...new Set(products.flatMap((product) => String(product.colour || "").split("|").map((colour) => colour.trim()).filter(Boolean)))].sort((a, b) => a.localeCompare(b));
+  const showcaseProduct = products.length ? products[activeShowcaseIndex % products.length] : null;
+
+  useEffect(() => {
+    if (products.length < 2) return;
+    const timer = window.setInterval(() => setActiveShowcaseIndex((index) => (index + 1) % products.length), 5000);
+    return () => window.clearInterval(timer);
+  }, [products.length]);
 
   useEffect(() => {
     const handleOpenStylist = () => setIsStylistOpen(true);
@@ -450,11 +458,39 @@ function CollectionsPageContent() {
 
           <div className="max-w-[1400px] mx-auto p-4 md:p-10">
 
-            <div className="mb-8 rounded-3xl border border-border/50 bg-gradient-to-br from-surface to-accent/10 p-6 md:p-10">
-              <p className="text-xs font-bold uppercase tracking-[0.2em] text-accent">VastraX Collection</p>
-              <h1 className="mt-2 text-3xl font-semibold text-foreground">Women&apos;s Collection</h1>
-              <p className="mt-2 text-sm text-muted-foreground">{filteredProducts.length} {filteredProducts.length === 1 ? "product" : "products"}</p>
-            </div>
+            {showcaseProduct && (
+              <section aria-label="Featured collection" className="relative mb-8 grid min-h-[250px] overflow-hidden rounded-3xl border border-border/50 bg-[#f8f7f4] md:min-h-[340px] md:grid-cols-2">
+                <div className="flex flex-col items-start justify-center p-7 md:p-12">
+                  <span className="mb-4 inline-flex rounded-full bg-[#e07a3f]/10 px-4 py-2 text-[10px] font-bold uppercase tracking-[0.2em] text-[#b95625]">A little something special</span>
+                  <p className="text-sm font-medium uppercase tracking-[0.18em] text-[#6f6257]">Discover the collection</p>
+                  <h1 className="mt-2 max-w-lg text-3xl font-semibold leading-tight text-[#29231f] md:text-5xl">{showcaseProduct.name}</h1>
+                  <p className="mt-3 text-sm text-[#6f6257] md:text-base">Easy elegance, made for your everyday moments.</p>
+                  <Link href={`/storefront/product?id=${showcaseProduct.id}`} className="mt-6 inline-flex items-center gap-2 rounded-full bg-[#29231f] px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#e07a3f]">
+                    Explore this look <ChevronRight className="h-4 w-4" />
+                  </Link>
+                  {products.length > 1 && (
+                    <div className="mt-6 flex items-center gap-2" aria-label={`Slide ${activeShowcaseIndex + 1} of ${products.length}`}>
+                      {products.map((product, index) => (
+                        <button key={product.id} type="button" onClick={() => setActiveShowcaseIndex(index)} aria-label={`Show ${product.name}`} aria-current={index === activeShowcaseIndex ? "true" : undefined} className={`h-2 rounded-full transition-all ${index === activeShowcaseIndex ? "w-7 bg-[#e07a3f]" : "w-2 bg-[#29231f]/25 hover:bg-[#29231f]/50"}`} />
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="relative min-h-[220px] overflow-hidden bg-[#f8f7f4] md:min-h-full">
+                  <Image width={1200} height={900} unoptimized src={showcaseProduct.image} alt={showcaseProduct.name} className="h-full w-full object-contain p-6 transition-transform duration-500 md:p-10" />
+                  {products.length > 1 && (
+                    <button type="button" onClick={(event) => { event.preventDefault(); setActiveShowcaseIndex((index) => (index - 1 + products.length) % products.length); }} aria-label="Previous featured product" className="absolute left-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/90 text-[#29231f] shadow transition-colors hover:bg-white">
+                      <ChevronRight className="h-5 w-5 rotate-180" />
+                    </button>
+                  )}
+                  {products.length > 1 && (
+                    <button type="button" onClick={(event) => { event.preventDefault(); setActiveShowcaseIndex((index) => (index + 1) % products.length); }} aria-label="Next featured product" className="absolute right-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/90 text-[#29231f] shadow transition-colors hover:bg-white">
+                      <ChevronRight className="h-5 w-5" />
+                    </button>
+                  )}
+                </div>
+              </section>
+            )}
 
             {/* Layout Grid: Sidebar + Products */}
             <div className="flex flex-col lg:flex-row gap-8 lg:gap-10">
