@@ -3,7 +3,7 @@ import Image from "next/image";
 
 import React, { useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Script from "next/script";
 import { ChevronLeft, Lock, CreditCard, CheckCircle2, Phone, Mail, ArrowRight, Loader2, ShoppingBag } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -93,7 +93,17 @@ declare global {
 }
 
 export default function CheckoutPage() {
+  return (
+    <React.Suspense fallback={<div className="min-h-screen bg-background" />}>
+      <CheckoutContent />
+    </React.Suspense>
+  );
+}
+
+function CheckoutContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const preferredAddressId = searchParams.get("newAddressId") || "";
   // Step State
   const [isProcessing, setIsProcessing] = useState(false);
   const [orderComplete, setOrderComplete] = useState(false);
@@ -147,7 +157,9 @@ export default function CheckoutPage() {
       if (profile.phone_number) setPhone(profile.phone_number);
 
       setSavedAddresses(addresses);
-      const savedAddress = addresses.find((entry) => entry.is_default) || addresses[0];
+      const savedAddress = addresses.find((entry) => entry.id === preferredAddressId)
+        || addresses.find((entry) => entry.is_default)
+        || addresses[0];
       setSelectedAddressId(savedAddress?.id || "");
       if (profileRes.ok && (!fullName || !profile.phone_number?.trim())) {
         router.push("/storefront/account?tab=profile&returnTo=%2Fstorefront%2Fcheckout");
@@ -163,7 +175,7 @@ export default function CheckoutPage() {
       }
     });
     return () => { cancelled = true; };
-  }, [session, localToken, router]);
+  }, [session, localToken, router, preferredAddressId]);
 
   // Razorpay simulation fallback (used when no live Razorpay credentials are configured)
   const [simPayment, setSimPayment] = useState<{ txnId: string; orderId: string } | null>(null);

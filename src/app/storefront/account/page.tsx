@@ -146,7 +146,7 @@ function CustomerAccountContent() {
       setAddresses(nextAddresses);
       setAddressForm({ label: "Home", address_line1: "", city: "", state: "", pincode: "", is_default: false });
       setIsAddingAddress(false);
-      if (returnTo === "/storefront/checkout") router.replace("/storefront/checkout");
+      if (returnTo === "/storefront/checkout") router.replace("/storefront/checkout?newAddressId=" + encodeURIComponent(created.id));
     } catch (error) {
       setAddressError(error instanceof Error ? error.message : "Could not save this address.");
     } finally {
