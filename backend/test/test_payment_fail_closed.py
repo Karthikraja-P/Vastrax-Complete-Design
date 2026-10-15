@@ -10,7 +10,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 import app.main  # noqa: F401  (registers every model on Base.metadata)
-from app.core.exceptions import AppException, BadRequestError, ConflictError, ForbiddenError
+from app.core.exceptions import AppException, BadGatewayError, BadRequestError, ConflictError, ForbiddenError
 from app.db.base import Base
 from app.models.order import Order
 from app.models.payment import Payment
@@ -76,6 +76,39 @@ def _unpaid(db):
     o = db.get(Order, "ORD-1")
     p = db.get(Payment, "TXN-1")
     return o.payment_status != "paid" and o.status != "confirmed" and p.status != "success"
+
+
+def test_payment_create_rejects_amount_below_one_rupee():
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        PaymentCreate(order_id="ORD-1", amount=Decimal("0.99"))
+
+
+def test_razorpay_order_api_error_fails_closed_without_simulation(db, monkeypatch):
+    monkeypatch.setattr(ps.settings, "app_env", "development")
+    monkeypatch.setattr(ps.settings, "razorpay_key_id", "rzp_test_account_key")
+    monkeypatch.setattr(ps.settings, "razorpay_key_secret", "account_secret")
+    monkeypatch.setattr(ps.settings, "razorpay_webhook_secret", "account_webhook_secret")
+    user, order, _ = _seed(db)
+
+    class UnauthorizedResponse:
+        status_code = 401
+
+        def json(self):
+            return {"error": {"description": "invalid credentials"}}
+
+    monkeypatch.setattr(ps.requests, "post", lambda *args, **kwargs: UnauthorizedResponse())
+    with pytest.raises(BadGatewayError):
+        ps.PaymentService(db).initiate_payment(
+            PaymentCreate(order_id=order.id, amount=Decimal("100.00")), user
+        )
+
+    failed_payment = db.query(Payment).filter(Payment.id != "TXN-1").one()
+    db.refresh(order)
+    assert failed_payment.status == "failed"
+    assert order.status == "cancelled"
+    assert order.payment_status == "failed"
 
 
 def test_forged_verify_signature_rejected(db, hooks, real_cfg):
@@ -199,7 +232,7 @@ def test_provider_failure_in_production_creates_no_paid_state(db, hooks, real_cf
         return Resp()
 
     monkeypatch.setattr(ps.requests, "post", fake_post)
-    with pytest.raises(BadRequestError):
+    with pytest.raises(BadGatewayError):
         ps.PaymentService(db).initiate_payment(PaymentCreate(order_id="ORD-1", amount=Decimal("100.00")), user)
     assert _unpaid(db) and hooks == []
 

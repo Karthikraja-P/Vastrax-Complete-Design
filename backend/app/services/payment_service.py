@@ -115,7 +115,10 @@ class PaymentService:
                 auth=_razorpay_auth(),
                 timeout=10,
             )
-            resp_data = resp.json()
+            try:
+                resp_data = resp.json()
+            except ValueError:
+                resp_data = {}
             if resp.status_code in (200, 201) and resp_data.get("id"):
                 payment.razorpay_order_id = resp_data["id"]
                 self.db.commit()
@@ -128,22 +131,15 @@ class PaymentService:
                     "amount": resp_data.get("amount", amount_paise),
                     "currency": resp_data.get("currency", "INR"),
                 }
-            raise BadRequestError(resp_data.get("error", {}).get("description", "Razorpay order creation failed"))
-        except BadRequestError:
+            logger.error("Razorpay order API returned HTTP %s without a valid order id", resp.status_code)
+            self._mark_payment_failed(payment)
+            raise BadGatewayError("Razorpay could not create the payment order. Please try again.")
+        except BadGatewayError:
             raise
         except Exception as exc:
-            if settings.app_env == "production":
-                logger.error("Razorpay order creation failed in production: %s", type(exc).__name__)
-                raise BadRequestError("Online payments are not available right now") from exc
-            logger.warning("Razorpay order creation failed, falling back to simulation: %s", exc)
-            return {
-                "status": "success",
-                "mode": "simulation",
-                "txn_id": payment.id,
-                "amount": amount_paise,
-                "currency": "INR",
-                "warning": f"Real Razorpay call failed ({exc}), fell back to simulation",
-            }
+            self._mark_payment_failed(payment)
+            logger.error("Razorpay order creation failed: %s", type(exc).__name__)
+            raise BadGatewayError("Razorpay could not create the payment order. Please try again.") from exc
 
     def verify_payment(self, payload: PaymentVerify, user: User) -> dict:
         payment = self.db.query(Payment).filter(Payment.id == payload.txn_id).first()
