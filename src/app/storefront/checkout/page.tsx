@@ -54,6 +54,7 @@ interface RazorpayPaymentResponse {
 }
 
 interface RazorpayInstance {
+  on(event: "payment.failed", handler: (response: { error?: { description?: string; code?: string } }) => void): void;
   open(): void;
 }
 
@@ -264,6 +265,15 @@ function CheckoutContent() {
       modal: {
         ondismiss: () => setIsProcessing(false),
       },
+    });
+    rzp.on("payment.failed", ({ error }) => {
+      setIsProcessing(false);
+      showToast({
+        title: "Payment failed",
+        description: error?.description || "Razorpay could not complete the payment. Please try again.",
+        type: "error",
+        duration: 6000,
+      });
     });
     rzp.open();
   };

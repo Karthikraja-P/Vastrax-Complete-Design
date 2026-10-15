@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class PaymentCreate(BaseModel):
     order_id: str
-    amount: Decimal
+    amount: Decimal = Field(ge=Decimal("1.00"), max_digits=10, decimal_places=2)
     payment_method: str = "UPI"
 
 
