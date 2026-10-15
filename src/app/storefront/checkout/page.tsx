@@ -65,6 +65,7 @@ interface CheckoutProfile {
 
 interface SavedAddress {
   id: string;
+  label: string;
   address_line1: string;
   city: string;
   state: string;
@@ -119,11 +120,8 @@ export default function CheckoutPage() {
   const [phone, setPhone] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
-  const [address, setAddress] = useState("");
-  const [apartment, setApartment] = useState("");
-  const [city, setCity] = useState("");
-  const [stateName, setStateName] = useState("");
-  const [postalCode, setPostalCode] = useState("");
+  const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
+  const [selectedAddressId, setSelectedAddressId] = useState("");
 
   // Prefill contact and saved default shipping address from the account.
   React.useEffect(() => {
@@ -148,13 +146,9 @@ export default function CheckoutPage() {
       }
       if (profile.phone_number) setPhone(profile.phone_number);
 
+      setSavedAddresses(addresses);
       const savedAddress = addresses.find((entry) => entry.is_default) || addresses[0];
-      if (savedAddress) {
-        setAddress(savedAddress.address_line1 || "");
-        setCity(savedAddress.city || "");
-        setStateName(savedAddress.state || "");
-        setPostalCode(savedAddress.pincode || "");
-      }
+      setSelectedAddressId(savedAddress?.id || "");
       if (profileRes.ok && (!fullName || !profile.phone_number?.trim())) {
         router.push("/storefront/account?tab=profile&returnTo=%2Fstorefront%2Fcheckout");
       }
@@ -327,6 +321,15 @@ export default function CheckoutPage() {
       });
       return;
     }
+    if (!selectedAddressId) {
+      showToast({
+        title: "Delivery Address Required",
+        description: "Add a delivery address to your account before placing this order.",
+        type: "info",
+      });
+      router.push("/storefront/account?tab=profile&showAddressForm=1&returnTo=%2Fstorefront%2Fcheckout");
+      return;
+    }
 
     setIsProcessing(true);
 
@@ -342,28 +345,12 @@ export default function CheckoutPage() {
         throw new Error("Razorpay payments are not configured yet. Please try again later.");
       }
 
-      // 1. Create Address
-      const addressRes = await backendFetch(`${BACKEND_BASE}/users/me/addresses`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          label: "Home",
-          address_line1: apartment ? `${address}, ${apartment}` : address,
-          city: city,
-          state: stateName,
-          pincode: postalCode,
-          is_default: true
-        })
-      });
-      const addressData = await addressRes.json().catch(() => ({}));
-      if (!addressRes.ok) throw new Error(addressData.detail || addressData.message || "Failed to save delivery address");
-
       // 2. Create Order
       const orderRes = await backendFetch(`${BACKEND_BASE}/orders`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
-          address_id: addressData.id,
+          address_id: selectedAddressId,
           payment_method: "UPI",
           total_amount: total,
           delivery_method: "standard",
@@ -662,58 +649,42 @@ export default function CheckoutPage() {
                     </div>
                   </div>
 
-                  <div className="space-y-1.5">
-                    <label className="font-medium text-foreground">Street Address <span className="text-accent">*</span></label>
-                    <input 
-                      type="text" 
-                      required
-                      value={address}
-                      onChange={(e) => setAddress(e.target.value)}
-                      placeholder="123 Luxury Blvd"
-                      className="w-full px-3.5 py-2.5 bg-background border border-border rounded-lg focus:outline-none focus:border-accent text-foreground transition-all"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <label className="font-medium text-foreground">Apt / Suite (Optional)</label>
-                      <input
-                        type="text"
-                        value={apartment}
-                        onChange={(e) => setApartment(e.target.value)}
-                        className="w-full px-3.5 py-2.5 bg-background border border-border rounded-lg focus:outline-none focus:border-accent text-foreground transition-all"
-                      />
+                  <div className="space-y-3 border-t border-border pt-5">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <h3 className="font-semibold text-foreground">Delivery Address <span className="text-accent">*</span></h3>
+                      <Link
+                        href="/storefront/account?tab=profile&showAddressForm=1&returnTo=%2Fstorefront%2Fcheckout"
+                        className="text-sm font-semibold text-accent underline underline-offset-4 hover:text-accent/80"
+                      >
+                        Add delivery address
+                      </Link>
                     </div>
-                    <div className="space-y-1.5">
-                      <label className="font-medium text-foreground">City <span className="text-accent">*</span></label>
-                      <input
-                        type="text"
-                        required
-                        value={city}
-                        onChange={(e) => setCity(e.target.value)}
-                        className="w-full px-3.5 py-2.5 bg-background border border-border rounded-lg focus:outline-none focus:border-accent text-foreground transition-all"
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="font-medium text-foreground">State <span className="text-accent">*</span></label>
-                      <input
-                        type="text"
-                        required
-                        value={stateName}
-                        onChange={(e) => setStateName(e.target.value)}
-                        className="w-full px-3.5 py-2.5 bg-background border border-border rounded-lg focus:outline-none focus:border-accent text-foreground transition-all"
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="font-medium text-foreground">Pincode <span className="text-accent">*</span></label>
-                      <input
-                        type="text"
-                        required
-                        value={postalCode}
-                        onChange={(e) => setPostalCode(e.target.value)}
-                        className="w-full px-3.5 py-2.5 bg-background border border-border rounded-lg focus:outline-none focus:border-accent text-foreground transition-all"
-                      />
-                    </div>
+                    {savedAddresses.length === 0 ? (
+                      <p className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
+                        No saved delivery addresses. Add one to continue.
+                      </p>
+                    ) : (
+                      <fieldset className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <legend className="sr-only">Choose a delivery address</legend>
+                        {savedAddresses.map((entry) => (
+                          <label key={entry.id} className={"flex cursor-pointer items-start gap-3 rounded-xl border p-4 transition-colors " + (selectedAddressId === entry.id ? "border-accent bg-accent/5" : "border-border bg-background")}>
+                            <input
+                              type="radio"
+                              name="checkout-delivery-address"
+                              value={entry.id}
+                              checked={selectedAddressId === entry.id}
+                              onChange={() => setSelectedAddressId(entry.id)}
+                              className="mt-1 accent-accent"
+                            />
+                            <span className="text-sm">
+                              <span className="block font-semibold text-foreground">{entry.label}{entry.is_default ? " · Default" : ""}</span>
+                              <span className="mt-1 block text-muted-foreground">{entry.address_line1}</span>
+                              <span className="block text-muted-foreground">{entry.city}, {entry.state} {entry.pincode}</span>
+                            </span>
+                          </label>
+                        ))}
+                      </fieldset>
+                    )}
                   </div>
                 </div>
               </div>

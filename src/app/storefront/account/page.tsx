@@ -4,7 +4,7 @@ import Image from "next/image";
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Package, User, ChevronRight, Clock, CheckCircle2, Truck, ExternalLink, Plus, Trash2, Edit2, LogOut } from "lucide-react";
+import { Package, User, ChevronRight, Clock, CheckCircle2, Truck, ExternalLink, Plus, LogOut } from "lucide-react";
 import { Header } from "@/components/layout/Header";
 import { CartDrawer } from "@/components/layout/CartDrawer";
 import { StylistDrawer } from "@/components/stylist/StylistDrawer";
@@ -39,17 +39,13 @@ interface OrderItem {
 }
 
 interface AccountAddress {
-  id: string | number;
-  name?: string;
-  title?: string;
-  address?: string;
-  street?: string;
-  city?: string;
-  state?: string;
-  pincode?: string;
-  zip?: string;
-  phone?: string;
-  isDefault?: boolean;
+  id: string;
+  label: string;
+  address_line1: string;
+  city: string;
+  state: string;
+  pincode: string;
+  is_default: boolean;
 }
 
 const mockCustomerOrders: OrderItem[] = [];
@@ -111,9 +107,84 @@ function CustomerAccountContent() {
       .catch(() => setMarketingError("Unable to load marketing preferences."));
   }, []);
 
-  // Address state
-  const [addresses] = useState<AccountAddress[]>([]);
-  const [isAddingAddress, setIsAddingAddress] = useState(false);
+  const [addresses, setAddresses] = useState<AccountAddress[]>([]);
+  const [isLoadingAddresses, setIsLoadingAddresses] = useState(true);
+  const [isAddingAddress, setIsAddingAddress] = useState(searchParams.get("showAddressForm") === "1");
+  const [addressError, setAddressError] = useState("");
+  const [isSavingAddress, setIsSavingAddress] = useState(false);
+  const [addressForm, setAddressForm] = useState({
+    label: "Home",
+    address_line1: "",
+    city: "",
+    state: "",
+    pincode: "",
+    is_default: false,
+  });
+
+  useEffect(() => {
+    fetchApi<AccountAddress[]>("/users/me/addresses")
+      .then((savedAddresses) => setAddresses(Array.isArray(savedAddresses) ? savedAddresses : []))
+      .catch(() => setAddressError("Unable to load saved delivery addresses."))
+      .finally(() => setIsLoadingAddresses(false));
+  }, []);
+
+  const handleSaveAddress = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setAddressError("");
+    setIsSavingAddress(true);
+    try {
+      const created = await fetchApi<AccountAddress>("/users/me/addresses", {
+        method: "POST",
+        body: JSON.stringify({
+          ...addressForm,
+          is_default: addressForm.is_default || addresses.length === 0,
+        }),
+      });
+      const nextAddresses = addressForm.is_default || addresses.length === 0
+        ? [...addresses.map((entry) => ({ ...entry, is_default: false })), created]
+        : [...addresses, created];
+      setAddresses(nextAddresses);
+      setAddressForm({ label: "Home", address_line1: "", city: "", state: "", pincode: "", is_default: false });
+      setIsAddingAddress(false);
+      if (returnTo === "/storefront/checkout") router.replace("/storefront/checkout");
+    } catch (error) {
+      setAddressError(error instanceof Error ? error.message : "Could not save this address.");
+    } finally {
+      setIsSavingAddress(false);
+    }
+  };
+
+  const setDefaultAddress = async (addressId: string) => {
+    setAddressError("");
+    try {
+      await fetchApi<AccountAddress>("/users/me/addresses/" + addressId, {
+        method: "PUT",
+        body: JSON.stringify({ is_default: true }),
+      });
+      setAddresses((current) => current.map((entry) => ({ ...entry, is_default: entry.id === addressId })));
+    } catch (error) {
+      setAddressError(error instanceof Error ? error.message : "Could not update the default address.");
+    }
+  };
+
+  const deleteAddress = async (addressId: string) => {
+    setAddressError("");
+    const removed = addresses.find((entry) => entry.id === addressId);
+    const remaining = addresses.filter((entry) => entry.id !== addressId);
+    try {
+      await fetchApi("/users/me/addresses/" + addressId, { method: "DELETE" });
+      if (removed?.is_default && remaining.length > 0) {
+        await fetchApi("/users/me/addresses/" + remaining[0].id, {
+          method: "PUT",
+          body: JSON.stringify({ is_default: true }),
+        });
+        remaining[0].is_default = true;
+      }
+      setAddresses(remaining);
+    } catch (error) {
+      setAddressError(error instanceof Error ? error.message : "Could not delete this address.");
+    }
+  };
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -291,15 +362,6 @@ function CustomerAccountContent() {
               );
             })}
 
-            <div className="pt-4 border-t border-border/40">
-              <button
-                onClick={() => performSignOut("/storefront/home")}
-                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-base font-medium text-red-400/80 hover:text-red-400 hover:bg-red-500/10 transition-all border border-transparent hover:border-red-500/20"
-              >
-                <LogOut className="w-4 h-4" />
-                <span>Sign Out</span>
-              </button>
-            </div>
           </div>
 
           {/* Tab Content */}
@@ -406,11 +468,6 @@ function CustomerAccountContent() {
             {/* PROFILE TAB */}
             {activeTab === "profile" && (
               <div className="space-y-6">
-                <div>
-                  <h2 className="text-2xl font-bold text-foreground">Client Profile</h2>
-                  <p className="text-base text-muted-foreground mt-1">Personal details and concierge preferences.</p>
-                </div>
-
                 <form onSubmit={handleSaveProfile} className="bg-surface/60 border border-border/80 rounded-2xl p-6 space-y-4 max-w-xl">
                   {profileError && <p role="alert" className="text-red-400">{profileError}</p>}
                   {savedSuccess && (
@@ -474,6 +531,109 @@ function CustomerAccountContent() {
                   </div>
                 </form>
 
+                <section className="mt-6 rounded-2xl border border-border/80 bg-surface/60 p-6 space-y-5">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <h3 className="text-xl font-bold text-foreground">Delivery Addresses</h3>
+                    {!isAddingAddress && (
+                      <button
+                        type="button"
+                        onClick={() => setIsAddingAddress(true)}
+                        className="rounded-full bg-accent px-4 py-2 text-xs font-semibold uppercase tracking-wider text-white transition-colors hover:bg-accent/90"
+                      >
+                        <Plus className="mr-1 inline h-3.5 w-3.5" /> Add delivery address
+                      </button>
+                    )}
+                  </div>
+                  {addressError && <p role="alert" className="text-sm text-red-400">{addressError}</p>}
+                  {isAddingAddress && (
+                    <form onSubmit={handleSaveAddress} className="rounded-xl border border-border/70 bg-background p-5 space-y-4">
+                      <h4 className="font-semibold text-foreground">Add delivery address</h4>
+                      <fieldset>
+                        <legend className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Address type</legend>
+                        <div className="flex flex-wrap gap-4">
+                          {["Home", "Work", "Office", "Other"].map((label) => (
+                            <label key={label} className="flex items-center gap-2 text-sm text-foreground">
+                              <input
+                                type="radio"
+                                name="address-label"
+                                value={label}
+                                checked={addressForm.label === label}
+                                onChange={() => setAddressForm((current) => ({ ...current, label }))}
+                                className="accent-accent"
+                              />
+                              {label}
+                            </label>
+                          ))}
+                        </div>
+                      </fieldset>
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <label className="space-y-1 text-xs font-medium text-muted-foreground sm:col-span-2">
+                          Street address *
+                          <input required maxLength={500} value={addressForm.address_line1}
+                            onChange={(event) => setAddressForm((current) => ({ ...current, address_line1: event.target.value }))}
+                            className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-sm text-foreground" />
+                        </label>
+                        <label className="space-y-1 text-xs font-medium text-muted-foreground">
+                          City *
+                          <input required value={addressForm.city}
+                            onChange={(event) => setAddressForm((current) => ({ ...current, city: event.target.value }))}
+                            className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-sm text-foreground" />
+                        </label>
+                        <label className="space-y-1 text-xs font-medium text-muted-foreground">
+                          State *
+                          <input required value={addressForm.state}
+                            onChange={(event) => setAddressForm((current) => ({ ...current, state: event.target.value }))}
+                            className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-sm text-foreground" />
+                        </label>
+                        <label className="space-y-1 text-xs font-medium text-muted-foreground sm:col-span-2">
+                          Pincode *
+                          <input required inputMode="numeric" pattern="[0-9]{6}" maxLength={6} value={addressForm.pincode}
+                            onChange={(event) => setAddressForm((current) => ({ ...current, pincode: event.target.value.replace(/\D/g, "").slice(0, 6) }))}
+                            className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-sm text-foreground" />
+                        </label>
+                      </div>
+                      <label className="flex items-center gap-2 text-sm text-foreground">
+                        <input type="checkbox" checked={addressForm.is_default}
+                          onChange={(event) => setAddressForm((current) => ({ ...current, is_default: event.target.checked }))}
+                          className="accent-accent" />
+                        Set as my default delivery address
+                      </label>
+                      <div className="flex justify-end gap-3">
+                        <button type="button" onClick={() => setIsAddingAddress(false)} className="rounded-full border border-border px-4 py-2 text-sm text-foreground">Cancel</button>
+                        <button type="submit" disabled={isSavingAddress} className="rounded-full bg-accent px-5 py-2 text-sm font-semibold text-white disabled:opacity-60">
+                          {isSavingAddress ? "Saving…" : "Save address"}
+                        </button>
+                      </div>
+                    </form>
+                  )}
+                  {isLoadingAddresses ? (
+                    <p className="text-sm text-muted-foreground">Loading saved addresses…</p>
+                  ) : addresses.length === 0 && !isAddingAddress ? (
+                    <p className="text-sm text-muted-foreground">No delivery addresses saved yet.</p>
+                  ) : (
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                      {addresses.map((entry) => (
+                        <article key={entry.id} className="rounded-xl border border-border bg-background p-4">
+                          <div className="flex items-start justify-between gap-3">
+                            <label className="flex cursor-pointer items-start gap-3">
+                              <input type="radio" name="default-delivery-address" checked={entry.is_default}
+                                onChange={() => void setDefaultAddress(entry.id)} className="mt-1 accent-accent" />
+                              <span>
+                                <span className="block font-semibold text-foreground">{entry.label}{entry.is_default ? " · Default" : ""}</span>
+                                <span className="mt-1 block text-sm text-muted-foreground">{entry.address_line1}</span>
+                                <span className="block text-sm text-muted-foreground">{entry.city}, {entry.state} {entry.pincode}</span>
+                              </span>
+                            </label>
+                            <button type="button" onClick={() => void deleteAddress(entry.id)}
+                              aria-label={"Delete " + entry.label + " delivery address"}
+                              className="text-xs text-red-400 hover:text-red-300">Delete</button>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  )}
+                </section>
+
                 <form onSubmit={saveMarketingPreferences} className="mt-8 bg-surface/60 border border-border/80 rounded-2xl p-6 max-w-xl space-y-4">
                   <div>
                     <h3 className="text-xl font-bold text-foreground">Marketing preferences</h3>
@@ -492,101 +652,7 @@ function CustomerAccountContent() {
                   <button disabled={savingMarketing} className="rounded-xl bg-accent px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{savingMarketing ? "Saving…" : "Save preferences"}</button>
                 </form>
 
-                <div className="mt-12">
-                  <div className="flex items-center justify-between mb-6">
-                    <div>
-                      <h3 className="text-2xl font-bold text-foreground">Delivery Addresses</h3>
-                      <p className="text-base text-muted-foreground mt-1">Manage shipping locations for express delivery.</p>
-                    </div>
-                    {!isAddingAddress && (
-                      <button 
-                        onClick={() => setIsAddingAddress(true)}
-                        className="px-4 py-2 rounded-full bg-accent hover:bg-accent/90 text-white text-xs font-semibold uppercase tracking-wider transition-colors flex items-center gap-2 shadow-[0_0_15px_rgba(224,122,63,0.3)]"
-                      >
-                        <Plus className="w-3.5 h-3.5" /> Add Address
-                      </button>
-                    )}
-                  </div>
 
-                  {isAddingAddress ? (
-                    <div className="bg-surface/60 border border-border/80 rounded-2xl p-6">
-                      <h4 className="text-sm font-bold mb-4">Add New Address</h4>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="space-y-1.5 md:col-span-2">
-                          <label className="text-xs font-semibold text-muted-foreground uppercase">Street Number & Name<span className="text-red-500 ml-1">*</span></label>
-                          <input type="text" placeholder="e.g. 123 Main St" className="w-full px-4 py-2.5 bg-background border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-accent" required />
-                        </div>
-                        <div className="space-y-1.5 md:col-span-2">
-                          <label className="text-xs font-semibold text-muted-foreground uppercase">Nearby Landmark</label>
-                          <input type="text" placeholder="e.g. Opposite Central Park" className="w-full px-4 py-2.5 bg-background border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-accent" />
-                        </div>
-                        <div className="space-y-1.5">
-                          <label className="text-xs font-semibold text-muted-foreground uppercase">City<span className="text-red-500 ml-1">*</span></label>
-                          <input type="text" onInput={(e) => { e.currentTarget.value = e.currentTarget.value.replace(/[^a-zA-Z\s-]/g, ''); }} className="w-full px-4 py-2.5 bg-background border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-accent" required />
-                        </div>
-                        <div className="space-y-1.5">
-                          <label className="text-xs font-semibold text-muted-foreground uppercase">State<span className="text-red-500 ml-1">*</span></label>
-                          <input type="text" onInput={(e) => { e.currentTarget.value = e.currentTarget.value.replace(/[^a-zA-Z\s-]/g, ''); }} className="w-full px-4 py-2.5 bg-background border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-accent" required />
-                        </div>
-                        <div className="space-y-1.5">
-                          <label className="text-xs font-semibold text-muted-foreground uppercase">Country<span className="text-red-500 ml-1">*</span></label>
-                          <input type="text" onInput={(e) => { e.currentTarget.value = e.currentTarget.value.replace(/[^a-zA-Z\s-]/g, ''); }} className="w-full px-4 py-2.5 bg-background border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-accent" required />
-                        </div>
-                        <div className="space-y-1.5">
-                          <label className="text-xs font-semibold text-muted-foreground uppercase">Pincode<span className="text-red-500 ml-1">*</span></label>
-                          <input type="text" className="w-full px-4 py-2.5 bg-background border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-accent" required />
-                        </div>
-                        <div className="space-y-1.5 md:col-span-2">
-                          <label className="text-xs font-semibold text-muted-foreground uppercase">Mobile Number<span className="text-red-500 ml-1">*</span></label>
-                          <input type="tel" onInput={(e) => { e.currentTarget.value = e.currentTarget.value.replace(/\D/g, ''); }} placeholder="5550000000" className="w-full px-4 py-2.5 bg-background border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-accent" required />
-                        </div>
-                      </div>
-                      <div className="mt-6 flex justify-end gap-3">
-                        <button 
-                          onClick={() => setIsAddingAddress(false)}
-                          className="px-6 py-2.5 bg-transparent border border-border hover:bg-surface-hover text-foreground rounded-full text-xs font-semibold uppercase tracking-wider transition-colors"
-                        >
-                          Cancel
-                        </button>
-                        <button 
-                          onClick={() => setIsAddingAddress(false)}
-                          className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white rounded-full text-xs font-semibold uppercase tracking-wider transition-colors"
-                        >
-                          Save Address
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {addresses.map((addr) => (
-                        <div key={addr.id} className="bg-surface/60 border border-border/80 rounded-2xl p-5 relative flex flex-col justify-between">
-                          <div>
-                            <div className="flex items-center justify-between mb-2">
-                              <span className="text-xs font-bold uppercase tracking-wider text-accent">{addr.title}</span>
-                              {addr.isDefault && (
-                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-accent/10 text-accent border border-accent/20">Default</span>
-                              )}
-                            </div>
-                            <h4 className="font-semibold text-foreground text-sm">{addr.name}</h4>
-                            <p className="text-xs text-muted-foreground mt-1">{addr.street}</p>
-                            <p className="text-xs text-muted-foreground">{addr.city}, {addr.state} {addr.zip}</p>
-                          </div>
-
-                          <div className="mt-6 pt-3 border-t border-border/40 flex items-center justify-end gap-3 text-xs">
-                            <button className="text-muted-foreground hover:text-foreground flex items-center gap-1">
-                              <Edit2 className="w-3 h-3" /> Edit
-                            </button>
-                            {!addr.isDefault && (
-                              <button className="text-red-400 hover:text-red-300 flex items-center gap-1">
-                                <Trash2 className="w-3 h-3" /> Delete
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
               </div>
             )}
           </div>
