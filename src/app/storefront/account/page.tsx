@@ -99,7 +99,7 @@ function CustomerAccountContent() {
         setLastName(parts.join(" "));
         setHeaderName(fullName || "Your account");
         setEmail(profile.email || "");
-        setPhone(profile.phone_number || "");
+        setPhone((profile.phone_number || "").replace(/\D/g, "").slice(-10));
       })
       .catch(() => setProfileError("Unable to load your profile."));
     fetchApi<MarketingPreferences>("/users/me/marketing-consent")
@@ -131,6 +131,14 @@ function CustomerAccountContent() {
   const handleSaveAddress = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setAddressError("");
+    if (!addressForm.address_line1.trim() || !addressForm.city.trim() || !addressForm.state.trim()) {
+      setAddressError("Enter your street address, city, and state.");
+      return;
+    }
+    if (!/^[0-9]{6}$/.test(addressForm.pincode)) {
+      setAddressError("Enter a 6-digit pincode.");
+      return;
+    }
     setIsSavingAddress(true);
     try {
       const created = await fetchApi<AccountAddress>("/users/me/addresses", {
@@ -189,6 +197,10 @@ function CustomerAccountContent() {
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     setProfileError("");
+    if (!/^[0-9]{10}$/.test(phone)) {
+      setProfileError("Enter a 10-digit mobile number using digits only.");
+      return;
+    }
     try {
       const fullName = `${firstName} ${lastName}`.trim();
       await fetchApi("/users/me", {
@@ -469,54 +481,63 @@ function CustomerAccountContent() {
             {activeTab === "profile" && (
               <div className="space-y-6">
                 <form onSubmit={handleSaveProfile} className="bg-surface/60 border border-border/80 rounded-2xl p-6 space-y-4 max-w-xl">
-                  {profileError && <p role="alert" className="text-red-400">{profileError}</p>}
+                  {profileError && <p role="alert" className="text-sm text-red-400">{profileError}</p>}
                   {savedSuccess && (
-                    <div className="p-4 bg-green-500/10 border border-green-500/20 text-green-500 rounded-xl text-lg font-medium flex items-center gap-2">
+                    <div className="p-4 bg-green-500/10 border border-green-500/20 text-green-500 rounded-xl text-sm font-medium flex items-center gap-2">
                       <CheckCircle2 className="w-5 h-5" /> Profile successfully updated.
                     </div>
                   )}
                   
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-base font-semibold text-foreground uppercase tracking-wider mb-2">First Name <span className="text-red-500">*</span></label>
+                      <label className="mb-1.5 block text-sm font-medium text-foreground">First Name <span className="text-red-500">*</span></label>
                       <input 
                         type="text" 
                         value={firstName}
                         onChange={(e) => setFirstName(e.target.value.replace(/[^a-zA-Z\s-]/g, ''))}
-                        className="w-full bg-surface border border-border/50 rounded-xl px-4 py-3 text-lg text-foreground focus:outline-none focus:border-accent transition-colors"
+                        maxLength={50}
+                        autoComplete="given-name"
+                        className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-sm text-foreground focus:outline-none focus:border-accent transition-colors"
                         required
                       />
                     </div>
                     <div>
-                      <label className="block text-base font-semibold text-foreground uppercase tracking-wider mb-2">Last Name <span className="text-red-500">*</span></label>
+                      <label className="mb-1.5 block text-sm font-medium text-foreground">Last Name <span className="text-red-500">*</span></label>
                       <input 
                         type="text" 
                         value={lastName}
                         onChange={(e) => setLastName(e.target.value.replace(/[^a-zA-Z\s-]/g, ''))}
-                        className="w-full bg-surface border border-border/50 rounded-xl px-4 py-3 text-lg text-foreground focus:outline-none focus:border-accent transition-colors"
+                        maxLength={50}
+                        autoComplete="family-name"
+                        className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-sm text-foreground focus:outline-none focus:border-accent transition-colors"
                         required
                       />
                     </div>
                   </div>
 
                   <div>
-                    <label className="block text-base font-semibold text-foreground uppercase tracking-wider mb-2">Email Address <span className="text-red-500">*</span></label>
+                    <label className="mb-1.5 block text-sm font-medium text-foreground">Email Address <span className="text-red-500">*</span></label>
                     <input 
                       type="email" 
                       value={email}
                       readOnly
-                      className="w-full bg-surface border border-border/50 rounded-xl px-4 py-3 text-lg text-foreground focus:outline-none focus:border-accent transition-colors"
+                      autoComplete="email"
+                      className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-sm text-foreground focus:outline-none focus:border-accent transition-colors"
                       required
                     />
                   </div>
 
                   <div>
-                    <label className="block text-base font-semibold text-foreground uppercase tracking-wider mb-2">Phone Number</label>
+                    <label className="mb-1.5 block text-sm font-medium text-foreground">Phone Number <span className="text-red-500">*</span></label>
                     <input 
                       type="tel" 
                       value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
-                      className="w-full bg-surface border border-border/50 rounded-xl px-4 py-3 text-lg text-foreground focus:outline-none focus:border-accent transition-colors"
+                      inputMode="numeric"
+                      pattern="[0-9]{10}"
+                      maxLength={10}
+                      autoComplete="tel-national"
+                      onChange={(e) => setPhone(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                      className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-sm text-foreground focus:outline-none focus:border-accent transition-colors"
                       required
                     />
                   </div>
@@ -524,7 +545,7 @@ function CustomerAccountContent() {
                   <div className="pt-4 border-t border-border/40">
                     <button 
                       type="submit"
-                      className="px-8 py-3 bg-accent hover:bg-accent/90 text-white rounded-xl text-lg font-bold uppercase tracking-wider transition-all shadow-md shadow-accent/20"
+                      className="rounded-lg bg-accent px-5 py-2.5 text-sm font-semibold text-white transition-all shadow-md shadow-accent/20 hover:bg-accent/90"
                     >
                       Save Changes
                     </button>
@@ -567,25 +588,28 @@ function CustomerAccountContent() {
                         </div>
                       </fieldset>
                       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        <label className="space-y-1 text-xs font-medium text-muted-foreground sm:col-span-2">
+                        <label className="space-y-1.5 text-sm font-medium text-foreground sm:col-span-2">
                           Street address *
                           <input required maxLength={500} value={addressForm.address_line1}
                             onChange={(event) => setAddressForm((current) => ({ ...current, address_line1: event.target.value }))}
+                            autoComplete="street-address" placeholder="House, street, area, apartment (if applicable)"
                             className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-sm text-foreground" />
                         </label>
-                        <label className="space-y-1 text-xs font-medium text-muted-foreground">
+                        <label className="space-y-1.5 text-sm font-medium text-foreground">
                           City *
                           <input required value={addressForm.city}
                             onChange={(event) => setAddressForm((current) => ({ ...current, city: event.target.value }))}
+                            maxLength={100} autoComplete="address-level2"
                             className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-sm text-foreground" />
                         </label>
-                        <label className="space-y-1 text-xs font-medium text-muted-foreground">
+                        <label className="space-y-1.5 text-sm font-medium text-foreground">
                           State *
                           <input required value={addressForm.state}
                             onChange={(event) => setAddressForm((current) => ({ ...current, state: event.target.value }))}
+                            maxLength={100} autoComplete="address-level1"
                             className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-sm text-foreground" />
                         </label>
-                        <label className="space-y-1 text-xs font-medium text-muted-foreground sm:col-span-2">
+                        <label className="space-y-1.5 text-sm font-medium text-foreground sm:col-span-2">
                           Pincode *
                           <input required inputMode="numeric" pattern="[0-9]{6}" maxLength={6} value={addressForm.pincode}
                             onChange={(event) => setAddressForm((current) => ({ ...current, pincode: event.target.value.replace(/\D/g, "").slice(0, 6) }))}
@@ -637,7 +661,6 @@ function CustomerAccountContent() {
                 <form onSubmit={saveMarketingPreferences} className="mt-8 bg-surface/60 border border-border/80 rounded-2xl p-6 max-w-xl space-y-4">
                   <div>
                     <h3 className="text-xl font-bold text-foreground">Marketing preferences</h3>
-                    <p className="text-sm text-muted-foreground mt-1">Optional product and offer updates. Order and delivery messages are not affected.</p>
                   </div>
                   {marketingError && <p role="alert" className="text-sm text-red-400">{marketingError}</p>}
                   {marketingSaved && <p role="status" className="text-sm text-emerald-500">Your preferences were saved.</p>}
