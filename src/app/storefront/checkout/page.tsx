@@ -4,7 +4,7 @@ import Image from "next/image";
 import React, { useMemo, useState } from "react";
 import Link from "next/link";
 import Script from "next/script";
-import { ChevronLeft, ShieldCheck, Lock, CreditCard, CheckCircle2, Truck, Sparkles, Phone, Mail, ArrowRight, Loader2, Package, ShoppingBag } from "lucide-react";
+import { ChevronLeft, ShieldCheck, Lock, CreditCard, CheckCircle2, Phone, Mail, ArrowRight, Loader2, Package, ShoppingBag } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useSession } from "next-auth/react";
 import { AuthModal } from "@/components/auth/AuthModal";
@@ -56,6 +56,21 @@ interface RazorpayInstance {
   open(): void;
 }
 
+interface CheckoutProfile {
+  full_name?: string | null;
+  email?: string | null;
+  phone_number?: string | null;
+}
+
+interface SavedAddress {
+  id: string;
+  address_line1: string;
+  city: string;
+  state: string;
+  pincode: string;
+  is_default: boolean;
+}
+
 interface RazorpayOptions {
   key: string;
   amount: number;
@@ -97,39 +112,59 @@ export default function CheckoutPage() {
     }
   }, [status, localToken]);
 
-  // Form State
-  const [email, setEmail] = useState("alexandra.vance@example.com");
-  const [phone, setPhone] = useState("+1 (555) 382-9912");
-  const [firstName, setFirstName] = useState("Alexandra");
-  const [lastName, setLastName] = useState("Vance");
-  const [address, setAddress] = useState("742 Evergreen Terrace");
-  const [apartment, setApartment] = useState("Penthouse 4B");
-  const [city, setCity] = useState("New York");
-  const [postalCode, setPostalCode] = useState("10001");
+  // Checkout fields start empty and are filled from the signed-in account.
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [address, setAddress] = useState("");
+  const [apartment, setApartment] = useState("");
+  const [city, setCity] = useState("");
+  const [stateName, setStateName] = useState("");
+  const [postalCode, setPostalCode] = useState("");
 
-  // Pre-fill customer details from active session
+  // Prefill contact and saved default shipping address from the account.
   React.useEffect(() => {
-    if (session?.user) {
-      void Promise.resolve().then(() => {
-        if (session.user.email) setEmail(session.user.email);
-        if (session.user.name) {
-          const parts = session.user.name.split(" ");
-          setFirstName(parts[0] || "");
-          setLastName(parts.slice(1).join(" ") || "");
-        }
-      });
-    }
-  }, [session]);
-  
-  // Delivery Method
-  const [deliveryMethod, setDeliveryMethod] = useState<"standard" | "express" | "concierge">("express");
+    const token = session?.accessToken || localToken;
+    if (!token) return;
 
-  // Payment Method
-  const [paymentMethod, setPaymentMethod] = useState<"card" | "apple" | "cod">("card");
-  const [cardNumber, setCardNumber] = useState("•••• •••• •••• 4242");
-  const [cardExpiry, setCardExpiry] = useState("12/28");
-  const [cardCvc, setCardCvc] = useState("•••");
-  const [cardHolder, setCardHolder] = useState("ALEXANDRA VANCE");
+    let cancelled = false;
+    const headers = { Authorization: "Bearer " + token };
+    void Promise.all([
+      backendFetch(BACKEND_BASE + "/users/me", { method: "GET", headers }),
+      backendFetch(BACKEND_BASE + "/users/me/addresses", { method: "GET", headers }),
+    ]).then(async ([profileRes, addressesRes]) => {
+      if (cancelled) return;
+      const profile: CheckoutProfile = profileRes.ok ? await profileRes.json().catch(() => ({})) : {};
+      const addresses: SavedAddress[] = addressesRes.ok ? await addressesRes.json().catch(() => []) : [];
+      const fullName = (profile.full_name || session?.user?.name || "").trim();
+      const parts = fullName.split(/\s+/).filter(Boolean);
+      if (profile.email || session?.user?.email) setEmail(profile.email || session?.user?.email || "");
+      if (parts.length) {
+        setFirstName(parts[0]);
+        setLastName(parts.slice(1).join(" "));
+      }
+      if (profile.phone_number) setPhone(profile.phone_number);
+
+      const savedAddress = addresses.find((entry) => entry.is_default) || addresses[0];
+      if (savedAddress) {
+        setAddress(savedAddress.address_line1 || "");
+        setCity(savedAddress.city || "");
+        setStateName(savedAddress.state || "");
+        setPostalCode(savedAddress.pincode || "");
+      }
+    }).catch(() => {
+      if (!cancelled && session?.user) {
+        if (session.user.email) setEmail(session.user.email);
+        const parts = (session.user.name || "").trim().split(/\s+/).filter(Boolean);
+        if (parts.length) {
+          setFirstName(parts[0]);
+          setLastName(parts.slice(1).join(" "));
+        }
+      }
+    });
+    return () => { cancelled = true; };
+  }, [session, localToken]);
 
   // Razorpay simulation fallback (used when no live Razorpay credentials are configured)
   const [simPayment, setSimPayment] = useState<{ txnId: string; orderId: string } | null>(null);
@@ -147,9 +182,8 @@ export default function CheckoutPage() {
   })), [cartItems]);
 
   const subtotal = items.reduce((acc, item) => acc + item.price * item.quantity, 0);
-  const shippingCost = deliveryMethod === "standard" ? 0 : deliveryMethod === "express" ? 150 : 350;
   const tax = subtotal * 0.08;
-  const total = subtotal + shippingCost + tax;
+  const total = subtotal + tax;
 
   const getEffectiveToken = () => {
     return session?.accessToken || localToken || (typeof window !== "undefined" ? localStorage.getItem("vastrax_token") : null);
@@ -292,17 +326,15 @@ export default function CheckoutPage() {
     setIsProcessing(true);
 
     try {
-      if (paymentMethod !== "cod") {
-        const readinessRes = await backendFetch(`${BACKEND_BASE}/payments/readiness`, {
-          method: "GET",
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const readiness = await readinessRes.json().catch(() => ({}));
-        const productionBuild = process.env.NODE_ENV === "production";
-        if (!readinessRes.ok || !readiness.checkout_available ||
-            (productionBuild && !readiness.razorpay_available)) {
-          throw new Error("Online payments are not ready yet. Please choose Cash on Delivery or contact support.");
-        }
+      const readinessRes = await backendFetch(`${BACKEND_BASE}/payments/readiness`, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const readiness = await readinessRes.json().catch(() => ({}));
+      const productionBuild = process.env.NODE_ENV === "production";
+      if (!readinessRes.ok || !readiness.checkout_available ||
+          (productionBuild && !readiness.razorpay_available)) {
+        throw new Error("Razorpay payments are not configured yet. Please try again later.");
       }
 
       // 1. Create Address
@@ -313,7 +345,7 @@ export default function CheckoutPage() {
           label: "Home",
           address_line1: apartment ? `${address}, ${apartment}` : address,
           city: city,
-          state: "Tamil Nadu",
+          state: stateName,
           pincode: postalCode,
           is_default: true
         })
@@ -327,9 +359,9 @@ export default function CheckoutPage() {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           address_id: addressData.id,
-          payment_method: paymentMethod === "cod" ? "COD" : paymentMethod.toUpperCase(),
+          payment_method: "UPI",
           total_amount: total,
-          delivery_method: deliveryMethod,
+          delivery_method: "standard",
           items: items.map(item => ({
             product_id: String(item.id),
             size: item.size || "M",
@@ -343,20 +375,14 @@ export default function CheckoutPage() {
       const orderData = await orderRes.json().catch(() => ({}));
       if (!orderRes.ok) throw new Error(orderData.detail || orderData.message || "Failed to place order");
 
-      // Cash on Delivery is confirmed server-side immediately — no payment gateway involved.
-      if (paymentMethod === "cod") {
-        completeOrder(orderData.id);
-        return;
-      }
-
-      // 3. Initiate payment (card / Apple Pay both go through Razorpay's own checkout modal)
+      // Payment methods are selected securely inside Razorpay Checkout.
       const initiateRes = await backendFetch(`${BACKEND_BASE}/payments/initiate`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           order_id: orderData.id,
           amount: total,
-          payment_method: paymentMethod.toUpperCase(),
+          payment_method: "UPI",
         })
       });
       const initiateData = await initiateRes.json().catch(() => ({}));
@@ -369,7 +395,7 @@ export default function CheckoutPage() {
         setIsProcessing(false);
         setSimPayment({ txnId: initiateData.txn_id, orderId: orderData.id });
       } else {
-        throw new Error("Online payments are unavailable. Please choose Cash on Delivery or contact support.");
+        throw new Error("Razorpay payments are unavailable right now. Please try again later.");
       }
 
     } catch (err: unknown) {
@@ -478,7 +504,7 @@ export default function CheckoutPage() {
               <div className="flex justify-between items-center text-xs pb-3 border-b border-border">
                 <span className="text-muted-foreground">Estimated Delivery</span>
                 <span className="font-medium text-foreground">
-                  {deliveryMethod === 'concierge' ? 'Today (by 8:00 PM)' : deliveryMethod === 'express' ? '1-2 Business Days' : '3-5 Business Days'}
+                  Delivery updates will be shared after your order is confirmed
                 </span>
               </div>
               <div className="flex justify-between items-center text-xs">
@@ -579,13 +605,14 @@ export default function CheckoutPage() {
                     <div className="w-8 h-8 rounded-full bg-accent text-white flex items-center justify-center text-xs font-bold">1</div>
                     <h2 className="text-lg font-bold">Contact & Shipping Details</h2>
                   </div>
-                  <span className="text-xs text-muted-foreground">Express Guest</span>
+                  <span className="text-xs text-muted-foreground">Signed-in account details</span>
                 </div>
 
                 <div className="space-y-4 text-xs">
+                  <p className="text-muted-foreground">Fields marked <span className="text-accent">*</span> are required. Your account details are filled in automatically; you can edit them here.</p>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-1.5">
-                      <label className="font-medium text-foreground">Email Address</label>
+                      <label className="font-medium text-foreground">Email Address <span className="text-accent">*</span></label>
                       <div className="relative">
                         <input 
                           type="email" 
@@ -598,7 +625,7 @@ export default function CheckoutPage() {
                       </div>
                     </div>
                     <div className="space-y-1.5">
-                      <label className="font-medium text-foreground">Phone Number</label>
+                      <label className="font-medium text-foreground">Phone Number <span className="text-accent">*</span></label>
                       <div className="relative">
                         <input 
                           type="tel" 
@@ -614,7 +641,7 @@ export default function CheckoutPage() {
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-1.5">
-                      <label className="font-medium text-foreground">First Name</label>
+                      <label className="font-medium text-foreground">First Name <span className="text-accent">*</span></label>
                       <input 
                         type="text" 
                         required
@@ -624,7 +651,7 @@ export default function CheckoutPage() {
                       />
                     </div>
                     <div className="space-y-1.5">
-                      <label className="font-medium text-foreground">Last Name</label>
+                      <label className="font-medium text-foreground">Last Name <span className="text-accent">*</span></label>
                       <input 
                         type="text" 
                         required
@@ -636,7 +663,7 @@ export default function CheckoutPage() {
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="font-medium text-foreground">Street Address</label>
+                    <label className="font-medium text-foreground">Street Address <span className="text-accent">*</span></label>
                     <input 
                       type="text" 
                       required
@@ -647,20 +674,20 @@ export default function CheckoutPage() {
                     />
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-1.5">
                       <label className="font-medium text-foreground">Apt / Suite (Optional)</label>
-                      <input 
-                        type="text" 
+                      <input
+                        type="text"
                         value={apartment}
                         onChange={(e) => setApartment(e.target.value)}
                         className="w-full px-3.5 py-2.5 bg-background border border-border rounded-lg focus:outline-none focus:border-accent text-foreground transition-all"
                       />
                     </div>
                     <div className="space-y-1.5">
-                      <label className="font-medium text-foreground">City</label>
-                      <input 
-                        type="text" 
+                      <label className="font-medium text-foreground">City <span className="text-accent">*</span></label>
+                      <input
+                        type="text"
                         required
                         value={city}
                         onChange={(e) => setCity(e.target.value)}
@@ -668,9 +695,19 @@ export default function CheckoutPage() {
                       />
                     </div>
                     <div className="space-y-1.5">
-                      <label className="font-medium text-foreground">Postal Code</label>
-                      <input 
-                        type="text" 
+                      <label className="font-medium text-foreground">State <span className="text-accent">*</span></label>
+                      <input
+                        type="text"
+                        required
+                        value={stateName}
+                        onChange={(e) => setStateName(e.target.value)}
+                        className="w-full px-3.5 py-2.5 bg-background border border-border rounded-lg focus:outline-none focus:border-accent text-foreground transition-all"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="font-medium text-foreground">Postal Code <span className="text-accent">*</span></label>
+                      <input
+                        type="text"
                         required
                         value={postalCode}
                         onChange={(e) => setPostalCode(e.target.value)}
@@ -681,203 +718,21 @@ export default function CheckoutPage() {
                 </div>
               </div>
 
-              {/* Step 2: Delivery Method */}
+              {/* Payment */}
               <div className="bg-surface border border-border rounded-2xl p-6 md:p-8 space-y-5">
                 <div className="flex items-center gap-3 pb-4 border-b border-border">
                   <div className="w-8 h-8 rounded-full bg-accent text-white flex items-center justify-center text-xs font-bold">2</div>
-                  <h2 className="text-lg font-bold">Delivery Method</h2>
-                </div>
-
-                <div className="space-y-3">
-                  <label 
-                    onClick={() => setDeliveryMethod("standard")}
-                    className={`flex items-center justify-between p-4 rounded-xl border cursor-pointer transition-all ${
-                      deliveryMethod === "standard" 
-                        ? "border-accent bg-accent/5 ring-1 ring-accent" 
-                        : "border-border bg-background hover:border-border/80"
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${
-                        deliveryMethod === "standard" ? "border-accent" : "border-muted-foreground"
-                      }`}>
-                        {deliveryMethod === "standard" && <div className="w-2 h-2 rounded-full bg-accent" />}
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-foreground">Complimentary Standard Delivery</p>
-                        <p className="text-xs text-muted-foreground">3-5 Business Days · Signature upon receipt</p>
-                      </div>
-                    </div>
-                    <span className="text-sm font-bold text-green-500">Free</span>
-                  </label>
-
-                  <label 
-                    onClick={() => setDeliveryMethod("express")}
-                    className={`flex items-center justify-between p-4 rounded-xl border cursor-pointer transition-all ${
-                      deliveryMethod === "express" 
-                        ? "border-accent bg-accent/5 ring-1 ring-accent" 
-                        : "border-border bg-background hover:border-border/80"
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${
-                        deliveryMethod === "express" ? "border-accent" : "border-muted-foreground"
-                      }`}>
-                        {deliveryMethod === "express" && <div className="w-2 h-2 rounded-full bg-accent" />}
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-foreground">Global Priority Express</p>
-                        <p className="text-xs text-muted-foreground">1-2 Business Days · Priority Air Freight</p>
-                      </div>
-                    </div>
-                    <span className="text-sm font-bold text-foreground">₹150.00</span>
-                  </label>
-
-                  <label 
-                    onClick={() => setDeliveryMethod("concierge")}
-                    className={`flex items-center justify-between p-4 rounded-xl border cursor-pointer transition-all ${
-                      deliveryMethod === "concierge" 
-                        ? "border-accent bg-accent/5 ring-1 ring-accent" 
-                        : "border-border bg-background hover:border-border/80"
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${
-                        deliveryMethod === "concierge" ? "border-accent" : "border-muted-foreground"
-                      }`}>
-                        {deliveryMethod === "concierge" && <div className="w-2 h-2 rounded-full bg-accent" />}
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-foreground flex items-center gap-2">
-                          Private Concierge White-Glove
-                          <Sparkles className="w-3.5 h-3.5 text-accent" />
-                        </p>
-                        <p className="text-xs text-muted-foreground">Same-Day Dedicated Courier with Garment Steaming</p>
-                      </div>
-                    </div>
-                    <span className="text-sm font-bold text-foreground">₹350.00</span>
-                  </label>
-                </div>
-              </div>
-
-              {/* Step 3: Payment Method */}
-              <div className="bg-surface border border-border rounded-2xl p-6 md:p-8 space-y-5">
-                <div className="flex items-center gap-3 pb-4 border-b border-border">
-                  <div className="w-8 h-8 rounded-full bg-accent text-white flex items-center justify-center text-xs font-bold">3</div>
                   <h2 className="text-lg font-bold">Payment Method</h2>
                 </div>
-
-                {/* Tabs */}
-                <div className="grid grid-cols-3 gap-3">
-                  <button 
-                    type="button"
-                    onClick={() => setPaymentMethod("card")}
-                    className={`py-3 px-2 rounded-xl text-xs font-semibold flex flex-col items-center gap-1.5 border transition-all ${
-                      paymentMethod === "card" 
-                        ? "border-accent bg-accent/10 text-accent" 
-                        : "border-border bg-background text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    <CreditCard className="w-4 h-4" />
-                    Credit Card
-                  </button>
-
-                  <button 
-                    type="button"
-                    onClick={() => setPaymentMethod("apple")}
-                    className={`py-3 px-2 rounded-xl text-xs font-semibold flex flex-col items-center gap-1.5 border transition-all ${
-                      paymentMethod === "apple" 
-                        ? "border-accent bg-accent/10 text-accent" 
-                        : "border-border bg-background text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    <span className="font-bold text-sm leading-4"> Pay</span>
-                    Apple Pay
-                  </button>
-
-                  <button 
-                    type="button"
-                    onClick={() => setPaymentMethod("cod")}
-                    className={`py-3 px-2 rounded-xl text-xs font-semibold flex flex-col items-center gap-1.5 border transition-all ${
-                      paymentMethod === "cod" 
-                        ? "border-accent bg-accent/10 text-accent" 
-                        : "border-border bg-background text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    <Truck className="w-4 h-4" />
-                    Cash / POS
-                  </button>
+                <div className="flex items-start gap-4 rounded-xl border border-accent bg-accent/5 p-5">
+                  <CreditCard className="mt-0.5 h-5 w-5 shrink-0 text-accent" />
+                  <div className="space-y-1.5">
+                    <p className="text-sm font-semibold text-foreground">Pay securely with Razorpay</p>
+                    <p className="text-xs leading-relaxed text-muted-foreground">
+                      UPI, cards, net banking and wallets will be available in Razorpay Checkout when payment credentials are configured. Your payment details are entered securely with Razorpay.
+                    </p>
+                  </div>
                 </div>
-
-                {paymentMethod === "card" && (
-                  <div className="space-y-4 pt-2 text-xs animate-in fade-in duration-300">
-                    <div className="space-y-1.5">
-                      <label className="font-medium text-foreground">Cardholder Name</label>
-                      <input 
-                        type="text" 
-                        required
-                        value={cardHolder}
-                        onChange={(e) => setCardHolder(e.target.value)}
-                        className="w-full px-3.5 py-2.5 bg-background border border-border rounded-lg focus:outline-none focus:border-accent text-foreground uppercase transition-all"
-                      />
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <label className="font-medium text-foreground">Card Number</label>
-                      <div className="relative">
-                        <input 
-                          type="text" 
-                          required
-                          value={cardNumber}
-                          onChange={(e) => setCardNumber(e.target.value)}
-                          placeholder="4242 •••• •••• ••••"
-                          className="w-full px-3.5 py-2.5 bg-background border border-border rounded-lg focus:outline-none focus:border-accent text-foreground font-mono transition-all pr-12"
-                        />
-                        <CreditCard className="w-4 h-4 text-muted-foreground absolute right-3.5 top-1/2 -translate-y-1/2" />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-1.5">
-                        <label className="font-medium text-foreground">Expiry (MM/YY)</label>
-                        <input 
-                          type="text" 
-                          required
-                          value={cardExpiry}
-                          onChange={(e) => setCardExpiry(e.target.value)}
-                          placeholder="MM/YY"
-                          className="w-full px-3.5 py-2.5 bg-background border border-border rounded-lg focus:outline-none focus:border-accent text-foreground font-mono transition-all"
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className="font-medium text-foreground">CVV / CVC</label>
-                        <input 
-                          type="password" 
-                          maxLength={4}
-                          required
-                          value={cardCvc}
-                          onChange={(e) => setCardCvc(e.target.value)}
-                          placeholder="•••"
-                          className="w-full px-3.5 py-2.5 bg-background border border-border rounded-lg focus:outline-none focus:border-accent text-foreground font-mono transition-all"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {paymentMethod === "apple" && (
-                  <div className="p-6 bg-background rounded-xl border border-border text-center space-y-2">
-                    <p className="text-xs font-medium text-foreground">Fast 1-touch checkout with Apple Pay biometric token.</p>
-                    <p className="text-[11px] text-muted-foreground">You will be prompted to authenticate with Face ID or Touch ID upon clicking Place Order.</p>
-                  </div>
-                )}
-
-                {paymentMethod === "cod" && (
-                  <div className="p-6 bg-background rounded-xl border border-border text-center space-y-2">
-                    <p className="text-xs font-medium text-foreground">Pay via contactless POS or Cash directly to the courier.</p>
-                    <p className="text-[11px] text-muted-foreground">Available for all local metropolitan areas.</p>
-                  </div>
-                )}
               </div>
 
               {/* Submit Button */}
@@ -893,7 +748,7 @@ export default function CheckoutPage() {
                   </>
                 ) : (
                   <>
-                    Place Order · ${total.toFixed(2)}
+                    Place Order · ₹{total.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     <ArrowRight className="w-5 h-5" />
                   </>
                 )}
@@ -934,8 +789,8 @@ export default function CheckoutPage() {
                     <span className="text-foreground font-medium">₹{subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                   </div>
                   <div className="flex justify-between text-muted-foreground">
-                    <span>Shipping ({deliveryMethod.toUpperCase()})</span>
-                    <span className="text-foreground font-medium">{shippingCost === 0 ? "Free" : `₹${shippingCost.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}</span>
+                    <span>Shipping</span>
+                    <span className="text-foreground font-medium">Free</span>
                   </div>
                   <div className="flex justify-between text-muted-foreground">
                     <span>Estimated Sales Tax (8%)</span>
