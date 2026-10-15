@@ -84,7 +84,6 @@ function CustomerAccountContent() {
   const [headerName, setHeaderName] = useState("Your account");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
-  const [is2FAEnabled, setIs2FAEnabled] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [profileError, setProfileError] = useState("");
   const [marketing, setMarketing] = useState<MarketingPreferences>({
@@ -493,37 +492,6 @@ function CustomerAccountContent() {
                   <button disabled={savingMarketing} className="rounded-xl bg-accent px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{savingMarketing ? "Saving…" : "Save preferences"}</button>
                 </form>
 
-                <div className="mt-12 bg-surface/60 border border-border/80 rounded-2xl p-6 max-w-xl">
-                  <div className="flex items-center justify-between mb-4">
-                    <div>
-                      <h3 className="text-xl font-bold text-foreground">Security Settings</h3>
-                      <p className="text-sm text-muted-foreground mt-1">Manage your account security.</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between py-4 border-t border-border/40">
-                    <div>
-                      <p className="text-base font-semibold text-foreground">Two-Factor Authentication (SMS)</p>
-                      <p className="text-sm text-muted-foreground mt-1 max-w-sm">
-                        Require a 6-digit code sent to your mobile device when logging in.
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setIs2FAEnabled(!is2FAEnabled)}
-                      className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                        is2FAEnabled ? "bg-accent" : "bg-border/60"
-                      }`}
-                    >
-                      <span
-                        aria-hidden="true"
-                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                          is2FAEnabled ? "translate-x-5" : "translate-x-0"
-                        }`}
-                      />
-                    </button>
-                  </div>
-                </div>
-
                 <div className="mt-12">
                   <div className="flex items-center justify-between mb-6">
                     <div>
@@ -557,7 +525,7 @@ function CustomerAccountContent() {
                           <input type="text" onInput={(e) => { e.currentTarget.value = e.currentTarget.value.replace(/[^a-zA-Z\s-]/g, ''); }} className="w-full px-4 py-2.5 bg-background border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-accent" required />
                         </div>
                         <div className="space-y-1.5">
-                          <label className="text-xs font-semibold text-muted-foreground uppercase">State / Province<span className="text-red-500 ml-1">*</span></label>
+                          <label className="text-xs font-semibold text-muted-foreground uppercase">State<span className="text-red-500 ml-1">*</span></label>
                           <input type="text" onInput={(e) => { e.currentTarget.value = e.currentTarget.value.replace(/[^a-zA-Z\s-]/g, ''); }} className="w-full px-4 py-2.5 bg-background border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-accent" required />
                         </div>
                         <div className="space-y-1.5">
@@ -565,7 +533,7 @@ function CustomerAccountContent() {
                           <input type="text" onInput={(e) => { e.currentTarget.value = e.currentTarget.value.replace(/[^a-zA-Z\s-]/g, ''); }} className="w-full px-4 py-2.5 bg-background border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-accent" required />
                         </div>
                         <div className="space-y-1.5">
-                          <label className="text-xs font-semibold text-muted-foreground uppercase">Zip / Postal Code<span className="text-red-500 ml-1">*</span></label>
+                          <label className="text-xs font-semibold text-muted-foreground uppercase">Pincode<span className="text-red-500 ml-1">*</span></label>
                           <input type="text" className="w-full px-4 py-2.5 bg-background border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-accent" required />
                         </div>
                         <div className="space-y-1.5 md:col-span-2">

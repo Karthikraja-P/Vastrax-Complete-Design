@@ -705,7 +705,7 @@ export default function CheckoutPage() {
                       />
                     </div>
                     <div className="space-y-1.5">
-                      <label className="font-medium text-foreground">Postal Code <span className="text-accent">*</span></label>
+                      <label className="font-medium text-foreground">Pincode <span className="text-accent">*</span></label>
                       <input
                         type="text"
                         required
