@@ -4,13 +4,12 @@ import Image from "next/image";
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Package, Heart, User, ChevronRight, Clock, CheckCircle2, Truck, ExternalLink, Plus, Trash2, Edit2, ShoppingBag, LogOut } from "lucide-react";
+import { Package, User, ChevronRight, Clock, CheckCircle2, Truck, ExternalLink, Plus, Trash2, Edit2, LogOut } from "lucide-react";
 import { Header } from "@/components/layout/Header";
 import { CartDrawer } from "@/components/layout/CartDrawer";
 import { StylistDrawer } from "@/components/stylist/StylistDrawer";
 import { performSignOut } from "@/lib/auth-utils";
 import { fetchApi } from "@/lib/api";
-import { useFavoriteProducts, useFavorites } from "@/hooks/useFavorites";
 
 export const dynamic = "force-dynamic";
 
@@ -67,7 +66,7 @@ function CustomerAccountContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const returnTo = searchParams.get("returnTo");
-  const [activeTab, setActiveTab] = useState<"orders" | "favorites" | "profile">(
+  const [activeTab, setActiveTab] = useState<"orders" | "profile">(
     searchParams.get("tab") === "profile" ? "profile" : "orders"
   );
   const [isCartOpen, setIsCartOpen] = useState(false);
@@ -116,13 +115,6 @@ function CustomerAccountContent() {
   // Address state
   const [addresses] = useState<AccountAddress[]>([]);
   const [isAddingAddress, setIsAddingAddress] = useState(false);
-
-  const favorites = useFavoriteProducts();
-  const { toggleFavorite: toggleStoredFavorite } = useFavorites();
-
-  const toggleFavorite = (id: string | number) => {
-    toggleStoredFavorite(id);
-  };
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -278,7 +270,6 @@ function CustomerAccountContent() {
           <div className="lg:col-span-1 space-y-2">
             {([
               { id: "orders", label: "Orders & Shipments", icon: Package },
-              { id: "favorites", label: "Favorites", icon: Heart },
               { id: "profile", label: "Account Profile", icon: User },
             ] as const).map((tab) => {
               const Icon = tab.icon;
@@ -322,7 +313,13 @@ function CustomerAccountContent() {
                 </div>
 
                 <div className="space-y-6">
-                  {mockCustomerOrders.map((order) => (
+                  {mockCustomerOrders.length === 0 ? (
+                    <div className="rounded-2xl border border-border/80 bg-surface/60 px-6 py-12 text-center">
+                      <Package className="mx-auto h-10 w-10 text-muted-foreground" />
+                      <h3 className="mt-4 text-lg font-semibold text-foreground">No order yet</h3>
+                      <p className="mt-2 text-sm text-muted-foreground">Your orders and shipment updates will appear here after you place an order.</p>
+                    </div>
+                  ) : mockCustomerOrders.map((order) => (
                     <div 
                       key={order.id}
                       className="bg-surface/60 border border-border/80 rounded-2xl p-6 transition-all hover:border-border backdrop-blur-md shadow-lg"
@@ -407,42 +404,7 @@ function CustomerAccountContent() {
               </div>
             )}
 
-            {/* FAVORITES TAB */}
-            {activeTab === "favorites" && (
-              <div className="space-y-6">
-                <div>
-                  <h2 className="text-xl font-bold text-foreground">Favorites</h2>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-                  {favorites.map((item) => (
-                    <div key={item.id} className="group bg-surface/60 border border-border/80 rounded-2xl overflow-hidden flex flex-col justify-between">
-                      <div className="aspect-[3/4] overflow-hidden bg-surface-hover relative">
-                        <Image width={1200} height={900} unoptimized src={item.image || "/placeholder.svg"} alt={item.name} className="w-full h-full object-contain bg-[#f8f7f4] p-1" />
-                        <button 
-                          onClick={() => toggleFavorite(item.id)}
-                          className="absolute top-3 right-3 p-2 rounded-full bg-white/20 backdrop-blur-md hover:bg-white/40 transition-colors z-10"
-                        >
-                          <Heart className="w-4 h-4 text-accent fill-accent" />
-                        </button>
-                      </div>
-                      <div className="p-4">
-                        <h4 className="font-semibold text-foreground text-sm truncate">{item.name}</h4>
-                        <p className="text-xs font-semibold text-accent mt-1">{item.price}</p>
-                        <button 
-                          onClick={() => setIsCartOpen(true)}
-                          className="mt-4 w-full py-2.5 bg-accent hover:bg-accent/90 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-md shadow-accent/20 flex items-center justify-center gap-2"
-                        >
-                          <ShoppingBag className="w-4 h-4" /> Move to Bag
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* WISHLIST TAB -> (Removed, Replaced by FAVORITES above) */}            {/* PROFILE TAB */}
+            {/* PROFILE TAB */}
             {activeTab === "profile" && (
               <div className="space-y-6">
                 <div>

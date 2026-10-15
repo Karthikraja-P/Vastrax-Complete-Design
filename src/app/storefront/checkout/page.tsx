@@ -476,10 +476,6 @@ export default function CheckoutPage() {
 
         <div className="flex items-center gap-4">
           <ThemeToggle />
-          <div className="hidden sm:flex items-center gap-1.5 text-xs text-muted-foreground bg-surface border border-border px-3 py-1.5 rounded-full">
-            <Lock className="w-3.5 h-3.5 text-accent" />
-            <span>256-Bit SSL Encrypted</span>
-          </div>
         </div>
       </header>
 
