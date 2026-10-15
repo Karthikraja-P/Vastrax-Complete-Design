@@ -3,8 +3,9 @@ import Image from "next/image";
 
 import React, { useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import Script from "next/script";
-import { ChevronLeft, ShieldCheck, Lock, CreditCard, CheckCircle2, Phone, Mail, ArrowRight, Loader2, Package, ShoppingBag } from "lucide-react";
+import { ChevronLeft, Lock, CreditCard, CheckCircle2, Phone, Mail, ArrowRight, Loader2, ShoppingBag } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useSession } from "next-auth/react";
 import { AuthModal } from "@/components/auth/AuthModal";
@@ -91,6 +92,7 @@ declare global {
 }
 
 export default function CheckoutPage() {
+  const router = useRouter();
   // Step State
   const [isProcessing, setIsProcessing] = useState(false);
   const [orderComplete, setOrderComplete] = useState(false);
@@ -153,6 +155,9 @@ export default function CheckoutPage() {
         setStateName(savedAddress.state || "");
         setPostalCode(savedAddress.pincode || "");
       }
+      if (profileRes.ok && (!fullName || !profile.phone_number?.trim())) {
+        router.push("/storefront/account?tab=profile&returnTo=%2Fstorefront%2Fcheckout");
+      }
     }).catch(() => {
       if (!cancelled && session?.user) {
         if (session.user.email) setEmail(session.user.email);
@@ -164,7 +169,7 @@ export default function CheckoutPage() {
       }
     });
     return () => { cancelled = true; };
-  }, [session, localToken]);
+  }, [session, localToken, router]);
 
   // Razorpay simulation fallback (used when no live Razorpay credentials are configured)
   const [simPayment, setSimPayment] = useState<{ txnId: string; orderId: string } | null>(null);
@@ -605,11 +610,10 @@ export default function CheckoutPage() {
                     <div className="w-8 h-8 rounded-full bg-accent text-white flex items-center justify-center text-xs font-bold">1</div>
                     <h2 className="text-lg font-bold">Contact & Shipping Details</h2>
                   </div>
-                  <span className="text-xs text-muted-foreground">Signed-in account details</span>
                 </div>
 
                 <div className="space-y-4 text-xs">
-                  <p className="text-muted-foreground">Fields marked <span className="text-accent">*</span> are required. Your account details are filled in automatically; you can edit them here.</p>
+                  <p className="text-muted-foreground">Fields marked <span className="text-accent">*</span> are required.</p>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-1.5">
                       <label className="font-medium text-foreground">Email Address <span className="text-accent">*</span></label>
@@ -790,7 +794,7 @@ export default function CheckoutPage() {
                   </div>
                   <div className="flex justify-between text-muted-foreground">
                     <span>Shipping</span>
-                    <span className="text-foreground font-medium">Free</span>
+                    <span className="text-foreground font-medium">Quote pending</span>
                   </div>
                   <div className="flex justify-between text-muted-foreground">
                     <span>Estimated Sales Tax (8%)</span>
@@ -802,17 +806,6 @@ export default function CheckoutPage() {
                   </div>
                 </div>
 
-                {/* Trust Badges */}
-                <div className="pt-2 border-t border-border space-y-2 text-[11px] text-muted-foreground">
-                  <div className="flex items-center gap-2">
-                    <ShieldCheck className="w-4 h-4 text-accent shrink-0" />
-                    <span>Complimentary 30-Day Returns & Exchanges</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Package className="w-4 h-4 text-accent shrink-0" />
-                    <span>Insured Signature Courier Dispatch</span>
-                  </div>
-                </div>
               </div>
             </div>
 

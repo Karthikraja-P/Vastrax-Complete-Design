@@ -3,6 +3,7 @@ import Image from "next/image";
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Package, Heart, User, ChevronRight, Clock, CheckCircle2, Truck, ExternalLink, Plus, Trash2, Edit2, ShoppingBag, LogOut } from "lucide-react";
 import { Header } from "@/components/layout/Header";
 import { CartDrawer } from "@/components/layout/CartDrawer";
@@ -63,7 +64,12 @@ export default function CustomerAccountPage() {
 }
 
 function CustomerAccountContent() {
-  const [activeTab, setActiveTab] = useState<"orders" | "favorites" | "profile">("orders");
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const returnTo = searchParams.get("returnTo");
+  const [activeTab, setActiveTab] = useState<"orders" | "favorites" | "profile">(
+    searchParams.get("tab") === "profile" ? "profile" : "orders"
+  );
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isStylistOpen, setIsStylistOpen] = useState(false);
   
@@ -129,6 +135,9 @@ function CustomerAccountContent() {
       });
       setHeaderName(fullName);
       setSavedSuccess(true);
+      if (returnTo === "/storefront/checkout") {
+        router.replace("/storefront/checkout");
+      }
       setTimeout(() => setSavedSuccess(false), 3000);
     } catch {
       setProfileError("Profile update failed. Please try again.");
@@ -490,6 +499,7 @@ function CustomerAccountContent() {
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
                       className="w-full bg-surface border border-border/50 rounded-xl px-4 py-3 text-lg text-foreground focus:outline-none focus:border-accent transition-colors"
+                      required
                     />
                   </div>
 
