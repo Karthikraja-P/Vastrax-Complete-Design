@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from sqlalchemy import DateTime, ForeignKey, Numeric, String
+from sqlalchemy import DateTime, ForeignKey, Integer, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -24,6 +24,8 @@ class Order(Base):
     shipping_awb: Mapped[str | None] = mapped_column(String(100), nullable=True)
     shipping_courier: Mapped[str | None] = mapped_column(String(100), nullable=True)
     shipping_status: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    shipping_courier_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    shipping_charge: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False, default=Decimal("0.00"))
     placed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now)
 

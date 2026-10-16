@@ -1,13 +1,7 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
-import { 
-  RotateCw, Pause, Play, RefreshCw, Sun, Moon, 
-  Sparkles, Box, Info
-} from "lucide-react";
-
-// Safe dynamic tag for Web Component in React 19 / Next.js
-const ModelViewer = "model-viewer" as any;
+import { useEffect, useRef, useState } from "react";
+import { Pause, Play, RefreshCw, Sun, Moon } from "lucide-react";
 
 interface GarmentViewer3DProps {
   src: string;
@@ -16,9 +10,9 @@ interface GarmentViewer3DProps {
   autoRotate?: boolean;
   className?: string;
   badgeTitle?: string;
-  showBadge?: boolean;
-  showInteractionHint?: boolean;
   showControls?: boolean;
+  showInteractionHint?: boolean;
+  showBadge?: boolean;
   onClose?: () => void;
 }
 
@@ -29,11 +23,11 @@ export function GarmentViewer3D({
   autoRotate = true,
   className = "",
   badgeTitle = "Garment Preview",
-  showBadge = true,
-  showInteractionHint = true,
   showControls = true,
+  showInteractionHint = false,
+  showBadge = false,
 }: GarmentViewer3DProps) {
-  const viewerRef = useRef<any>(null);
+  const viewerRef = useRef<HTMLModelViewerElement | null>(null);
   const [isScriptLoaded, setIsScriptLoaded] = useState(false);
   const [isRotating, setIsRotating] = useState(autoRotate);
   const [lightingIndex, setLightingIndex] = useState(0);
@@ -58,7 +52,7 @@ export function GarmentViewer3D({
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (customElements.get("model-viewer")) {
-      setIsScriptLoaded(true);
+      void Promise.resolve().then(() => setIsScriptLoaded(true));
       return;
     }
 
@@ -138,24 +132,11 @@ export function GarmentViewer3D({
       className={`relative w-full h-full rounded-[2rem] overflow-hidden flex flex-col items-center justify-center select-none transition-all duration-300 ${className}`}
       style={{ background: backdrops[backdropIndex].bg }}
     >
-      {showBadge && (
-        <div className="absolute top-4 left-4 z-20 flex items-center gap-2.5 bg-black/60 dark:bg-white/10 backdrop-blur-xl border border-white/10 px-3.5 py-1.5 rounded-full shadow-lg pointer-events-none">
-          <div className="w-2 h-2 rounded-full bg-[#38bdf8] animate-pulse" />
-          <span className="text-[11px] font-bold tracking-wider uppercase text-white/90">3D Interactive</span>
-          <span className="text-[10px] text-white/50 border-l border-white/20 pl-2">{badgeTitle}</span>
-        </div>
-      )}
-
-      {showInteractionHint && (
-        <div className="absolute top-4 right-4 z-20 hidden sm:flex items-center gap-3 bg-black/60 dark:bg-white/10 backdrop-blur-xl border border-white/10 px-3 py-1.5 rounded-xl shadow-lg pointer-events-none text-[11px] text-white/80">
-          <span className="text-white/70">Drag to rotate • Scroll to zoom</span>
-        </div>
-      )}
 
       {/* Model Viewer Web Component */}
       {isScriptLoaded ? (
         <>
-          <ModelViewer
+          <model-viewer
             ref={viewerRef}
             src={src}
             poster={poster}
@@ -172,7 +153,7 @@ export function GarmentViewer3D({
             exposure={lightingPresets[lightingIndex].exposure}
             interaction-prompt="none"
             onLoad={() => setIsLoading(false)}
-            onError={(e: any) => {
+            onError={(e) => {
               console.warn("ModelViewer load event notice:", e);
               setIsLoading(false);
             }}
@@ -192,14 +173,8 @@ export function GarmentViewer3D({
         </div>
       )}
 
-      {/* Floating Interaction Hint */}
-      <div className="absolute bottom-16 sm:bottom-20 left-1/2 -translate-x-1/2 z-10 pointer-events-none opacity-80 transition-opacity">
-        <span className="px-3.5 py-1 rounded-full bg-black/60 backdrop-blur-md border border-white/10 text-[10px] text-white/70 tracking-wide flex items-center gap-1.5 shadow-md">
-          <RotateCw className="w-2.5 h-2.5 text-[#38bdf8]" />
-          Drag 360° • Scroll to Zoom • Right Click to Pan
-        </span>
-      </div>
-
+      {showBadge && <div className="absolute top-4 left-4 z-20 rounded-full bg-black/60 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-white/90">{badgeTitle}</div>}
+      {showInteractionHint && <div className="absolute bottom-16 left-1/2 -translate-x-1/2 z-10 rounded-full bg-black/60 px-3 py-1 text-[10px] text-white/70">Drag to rotate</div>}
       {/* Bottom Floating Controls Toolbar */}
       {showControls && (
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 sm:gap-2 bg-black/70 backdrop-blur-2xl border border-white/15 px-3 py-2 rounded-full shadow-2xl">

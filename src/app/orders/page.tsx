@@ -1,19 +1,42 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
-import { 
-  Home, ChevronRight, ShoppingCart, Clock, Truck, 
-  CheckCircle2, Ban, Search, ChevronDown, Filter, RotateCcw, Loader2,
-  Eye, PackageCheck, X as XIcon, User, MapPin, CreditCard, Sparkles
-} from "lucide-react";
+import { useState, useEffect, useMemo } from "react";
+import { Home, ChevronRight, ShoppingCart, Clock, Truck, CheckCircle2, Ban, Search, ChevronDown, RotateCcw, Loader2, Eye, X as XIcon, User, MapPin, CreditCard } from "lucide-react";
 import Link from "next/link";
-import { ordersApi, OrderItemRecord } from "@/lib/api";
+import { ordersApi, shippingApi, OrderItemRecord } from "@/lib/api";
+
+interface OrderRow {
+  id: string;
+  orderNumber: string;
+  customer: string;
+  email: string;
+  itemsCount: number;
+  rawTotal: number;
+  total: string;
+  progress: number;
+  rawStatus: string;
+  status: string;
+  statusColor: string;
+  paymentStatus: string;
+  shippingAddress: string;
+  date: string;
+  rawDate: number;
+  items: unknown[];
+  shippingShipmentId?: string | null;
+  shippingAwb?: string | null;
+  shippingCourier?: string | null;
+  shippingStatus?: string | null;
+  shippingCharge?: number | string;
+}
 
 export default function OrdersPage() {
-  const [orders, setOrders] = useState<any[]>([]);
+  const [orders, setOrders] = useState<OrderRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [openActionId, setOpenActionId] = useState<string | null>(null);
-  const [selectedOrderDetails, setSelectedOrderDetails] = useState<any | null>(null);
+  const [selectedOrderDetails, setSelectedOrderDetails] = useState<OrderRow | null>(null);
+  const [shipmentRetrying, setShipmentRetrying] = useState(false);
+  const [shipmentActionLoading, setShipmentActionLoading] = useState(false);
+  const [manifestUrl, setManifestUrl] = useState("");
 
   // Filters State
   const [searchQuery, setSearchQuery] = useState("");
@@ -30,7 +53,7 @@ export default function OrdersPage() {
     try {
       const data = await ordersApi.list();
       if (data && Array.isArray(data)) {
-        const formatted = data.map((o: any) => {
+        const formatted = data.map((o: OrderItemRecord): OrderRow => {
           const rawStatus = String(o.status || "CONFIRMED").toUpperCase();
           const progress = rawStatus === "DELIVERED" ? 100 : rawStatus === "SHIPPED" ? 80 : rawStatus === "PROCESSING" ? 55 : 25;
           const statusDisplay = rawStatus.charAt(0) + rawStatus.slice(1).toLowerCase();
@@ -44,18 +67,23 @@ export default function OrdersPage() {
             orderNumber: o.orderNumber || `#ORD-${String(o.id).slice(0, 8).toUpperCase()}`,
             customer: o.customerName || "Customer",
             email: o.customerEmail || "—",
-            itemsCount: o.items ? o.items.length : (o.itemsCount || 1),
+            itemsCount: o.itemsCount,
             rawTotal: Number(o.totalAmount || o.total_amount || 0),
             total: `₹${typeof o.totalAmount === 'number' ? o.totalAmount.toFixed(2) : (typeof o.total_amount === 'number' ? o.total_amount.toFixed(2) : (o.totalAmount || o.total_amount || '0.00'))}`,
             progress,
             rawStatus,
             status: statusDisplay,
             statusColor,
-            paymentStatus: o.paymentStatus || "Paid",
-            shippingAddress: o.shippingAddress || "104 Madison Avenue, Atelier Suite 402, New York, NY 10016",
-            date: o.createdAt || o.placed_at ? new Date(o.createdAt || o.placed_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "Recent",
+            paymentStatus: o.paymentStatus,
+            shippingAddress: o.shippingAddress || "Address not available",
+            date: o.createdAt || o.placed_at ? new Date(o.createdAt || o.placed_at || Date.now()).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "Recent",
             rawDate: new Date(o.createdAt || o.placed_at || Date.now()).getTime(),
-            items: o.items || []
+            items: o.items || [],
+            shippingShipmentId: o.shippingShipmentId,
+            shippingAwb: o.shippingAwb,
+            shippingCourier: o.shippingCourier,
+            shippingStatus: o.shippingStatus,
+            shippingCharge: o.shippingCharge,
           };
         });
         setOrders(formatted);
@@ -68,8 +96,55 @@ export default function OrdersPage() {
   };
 
   useEffect(() => {
-    loadOrders();
+    void Promise.resolve().then(loadOrders);
   }, []);
+
+  const handleRetryShipment = async () => {
+    if (!selectedOrderDetails) return;
+    setShipmentRetrying(true);
+    try {
+      const updated = await ordersApi.retryShiprocket(selectedOrderDetails.id);
+      const merged = { ...selectedOrderDetails, shippingShipmentId: updated.shippingShipmentId, shippingAwb: updated.shippingAwb, shippingCourier: updated.shippingCourier, shippingStatus: updated.shippingStatus };
+      setSelectedOrderDetails(merged);
+      setOrders((prev) => prev.map((row) => row.id === merged.id ? { ...row, ...merged } : row));
+    } catch (error) {
+      console.error("Shiprocket retry failed:", error);
+      window.alert(error instanceof Error ? error.message : "Shipment retry failed. Check Shiprocket configuration and retry.");
+    } finally {
+      setShipmentRetrying(false);
+    }
+  };
+
+  const handleSchedulePickup = async () => {
+    if (!selectedOrderDetails?.shippingShipmentId) return;
+    setShipmentActionLoading(true);
+    try {
+      await shippingApi.schedulePickup(selectedOrderDetails.shippingShipmentId, new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10));
+      const updated = { ...selectedOrderDetails, shippingStatus: "Pickup scheduled — manifest can now be generated" };
+      setSelectedOrderDetails(updated);
+      setOrders((prev) => prev.map((row) => row.id === updated.id ? { ...row, ...updated } : row));
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "Shiprocket pickup could not be scheduled.");
+    } finally {
+      setShipmentActionLoading(false);
+    }
+  };
+
+  const handleGenerateManifest = async () => {
+    if (!selectedOrderDetails?.shippingShipmentId) return;
+    setShipmentActionLoading(true);
+    setManifestUrl("");
+    try {
+      const result = await shippingApi.generateManifest(selectedOrderDetails.shippingShipmentId);
+      const url = typeof result.manifest_url === "string" ? result.manifest_url : "";
+      if (!url) throw new Error("Shiprocket did not return a manifest download link.");
+      setManifestUrl(url);
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "Manifest could not be generated.");
+    } finally {
+      setShipmentActionLoading(false);
+    }
+  };
 
   const handleResetFilters = () => {
     setSearchQuery("");
@@ -103,7 +178,7 @@ export default function OrdersPage() {
 
   // Filter and Sort Orders
   const filteredOrders = useMemo(() => {
-    let result = orders.filter((o) => {
+    const result = orders.filter((o) => {
       const matchesSearch = !searchQuery.trim() || 
         o.customer.toLowerCase().includes(searchQuery.toLowerCase()) || 
         o.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -137,7 +212,7 @@ export default function OrdersPage() {
 
   const metrics = [
     { label: "Total Orders", value: String(orders.length), icon: ShoppingCart, color: "text-accent", glow: "shadow-[-4px_0_15px_rgba(224,122,63,0.3)]", border: "border-l-accent" },
-    { label: "Pending", value: String(orders.filter(o => o.rawStatus === "PENDING" || o.rawStatus === "CONFIRMED").length), icon: Clock, color: "text-yellow-500", glow: "shadow-[-4px_0_15px_rgba(234,179,8,0.2)]", border: "border-l-yellow-500" },
+    { label: "Pending", value: String(orders.filter(o => o.rawStatus === "PENDING").length), icon: Clock, color: "text-yellow-500", glow: "shadow-[-4px_0_15px_rgba(234,179,8,0.2)]", border: "border-l-yellow-500" },
     { label: "Processing", value: String(orders.filter(o => o.rawStatus === "PROCESSING").length), icon: Truck, color: "text-blue-500", glow: "shadow-[-4px_0_15px_rgba(59,130,246,0.2)]", border: "border-l-blue-500" },
     { label: "Delivered", value: String(orders.filter(o => o.rawStatus === "DELIVERED").length), icon: CheckCircle2, color: "text-emerald-500", glow: "shadow-[-4px_0_15px_rgba(16,185,129,0.2)]", border: "border-l-emerald-500" },
     { label: "Cancelled", value: String(orders.filter(o => o.rawStatus === "CANCELLED").length), icon: Ban, color: "text-red-500", glow: "shadow-[-4px_0_15px_rgba(239,68,68,0.2)]", border: "border-l-red-500" },
@@ -369,7 +444,7 @@ export default function OrdersPage() {
                     <td className="px-6 py-4 whitespace-nowrap text-right relative">
                       <div className="relative inline-block text-left">
                         <button 
-                          onClick={() => setOpenActionId(openActionId === (order.id || index) ? null : (order.id || index))}
+                          onClick={() => setOpenActionId(openActionId === String(order.id || index) ? null : String(order.id || index))}
                           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-background border border-border hover:bg-surface-hover text-xs font-medium text-foreground transition-colors ml-auto"
                         >
                           Actions
@@ -517,12 +592,46 @@ export default function OrdersPage() {
                 </div>
                 <div className="flex items-center justify-between text-xs pl-6">
                   <span className="text-muted-foreground">Payment Status</span>
-                  <span className="font-bold text-emerald-500">{selectedOrderDetails.paymentStatus}</span>
+                  <span className="font-bold text-foreground">{selectedOrderDetails.paymentStatus}</span>
                 </div>
                 <div className="flex items-center justify-between text-xs pl-6">
-                  <span className="text-muted-foreground">Total Charged</span>
+                  <span className="text-muted-foreground">Order Total</span>
                   <span className="font-bold text-foreground">{selectedOrderDetails.total}</span>
                 </div>
+              </div>
+
+              {/* Shiprocket shipment details */}
+              <div className="bg-background border border-border/80 rounded-xl p-4 space-y-3">
+                <div className="flex items-center gap-2 text-xs font-bold text-foreground">
+                  <Truck className="w-4 h-4 text-accent" />
+                  <span>Shiprocket Shipment</span>
+                </div>
+                <div className="pl-6 space-y-1 text-xs text-muted-foreground">
+                  <p>Status: <span className="font-semibold text-foreground">{selectedOrderDetails.shippingStatus || "Not booked"}</span></p>
+                  <p>Quoted shipping: <span className="font-semibold text-foreground">₹{Number(selectedOrderDetails.shippingCharge || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></p>
+                  {selectedOrderDetails.shippingCourier && <p>Courier: <span className="text-foreground">{selectedOrderDetails.shippingCourier}</span></p>}
+                  {selectedOrderDetails.shippingAwb && <p>AWB: <span className="font-mono text-foreground">{selectedOrderDetails.shippingAwb}</span></p>}
+                  {selectedOrderDetails.shippingShipmentId && <p>Shipment ID: <span className="font-mono text-foreground">{selectedOrderDetails.shippingShipmentId}</span></p>}
+                </div>
+                {!selectedOrderDetails.shippingAwb && selectedOrderDetails.rawStatus !== "CANCELLED" && (
+                  <button type="button" onClick={handleRetryShipment} disabled={shipmentRetrying}
+                    className="ml-6 px-3 py-2 rounded-lg bg-accent text-white text-xs font-semibold disabled:opacity-50">
+                    {shipmentRetrying ? "Retrying…" : "Retry shipment booking"}
+                  </button>
+                )}
+                {selectedOrderDetails.shippingAwb && selectedOrderDetails.shippingShipmentId && selectedOrderDetails.rawStatus !== "CANCELLED" && (
+                  <div className="ml-6 flex flex-wrap gap-2">
+                    <button type="button" onClick={handleSchedulePickup} disabled={shipmentActionLoading}
+                      className="px-3 py-2 rounded-lg border border-border text-xs font-semibold text-foreground disabled:opacity-50">
+                      {shipmentActionLoading ? "Working…" : "Schedule pickup"}
+                    </button>
+                    <button type="button" onClick={handleGenerateManifest} disabled={shipmentActionLoading}
+                      className="px-3 py-2 rounded-lg border border-border text-xs font-semibold text-foreground disabled:opacity-50">
+                      Generate manifest
+                    </button>
+                    {manifestUrl && <a href={manifestUrl} target="_blank" rel="noreferrer" className="px-3 py-2 rounded-lg bg-accent text-xs font-semibold text-white">Open manifest</a>}
+                  </div>
+                )}
               </div>
 
               {/* Fulfillment Progress */}

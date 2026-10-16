@@ -34,6 +34,18 @@ def _authorize_session(db: Session, session_id: str, current_user: User | None) 
         raise ForbiddenError("Chat session access denied")
 
 
+def _save_user_message(db: Session, req: ChatRequest, session_id: str, user_id: str | None) -> None:
+    """Persist the latest user turn only once the stylist has answered, so outages leave no orphan message."""
+    if req.messages and req.messages[-1].role == "user":
+        db.add(ChatMessage(
+            session_id=session_id,
+            user_id=user_id,
+            sender="user",
+            content=req.messages[-1].content,
+        ))
+        db.commit()
+
+
 @router.post("")
 def chat_endpoint(
     req: ChatRequest,
@@ -45,17 +57,6 @@ def chat_endpoint(
     _authorize_session(db, session_id, current_user)
     messages = [{"role": m.role, "content": m.content} for m in req.messages]
     
-    # Save the latest user message to DB if present
-    if req.messages and req.messages[-1].role == "user":
-        user_msg = ChatMessage(
-            session_id=session_id,
-            user_id=user_id,
-            sender="user",
-            content=req.messages[-1].content,
-        )
-        db.add(user_msg)
-        db.commit()
-
     # Generate stylist response with secure tool calling
     reply_text, executed_tools = vastra_chat(
         messages,
@@ -67,6 +68,8 @@ def chat_endpoint(
         session_id=session_id,
     )
 
+    _save_user_message(db, req, session_id, user_id)
+
     # Extract suggested products from reply tags e.g. [PRODUCT:vtx-frock-floral]
     # and match against live published catalog so recommendations are guaranteed to be available on the webpage
     suggested = []
@@ -76,7 +79,7 @@ def chat_endpoint(
         product_ids = re.findall(r"\[PRODUCT:([^\]]+)\]", reply_text, re.IGNORECASE)
         # 1. Add explicitly tagged products
         if product_ids:
-            found_products = db.query(Product).filter(Product.id.in_(product_ids)).all()
+            found_products = db.query(Product).filter(Product.id.in_(product_ids), Product.is_published == True).all()
             for fp in found_products:
                 if fp.id not in seen_ids:
                     seen_ids.add(fp.id)
@@ -144,28 +147,18 @@ def chat_stream_endpoint(
     _authorize_session(db, session_id, current_user)
     messages = [{"role": m.role, "content": m.content} for m in req.messages]
 
-    if req.messages and req.messages[-1].role == "user":
-        user_msg = ChatMessage(
-            session_id=session_id,
-            user_id=user_id,
-            sender="user",
-            content=req.messages[-1].content,
-        )
-        db.add(user_msg)
-        db.commit()
-
-    return StreamingResponse(
-        vastra_chat_stream(
-            messages=messages,
-            profile=req.profile,
-            db=db,
-            context_url=req.context_url,
-            cart_items=req.cart_items,
-            user_id=user_id,
-            session_id=session_id,
-        ),
-        media_type="text/event-stream"
+    # The provider call runs eagerly: an outage raises here, before anything is persisted.
+    events = vastra_chat_stream(
+        messages=messages,
+        profile=req.profile,
+        db=db,
+        context_url=req.context_url,
+        cart_items=req.cart_items,
+        user_id=user_id,
+        session_id=session_id,
     )
+    _save_user_message(db, req, session_id, user_id)
+    return StreamingResponse(events, media_type="text/event-stream")
 
 
 @router.get("/history")

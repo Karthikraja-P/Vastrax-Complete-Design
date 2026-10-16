@@ -1,10 +1,19 @@
 "use client";
+import Image from "next/image";
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Mail, Lock, Eye, EyeOff, CheckSquare, Square, CheckCircle2 } from "lucide-react";
 import { signIn } from "next-auth/react";
 import { reportBackendReachable, reportBackendUnreachable } from "@/lib/backendStatus";
+
+interface LoginResponse {
+  status?: string;
+  user_id?: string;
+  user?: { id?: string | number; full_name?: string; role?: string };
+  access_token?: string;
+  detail?: string;
+}
 
 export function AuthModal({ isOpen, onClose, initialMode = "signin", onSuccess }: { isOpen: boolean; onClose: () => void; initialMode?: "signin" | "signup"; onSuccess?: (name: string) => void }) {
   const [isSignUp, setIsSignUp] = useState(false);
@@ -29,18 +38,20 @@ export function AuthModal({ isOpen, onClose, initialMode = "signin", onSuccess }
   const [lastName, setLastName] = useState("");
   const [otp, setOtp] = useState("");
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
-  const [isGoogleSuccess, setIsGoogleSuccess] = useState(false);
+  const [isGoogleSuccess] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
-      setIsSignUp(initialMode === "signup");
-      setForgotPasswordSuccess(false);
-      setIsVerifying(false);
-      setPending2FAUserId(null);
-      setAuthBaseUrl(null);
-      setOtp("");
-      setIsForgotPassword(false);
+      void Promise.resolve().then(() => {
+        setIsSignUp(initialMode === "signup");
+        setForgotPasswordSuccess(false);
+        setIsVerifying(false);
+        setPending2FAUserId(null);
+        setAuthBaseUrl(null);
+        setOtp("");
+        setIsForgotPassword(false);
+      });
     }
   }, [isOpen, initialMode]);
 
@@ -88,7 +99,7 @@ export function AuthModal({ isOpen, onClose, initialMode = "signin", onSuccess }
         setIsLoading(false);
         alert(data.detail || "Invalid verification code");
       }
-    } catch (err) {
+    } catch {
       setIsLoading(false);
       alert("Failed to verify code. Please try again.");
     }
@@ -205,7 +216,7 @@ export function AuthModal({ isOpen, onClose, initialMode = "signin", onSuccess }
       let loginSuccess = false;
       let loginGotResponse = false;
       let lastLoginError = "Invalid email/mobile number or password";
-      let loggedUser: any = null;
+      let loggedUser: NonNullable<LoginResponse["user"]> | null = null;
       const formattedPhone = mobileNumber.trim().startsWith("+91") ? mobileNumber.trim() : `+91${mobileNumber.trim()}`;
       const identifier = loginMethod === "mobile" ? formattedPhone : cleanEmail;
 
@@ -219,9 +230,9 @@ export function AuthModal({ isOpen, onClose, initialMode = "signin", onSuccess }
           loginGotResponse = true;
           reportBackendReachable();
 
-          const data = await res.json().catch(() => ({}));
+          const data = (await res.json().catch(() => ({}))) as LoginResponse;
           if (res.ok && data.status === "requires_2fa") {
-            setPending2FAUserId(data.user_id);
+            setPending2FAUserId(data.user_id || null);
             setAuthBaseUrl(base);
             setVerifyType("login");
             setIsVerifying(true);
@@ -230,7 +241,7 @@ export function AuthModal({ isOpen, onClose, initialMode = "signin", onSuccess }
           }
 
           if (res.ok && data.access_token) {
-            loggedUser = data.user;
+            loggedUser = data.user || null;
             if (typeof window !== "undefined") {
               localStorage.setItem("vastrax_token", data.access_token);
             }
@@ -802,7 +813,7 @@ export function AuthModal({ isOpen, onClose, initialMode = "signin", onSuccess }
 
               {/* RIGHT SIDE — FASHION BRANDING PANEL */}
               <div className="hidden md:block w-[45%] relative bg-black overflow-hidden">
-                <img
+                <Image width={1200} height={900} unoptimized
                   src="https://images.unsplash.com/photo-1490481651871-ab68de25d43d?q=80&w=1200&auto=format&fit=crop"
                   alt="Luxury Fashion"
                   className="absolute inset-0 w-full h-full object-cover opacity-80"

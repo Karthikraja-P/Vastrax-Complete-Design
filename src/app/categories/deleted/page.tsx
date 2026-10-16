@@ -1,16 +1,18 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
-import { 
-  Home, ChevronRight, Search, ChevronDown, Filter, RotateCcw,
-  RotateCw, Trash2, AlertCircle, Loader2, ArrowLeft, Boxes, LayoutGrid
-} from "lucide-react";
+import { useState, useMemo } from "react";
+import { Home, ChevronRight, ChevronDown, RotateCcw, RotateCw, Trash2, AlertCircle, Loader2, ArrowLeft, LayoutGrid } from "lucide-react";
 import Link from "next/link";
 import { categoriesApi } from "@/lib/api";
 
+interface DeletedCategory {
+  id: string | number; name: string; slug: string; desc: string; products: number;
+  deletedAt: string; originalStatus: string;
+}
+
 export default function DeletedCategoriesPage() {
   // Mock initial soft-deleted categories or load from state
-  const [deletedCategories, setDeletedCategories] = useState<any[]>([
+  const [deletedCategories, setDeletedCategories] = useState<DeletedCategory[]>([
     {
       id: "del-cat-1",
       name: "Vintage Footwear",
@@ -33,8 +35,8 @@ export default function DeletedCategoriesPage() {
 
   const [searchQuery, setSearchQuery] = useState("");
   const [sortOrder, setSortOrder] = useState("default");
-  const [categoryToRestore, setCategoryToRestore] = useState<any | null>(null);
-  const [categoryToPurge, setCategoryToPurge] = useState<any | null>(null);
+  const [categoryToRestore, setCategoryToRestore] = useState<DeletedCategory | null>(null);
+  const [categoryToPurge, setCategoryToPurge] = useState<DeletedCategory | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [feedbackToast, setFeedbackToast] = useState<string | null>(null);
 
@@ -48,7 +50,7 @@ export default function DeletedCategoriesPage() {
     setCurrentPage(1);
   };
 
-  const handleRestore = async (cat: any) => {
+  const handleRestore = async (cat: DeletedCategory) => {
     setIsProcessing(true);
     try {
       // Recreate or reactivate category via API
@@ -64,7 +66,7 @@ export default function DeletedCategoriesPage() {
     }
   };
 
-  const handlePermanentDelete = async (cat: any) => {
+  const handlePermanentDelete = async (cat: DeletedCategory) => {
     setIsProcessing(true);
     try {
       setDeletedCategories(prev => prev.filter(c => c.id !== cat.id));
@@ -80,7 +82,7 @@ export default function DeletedCategoriesPage() {
 
   // Filter & Sort Logic
   const filteredCategories = useMemo(() => {
-    let result = deletedCategories.filter((cat) => {
+    const result = deletedCategories.filter((cat) => {
       const matchesSearch = !searchQuery.trim() || 
         cat.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         cat.slug.toLowerCase().includes(searchQuery.toLowerCase());

@@ -1,61 +1,43 @@
 "use client";
+import Image from "next/image";
 
 import { useState, useRef, useEffect } from "react";
-import { User, ShoppingBag, Search, Menu, ChevronRight, ChevronLeft, ArrowRight, Heart } from "lucide-react";
+import { User, ShoppingBag, Search, ChevronRight, ChevronLeft, ArrowRight, Heart } from "lucide-react";
 import { AuthModal } from "@/components/auth/AuthModal";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { CartDrawer } from "@/components/layout/CartDrawer";
 import { StylistDrawer } from "@/components/stylist/StylistDrawer";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
-import { productsApi, categoriesApi } from "@/lib/api";
+import { useRouter } from "next/navigation";
+import { productsApi, categoriesApi, CategoryItem, ProductItem } from "@/lib/api";
 import { useFavorites } from "@/hooks/useFavorites";
-import { getCart } from "@/lib/cart";
+
+import { useCartItems } from "@/hooks/useCartItems";
 import { showToast } from "@/lib/toast";
 import { performSignOut } from "@/lib/auth-utils";
+import StorefrontMobileControls from "@/components/layout/StorefrontMobileControls";
 
-const defaultCategories = [
-  { name: "Dresses", slug: "dresses", image: "https://images.unsplash.com/photo-1572804013309-59a88b7e92f1?q=80&w=600&auto=format&fit=crop" },
-  { name: "Pants", slug: "pants", image: "https://images.unsplash.com/photo-1542272604-787c3835535d?q=80&w=600&auto=format&fit=crop" },
-  { name: "Tops (All Varieties)", slug: "tops", image: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=600&auto=format&fit=crop" },
-  { name: "Shirts", slug: "shirts", image: "https://images.unsplash.com/photo-1596755094514-f87e34085b2c?q=80&w=600&auto=format&fit=crop" },
-  { name: "Denims", slug: "denims", image: "https://images.unsplash.com/photo-1582418702059-97ebafb35d09?q=80&w=600&auto=format&fit=crop" },
-  { name: "Skirts", slug: "skirts", image: "https://images.unsplash.com/photo-1583496661160-fb5886a0aaaa?q=80&w=600&auto=format&fit=crop" },
-];
+interface StoreCategory {
+  id?: string;
+  name: string;
+  title?: string;
+  slug: string;
+  image: string;
+}
 
 export default function StorefrontHome() {
+  const router = useRouter();
   const { data: session } = useSession();
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
   const { favorites } = useFavorites();
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [userName, setUserName] = useState("");
-  
-  const [collections, setCollections] = useState<any[]>([]);
-  const [categories, setCategories] = useState(defaultCategories);
-  const [bagItems, setBagItems] = useState<any[]>([]);
-  
-  useEffect(() => {
-    const loadCart = () => {
-      setBagItems(getCart());
-    };
-    loadCart();
+  const [isLoggedIn, setIsLoggedIn] = useState(Boolean(session?.user?.name));
+  const [userName, setUserName] = useState(session?.user?.name || "");
 
-    window.addEventListener("cart-updated", loadCart);
-    window.addEventListener("storage", loadCart);
-    return () => {
-      window.removeEventListener("cart-updated", loadCart);
-      window.removeEventListener("storage", loadCart);
-    };
-  }, []);
-  
-  // Sync NextAuth session with local state for seamless transition
-  useEffect(() => {
-    if (session?.user?.name) {
-      setIsLoggedIn(true);
-      setUserName(session.user.name);
-    }
-  }, [session]);
+  const [collections, setCollections] = useState<StoreCategory[]>([]);
+  const [categories, setCategories] = useState<StoreCategory[]>([]);
+  const bagItems = useCartItems();
 
   // Alert if redirected from protected admin routes
   useEffect(() => {
@@ -71,12 +53,12 @@ export default function StorefrontHome() {
       }
       // Auto-open auth modal when redirected from protected pages (favorites, etc.)
       if (params.get("requireAuth") === "1" && !session) {
-        setIsAuthOpen(true);
+        void Promise.resolve().then(() => setIsAuthOpen(true));
         window.history.replaceState({}, "", "/storefront/home");
       }
     }
   }, [session]);
-  
+
   // Fetch real categories and uploaded products from unified API
   useEffect(() => {
     async function fetchData() {
@@ -87,7 +69,7 @@ export default function StorefrontHome() {
         ]);
 
         // Helper to extract a valid image url from a product
-        const getProductImage = (p: any) => {
+        const getProductImage = (p: ProductItem) => {
           if (!p) return null;
           if (p.image && typeof p.image === 'string' && p.image.trim()) return p.image;
           if (Array.isArray(p.images) && p.images.length > 0) {
@@ -105,7 +87,7 @@ export default function StorefrontHome() {
             const img = getProductImage(p);
             if (img) {
               const catId = String(p.category_id || p.categoryId || "").toLowerCase();
-              const catName = String((p as any).category?.name || p.category || "").toLowerCase();
+              const catName = String(p.category_name || p.category || "").toLowerCase();
               if (catId && !catLatestImageMap.has(catId)) catLatestImageMap.set(catId, img);
               if (catName && !catLatestImageMap.has(catName)) catLatestImageMap.set(catName, img);
             }
@@ -113,14 +95,16 @@ export default function StorefrontHome() {
         }
 
         if (cats && Array.isArray(cats) && cats.length > 0) {
-          const mapped = cats.map((c: any, idx: number) => {
+          const mapped = cats
+            .filter((c: CategoryItem) => c.is_active !== false && Number(c.count || c.product_count || 0) > 0)
+            .map((c: CategoryItem, idx: number) => {
             const catId = String(c.id || "").toLowerCase();
             const catName = String(c.name || "").toLowerCase();
             const catSlug = String(c.slug || "").toLowerCase();
 
             // Prioritize explicit category image, then real uploaded product image, then default fallback
             const realProductImg = catLatestImageMap.get(catId) || catLatestImageMap.get(catName) || catLatestImageMap.get(catSlug);
-            const defaultFallback = defaultCategories.find(dc => dc.name.toLowerCase() === catName || dc.slug === catSlug)?.image || "https://images.unsplash.com/photo-1572804013309-59a88b7e92f1?q=80&w=600&auto=format&fit=crop";
+            const defaultFallback = "/product-placeholder.svg";
 
             return {
               id: String(idx + 1).padStart(2, '0'),
@@ -133,28 +117,17 @@ export default function StorefrontHome() {
           setCategories(mapped);
           setCollections(mapped);
         } else {
-          const defaultMapped = defaultCategories.map((c, idx) => {
-            const catSlug = c.slug.toLowerCase();
-            const catName = c.name.toLowerCase();
-            const realProductImg = catLatestImageMap.get(catName) || catLatestImageMap.get(catSlug);
-            return {
-              id: String(idx + 1).padStart(2, '0'),
-              name: c.name,
-              title: c.name,
-              slug: c.slug,
-              image: realProductImg || c.image
-            };
-          });
-          setCategories(defaultMapped);
-          setCollections(defaultMapped);
+          setCategories([]);
+          setCollections([]);
+
         }
       } catch (err) {
         console.error("Failed to fetch categories and products:", err);
       }
     }
-    fetchData();
+    void Promise.resolve().then(fetchData);
   }, []);
-  
+
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isStylistOpen, setIsStylistOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
@@ -210,10 +183,8 @@ export default function StorefrontHome() {
       <header className="h-16 md:h-20 flex items-center justify-between relative px-3 sm:px-6 md:px-12 sticky top-2 md:top-4 bg-background z-40 rounded-[1.5rem] sm:rounded-[2rem] shadow-sm border border-border/50 mx-2 md:mx-4 mt-2 md:mt-4">
         {/* Left Side: Navigation */}
         <div className="flex items-center gap-2 sm:gap-6 z-10">
-          <button className="md:hidden text-muted-foreground hover:text-foreground transition-colors p-1">
-            <Menu className="w-5 h-5 sm:w-6 sm:h-6" />
-          </button>
-          <nav className="hidden md:flex items-center gap-8">
+          <StorefrontMobileControls />
+          <nav className="hidden 2xl:flex items-center gap-8">
             <Link href="/storefront/collections?sort=newest" className="text-lg font-medium hover:text-accent transition-colors">New Arrivals</Link>
             <Link href="/storefront/collections?gender=Women" className="text-lg font-medium hover:text-accent transition-colors">Women</Link>
             <Link href="/storefront/collections?gender=Men" className="text-lg font-medium hover:text-accent transition-colors">Men</Link>
@@ -221,7 +192,7 @@ export default function StorefrontHome() {
             <Link href="/storefront/collections" className="text-lg font-medium hover:text-accent transition-colors">Collections</Link>
           </nav>
         </div>
-        
+
         {/* Center: Logo */}
         <div className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center pointer-events-none z-0">
           <Link href="/storefront/home" className="text-base sm:text-2xl md:text-4xl font-bold tracking-[0.12em] sm:tracking-[0.25em] uppercase pointer-events-auto hover:text-accent transition-colors">
@@ -231,11 +202,14 @@ export default function StorefrontHome() {
 
         {/* Right Side: Actions */}
         <div className="flex items-center gap-1.5 sm:gap-4 md:gap-6 z-10">
+          {String(session?.user?.role || "").toLowerCase() === "admin" && (
+            <Link href="/" className="rounded-full border border-border px-3 py-2 text-xs font-semibold text-foreground hover:border-accent hover:text-accent">Admin</Link>
+          )}
           <ThemeToggle />
-          <button 
+          <button
             onClick={() => {
               if (!session) { setAuthMode('signin'); setIsAuthOpen(true); }
-              else window.location.href = '/storefront/favorites';
+              else router.push('/storefront/favorites');
             }}
             className="relative p-1 text-muted-foreground hover:text-accent transition-colors"
             aria-label="Favorites"
@@ -245,24 +219,22 @@ export default function StorefrontHome() {
               <span className="absolute -top-1 -right-1 bg-[#e07a3f] text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center font-bold shadow-sm">{favorites.length}</span>
             )}
           </button>
-          <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-surface border border-border rounded-full transition-all text-sm w-48 lg:w-64 focus-within:border-accent focus-within:ring-1 focus-within:ring-accent">
+          <div className="hidden 2xl:flex items-center gap-2 px-3 py-1.5 bg-surface border border-border rounded-full transition-all text-sm w-48 lg:w-64 focus-within:border-accent focus-within:ring-1 focus-within:ring-accent">
             <Search className="w-4 h-4 text-muted-foreground" />
-            <input 
-              type="text" 
-              placeholder="Search garments..." 
+            <input
+              type="text"
+              placeholder="Search garments..."
               onKeyDown={(e) => {
                 if (e.key === "Enter" && (e.target as HTMLInputElement).value.trim()) {
-                  window.location.href = `/storefront/collections?search=${encodeURIComponent((e.target as HTMLInputElement).value.trim())}`;
+                  router.push(`/storefront/collections?search=${encodeURIComponent((e.target as HTMLInputElement).value.trim())}`);
                 }
               }}
               className="flex-1 bg-transparent border-none outline-none text-foreground placeholder:text-muted-foreground text-sm"
             />
           </div>
-          <button className="md:hidden p-1 text-muted-foreground hover:text-accent transition-colors">
-            <Search className="w-5 h-5" />
-          </button>
+
           <div className="relative">
-            <button 
+            <button
               onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
               className="flex items-center gap-2 text-muted-foreground hover:text-accent transition-colors"
             >
@@ -277,27 +249,27 @@ export default function StorefrontHome() {
                 <User className="w-5 h-5" />
               )}
             </button>
-            
+
             {isUserMenuOpen && (
               <>
-                <div 
-                  className="fixed inset-0 z-40" 
-                  onClick={() => setIsUserMenuOpen(false)} 
+                <div
+                  className="fixed inset-0 z-40"
+                  onClick={() => setIsUserMenuOpen(false)}
                 />
                 <div className="absolute right-0 mt-4 w-48 bg-background border border-border rounded-xl shadow-lg py-2 z-50 overflow-hidden">
                   {isLoggedIn ? (
                     <>
-                      <Link 
+                      <Link
                         href="/storefront/account"
                         className="block w-full text-left px-4 py-3 text-sm font-medium text-foreground hover:bg-surface transition-colors"
                       >
                         My Account
                       </Link>
-                      <button 
-                        onClick={() => { 
-                          setIsLoggedIn(false); 
-                          setUserName(""); 
-                          setIsUserMenuOpen(false); 
+                      <button
+                        onClick={() => {
+                          setIsLoggedIn(false);
+                          setUserName("");
+                          setIsUserMenuOpen(false);
                           performSignOut("/storefront/home");
                         }}
                         className="w-full text-left px-4 py-3 text-sm font-medium text-red-500 hover:bg-surface transition-colors"
@@ -307,13 +279,13 @@ export default function StorefrontHome() {
                     </>
                   ) : (
                     <>
-                      <button 
+                      <button
                         onClick={() => { setAuthMode("signin"); setIsAuthOpen(true); setIsUserMenuOpen(false); }}
                         className="w-full text-left px-4 py-3 text-sm font-medium text-foreground hover:bg-surface transition-colors"
                       >
                         Sign In
                       </button>
-                      <button 
+                      <button
                         onClick={() => { setAuthMode("signup"); setIsAuthOpen(true); setIsUserMenuOpen(false); }}
                         className="w-full text-left px-4 py-3 text-sm font-medium text-foreground hover:bg-surface transition-colors"
                       >
@@ -325,7 +297,7 @@ export default function StorefrontHome() {
               </>
             )}
           </div>
-          <button 
+          <button
             onClick={() => setIsCartOpen(true)}
             className="text-muted-foreground hover:text-accent transition-colors relative"
             aria-label="Open Shopping Bag"
@@ -343,22 +315,15 @@ export default function StorefrontHome() {
       {/* Hero Section Wrapper with Gap */}
       <div className="flex-1 bg-surface px-2 pb-2 md:px-4 md:pb-4 pt-4">
         <main className="relative h-full min-h-[calc(100vh-120px)] rounded-[2rem] md:rounded-[2.5rem] overflow-hidden bg-background shadow-sm border border-border/50">
-          <div className="absolute inset-0 z-0">
-            <img 
-              src="https://images.unsplash.com/photo-1445205170230-053b83016050?q=80&w=2000&auto=format&fit=crop" 
-              alt="Hero Fashion" 
-              className="w-full h-full object-cover opacity-90 dark:opacity-60 transition-opacity duration-300"
-            />
-            <div className="absolute inset-0 bg-gradient-to-r from-background via-background/80 to-transparent dark:from-background dark:via-background/90" />
-          </div>
-          
+          <div className="absolute inset-0 z-0 bg-gradient-to-br from-background via-surface to-accent/10" />
+
           <div className="relative z-10 h-full flex items-center px-6 md:px-12 max-w-7xl mx-auto py-20">
             <div className="max-w-xl text-foreground">
               <h1 className="text-6xl md:text-8xl font-light tracking-tight leading-[1.05] mb-6">
                 Elevate <br /> your Style
               </h1>
               <p className="text-xl md:text-2xl text-muted-foreground font-light mb-10 max-w-lg">
-                "In the language of beauty, every detail tells a tale."
+                Explore the products currently available in our store.
               </p>
               <div className="flex flex-wrap gap-4">
                 <Link href="/storefront/collections" className="inline-block px-10 py-4 bg-accent text-accent-foreground text-lg hover:bg-accent-hover rounded-full font-semibold transition-colors duration-300">
@@ -385,10 +350,10 @@ export default function StorefrontHome() {
               View All &rarr;
             </Link>
           </div>
-          
+
           <div className="relative group/slider mt-4 max-w-7xl mx-auto px-6 md:px-12">
             {canScrollLeft && (
-              <button 
+              <button
                 onClick={scrollLeft}
                 className="absolute -left-6 top-1/2 -translate-y-1/2 z-10 w-12 h-12 bg-background border border-border shadow-lg rounded-full hidden md:flex items-center justify-center text-foreground hover:text-accent hover:border-accent transition-all opacity-0 group-hover/slider:opacity-100"
                 aria-label="Scroll left"
@@ -397,7 +362,7 @@ export default function StorefrontHome() {
               </button>
             )}
 
-            <div 
+            <div
               ref={scrollRef}
               onScroll={handleScroll}
               className="flex gap-4 md:gap-8 overflow-x-auto pb-6 snap-x snap-mandatory [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
@@ -406,9 +371,9 @@ export default function StorefrontHome() {
                 <Link key={idx} href={`/storefront/collections?category=${encodeURIComponent(cat.name)}`} className="flex-shrink-0 w-52 md:w-[280px] snap-start group">
                   <div className="bg-background rounded-2xl md:rounded-3xl p-5 md:p-8 shadow-sm border border-border/30 h-72 md:h-[360px] flex flex-col items-center justify-between transition-transform duration-300 group-hover:-translate-y-2 group-hover:shadow-md">
                     <div className="flex-1 w-full relative flex items-center justify-center overflow-hidden rounded-xl mb-4 md:mb-6">
-                      <img 
-                        src={cat.image} 
-                        alt={cat.name} 
+                      <Image width={1200} height={900} unoptimized
+                        src={cat.image}
+                        alt={cat.name}
                         className="w-full h-full object-cover dark:opacity-90"
                       />
                     </div>
@@ -419,7 +384,7 @@ export default function StorefrontHome() {
             </div>
 
             {canScrollRight && (
-              <button 
+              <button
                 onClick={scrollRight}
                 className="absolute -right-6 top-1/2 -translate-y-1/2 z-10 w-12 h-12 bg-background border border-border shadow-lg rounded-full hidden md:flex items-center justify-center text-foreground hover:text-accent hover:border-accent transition-all opacity-0 group-hover/slider:opacity-100"
                 aria-label="Scroll right"
@@ -440,13 +405,13 @@ export default function StorefrontHome() {
           </div>
 
           <div className="relative group/colSlider max-w-7xl mx-auto px-6 md:px-12">
-            <div 
+            <div
               ref={scrollRef} // Reusing the same ref or we can just scroll the target directly
               className="h-[400px] md:h-[500px] flex items-center justify-start gap-2 md:gap-4 w-full overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] py-4"
             >
               {collections.map((col, idx) => {
                 const isActive = activeCollection === idx;
-                
+
                 return (
                   <div
                     key={idx}
@@ -457,12 +422,12 @@ export default function StorefrontHome() {
                   `}
                   style={{ height: getCollectionHeight(idx) }}
                 >
-                  <img
-                    src={col.image}
-                    alt={col.title}
+                  <Image width={1200} height={900} unoptimized
+                    src={String(col.image || "/placeholder.svg")}
+                    alt={String(col.title || "Collection")}
                     className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 hover:scale-105 opacity-90"
                   />
-                  
+
                   {/* Inactive Vertical Text */}
                   <div className={`absolute inset-0 flex items-center justify-center transition-opacity duration-300 ${isActive ? 'opacity-0' : 'opacity-100 delay-200'}`}>
                     <span className="text-white/80 text-xs md:text-sm tracking-[0.3em] -rotate-90 whitespace-nowrap font-medium">{col.id}</span>
@@ -486,7 +451,7 @@ export default function StorefrontHome() {
             </div>
 
             {/* Scroll Right Arrow */}
-            <button 
+            <button
               onClick={(e) => {
                 const container = e.currentTarget.previousElementSibling;
                 if (container) {
@@ -502,10 +467,10 @@ export default function StorefrontHome() {
         </section>
       </div>
 
-      <AuthModal 
-        isOpen={isAuthOpen} 
-        onClose={() => setIsAuthOpen(false)} 
-        initialMode={authMode} 
+      <AuthModal
+        isOpen={isAuthOpen}
+        onClose={() => setIsAuthOpen(false)}
+        initialMode={authMode}
         onSuccess={(name) => {
           setIsLoggedIn(true);
           setUserName(name);

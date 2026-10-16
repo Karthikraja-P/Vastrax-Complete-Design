@@ -6,10 +6,20 @@
 
 import { reportBackendReachable, reportBackendUnreachable } from "./backendStatus";
 import { getSession } from "next-auth/react";
+import type { Session } from "next-auth";
 
-const CANDIDATE_API_BASES = [
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8090/api/v1",
-].filter(Boolean) as string[];
+/** Arbitrary JSON object, used where the backend payload shape is not fixed. */
+export type JsonObject = Record<string, unknown>;
+
+/** NextAuth session augmented with the backend access token set in the auth callbacks. */
+type SessionWithToken = Session & { accessToken?: string };
+
+/** Error payload returned by the FastAPI backend. */
+interface ApiErrorBody {
+  detail?: string;
+  message?: string;
+}
+
 
 // Helper fetch wrapper
 export async function fetchApi<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
@@ -20,8 +30,9 @@ export async function fetchApi<T>(endpoint: string, options: RequestInit = {}): 
   if (isBrowser && (!token || token === "null" || token === "undefined")) {
     try {
       const session = await getSession();
-      if ((session as any)?.accessToken) {
-        token = (session as any).accessToken as string;
+      const accessToken = (session as SessionWithToken | null)?.accessToken;
+      if (accessToken) {
+        token = accessToken;
         localStorage.setItem("vastrax_token", token);
       }
     } catch {}
@@ -46,7 +57,7 @@ export async function fetchApi<T>(endpoint: string, options: RequestInit = {}): 
           ? `${process.env.INTERNAL_BACKEND_URL}/api/v1`
           : "http://127.0.0.1:8090/api/v1",
       ];
-  let lastError: any = null;
+  let lastError: unknown = null;
   let gotResponse = false;
 
   for (const base of basesToTry) {
@@ -74,7 +85,7 @@ export async function fetchApi<T>(endpoint: string, options: RequestInit = {}): 
       if (res.status === 401 && isBrowser) {
         try {
           const session = await getSession();
-          const sessionToken = (session as any)?.accessToken;
+          const sessionToken = (session as SessionWithToken | null)?.accessToken;
           if (sessionToken && sessionToken !== token) {
             token = sessionToken;
             localStorage.setItem("vastrax_token", sessionToken);
@@ -105,9 +116,9 @@ export async function fetchApi<T>(endpoint: string, options: RequestInit = {}): 
         return { success: true } as unknown as T;
       }
 
-      const errorBody = await res.json().catch(() => ({}));
+      const errorBody: ApiErrorBody = await res.json().catch(() => ({}));
       lastError = new Error(errorBody.detail || errorBody.message || `API Error (${res.status}): ${res.statusText}`);
-    } catch (err: any) {
+    } catch (err: unknown) {
       lastError = err;
     }
   }
@@ -120,7 +131,7 @@ export async function fetchApi<T>(endpoint: string, options: RequestInit = {}): 
 
   // Suppress uncaught throws for GET requests to prevent Next.js error modal overlays during fetch
   if (!options.method || options.method.toUpperCase() === "GET") {
-    console.warn(`[API Notice] ${endpoint}:`, lastError?.message);
+    console.warn(`[API Notice] ${endpoint}:`, lastError instanceof Error ? lastError.message : undefined);
     return ({ success: true }) as unknown as T;
   }
 
@@ -140,16 +151,37 @@ export interface ProductReview {
   created_at: string;
 }
 
+export interface ProductImage {
+  s3_url?: string;
+  url?: string;
+  is_primary?: boolean;
+  sort_order?: number;
+  [key: string]: unknown;
+}
+
+export interface ProductVariant {
+  id?: string | number;
+  sku?: string;
+  size?: string;
+  colour?: string;
+  color?: string;
+  stock_qty?: number;
+  price?: number;
+  [key: string]: unknown;
+}
+
 export interface ProductItem {
   id: string | number;
   name?: string;
   title?: string;
   slug?: string;
   description?: string;
+  created_at?: string;
   fabric?: string;
   colour?: string;
   occasion?: string;
   model_path?: string;
+  model3dUrl?: string;
   price: number;
   price_selling?: number;
   price_mrp?: number;
@@ -158,22 +190,44 @@ export interface ProductItem {
   stock?: number;
   inventoryCount?: number;
   category?: string;
+  category_name?: string;
   categoryId?: string | number;
   category_id?: string | number;
   status?: string;
   image?: string;
-  images?: (string | any)[];
+  images?: (string | ProductImage)[];
   rating?: number;
   rating_average?: number;
   rating_count?: number;
+  reviewsCount?: number;
   sku?: string;
   gender?: string;
-  size_chart?: any;
+  size_chart?: JsonObject;
   isNew?: boolean;
   isSale?: boolean;
   is_published?: boolean;
   is_featured?: boolean;
-  variants?: any[];
+  variants?: ProductVariant[];
+}
+
+export interface StorefrontProduct {
+  id: string | number;
+  name: string;
+  price: number;
+  originalPrice?: number;
+  rating: number;
+  ratingCount?: number;
+  image: string;
+  isNew: boolean;
+  categoryId?: string | number;
+  categoryName: string;
+  model3dUrl?: string;
+  colour?: string;
+  gender?: string;
+  stock?: number;
+  isSale?: boolean;
+  created_at?: string;
+  variants?: ProductVariant[];
 }
 
 export const productsApi = {
@@ -202,14 +256,14 @@ export const productsApi = {
     }
   },
 
-  async create(data: Partial<ProductItem> | Record<string, any>): Promise<ProductItem> {
+  async create(data: Partial<ProductItem> | JsonObject): Promise<ProductItem> {
     return await fetchApi<ProductItem>("/products", {
       method: "POST",
       body: JSON.stringify(data),
     });
   },
 
-  async update(id: string | number, data: Partial<ProductItem> | Record<string, any>): Promise<ProductItem> {
+  async update(id: string | number, data: Partial<ProductItem> | JsonObject): Promise<ProductItem> {
     return await fetchApi<ProductItem>(`/products/${id}`, {
       method: "PUT",
       body: JSON.stringify(data),
@@ -256,7 +310,9 @@ export interface CategoryItem {
   name: string;
   slug: string;
   count?: number;
+  product_count?: number;
   image_url?: string | null;
+  image?: string | null;
   description?: string | null;
   is_active?: boolean;
   icon?: string;
@@ -305,17 +361,69 @@ export interface OrderItemRecord {
   customerName: string;
   customerEmail: string;
   totalAmount: number;
-  status: "PENDING" | "PROCESSING" | "CONFIRMED" | "SHIPPED" | "DELIVERED" | "CANCELLED";
+  status: string;
+  paymentStatus: string;
+  shippingAddress?: string;
+  items: unknown[];
   itemsCount: number;
   createdAt: string;
   deliveryMethod: string;
+  shippingShipmentId?: string | null;
+  shippingAwb?: string | null;
+  shippingCourier?: string | null;
+  shippingStatus?: string | null;
+  shippingCharge?: number | string;
+  total_amount?: number | string;
+  placed_at?: string;
+  payment_status?: string;
+  shipping_address?: string;
+}
+
+interface BackendOrderRecord {
+  id: string | number;
+  total_amount: number | string;
+  status: string;
+  payment_status: string;
+  placed_at: string;
+  customer_name?: string | null;
+  customer_email?: string | null;
+  delivery_method?: string | null;
+  shipping_address?: string | null;
+  shipping_shipment_id?: string | null;
+  shipping_awb?: string | null;
+  shipping_courier?: string | null;
+  shipping_status?: string | null;
+  shipping_charge?: number | string;
+  items?: unknown[];
+}
+
+function normalizeOrder(order: BackendOrderRecord): OrderItemRecord {
+  return {
+    id: order.id,
+    orderNumber: String(order.id),
+    customerName: order.customer_name || "Customer",
+    customerEmail: order.customer_email || "—",
+    totalAmount: Number(order.total_amount) || 0,
+    status: order.status.toUpperCase(),
+    paymentStatus: order.payment_status.toUpperCase(),
+    itemsCount: order.items?.length || 0,
+    createdAt: order.placed_at,
+    deliveryMethod: order.delivery_method || "—",
+    shippingAddress: order.shipping_address || undefined,
+    shippingShipmentId: order.shipping_shipment_id,
+    shippingAwb: order.shipping_awb,
+    shippingCourier: order.shipping_courier,
+    shippingStatus: order.shipping_status,
+    shippingCharge: order.shipping_charge,
+    items: order.items || [],
+  };
 }
 
 export const ordersApi = {
   async list(): Promise<OrderItemRecord[]> {
     try {
-      const res = await fetchApi<OrderItemRecord[]>("/orders/admin");
-      return Array.isArray(res) ? res : [];
+      const res = await fetchApi<BackendOrderRecord[]>("/orders/admin");
+      return Array.isArray(res) ? res.map(normalizeOrder) : [];
     } catch (err) {
       console.error("Failed to fetch orders:", err);
       return [];
@@ -324,17 +432,37 @@ export const ordersApi = {
 
   async myOrders(): Promise<OrderItemRecord[]> {
     try {
-      const res = await fetchApi<OrderItemRecord[]>("/orders/me");
-      return Array.isArray(res) ? res : [];
+      const res = await fetchApi<BackendOrderRecord[]>("/orders/me");
+      return Array.isArray(res) ? res.map(normalizeOrder) : [];
     } catch {
       return [];
     }
+  },
+
+  async retryShiprocket(id: string | number): Promise<OrderItemRecord> {
+    const order = await fetchApi<BackendOrderRecord>("/orders/admin/" + id + "/shiprocket/retry", { method: "POST" });
+    return normalizeOrder(order);
   },
 
   async updateStatus(id: string | number, status: string): Promise<{ success: boolean }> {
     return await fetchApi<{ success: boolean }>(`/orders/admin/${id}/status`, {
       method: "PUT",
       body: JSON.stringify({ status }),
+    });
+  },
+};
+
+export const shippingApi = {
+  async schedulePickup(shipmentId: string, pickupDate: string): Promise<JsonObject> {
+    return await fetchApi<JsonObject>("/shipping/pickup", {
+      method: "POST",
+      body: JSON.stringify({ shipment_id: shipmentId, pickup_date: pickupDate }),
+    });
+  },
+  async generateManifest(shipmentId: string): Promise<JsonObject> {
+    return await fetchApi<JsonObject>("/shipping/manifest", {
+      method: "POST",
+      body: JSON.stringify({ shipment_id: shipmentId }),
     });
   },
 };
@@ -351,9 +479,18 @@ export interface TryonResult {
 
 export const DEFAULT_API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8090";
 
+interface TryonSubmitResponse {
+  session_id?: string;
+  result_image_url?: string;
+}
+
+interface TryonDirectResponse {
+  result_url?: string;
+}
+
 export const tryonApi = {
   async submit(data: { product_id?: string | number; user_photo_base64?: string; category?: string; garment_path?: string }): Promise<TryonResult> {
-    const res = await fetchApi<any>("/try-on/submit", {
+    const res = await fetchApi<TryonSubmitResponse>("/try-on/submit", {
       method: "POST",
       body: JSON.stringify(data),
     });
@@ -382,7 +519,7 @@ export const tryonApi = {
       "http://localhost:8000/api/v1/try-on/",
     ];
 
-    let lastError: any = null;
+    let lastError: unknown = null;
     let gotResponse = false;
     for (const url of endpoints) {
       try {
@@ -395,11 +532,7 @@ export const tryonApi = {
         reportBackendReachable();
 
         if (res.ok) {
-          const data = await res.json();
-          let baseUrl = "http://localhost:8090";
-          if (url.includes("8088")) baseUrl = "http://localhost:8088";
-          else if (url.includes("8000")) baseUrl = "http://localhost:8000";
-
+          const data: TryonDirectResponse = await res.json();
           const imgUrl = data.result_url?.startsWith("http")
             ? data.result_url
             : data.result_url?.startsWith("/")
@@ -419,7 +552,7 @@ export const tryonApi = {
             body: formData,
           });
           if (retryRes.ok) {
-            const data = await retryRes.json();
+            const data: TryonDirectResponse = await retryRes.json();
             const imgUrl = data.result_url?.startsWith("http")
               ? data.result_url
               : data.result_url?.startsWith("/")
@@ -431,13 +564,13 @@ export const tryonApi = {
               result_image_url: imgUrl,
             };
           }
-          const errorBody = await retryRes.json().catch(() => ({}));
+          const errorBody: ApiErrorBody = await retryRes.json().catch(() => ({}));
           lastError = new Error(errorBody.detail || `Server returned ${retryRes.status}`);
         } else {
-          const errorBody = await res.json().catch(() => ({}));
+          const errorBody: ApiErrorBody = await res.json().catch(() => ({}));
           lastError = new Error(errorBody.detail || `Server returned ${res.status}`);
         }
-      } catch (e: any) {
+      } catch (e: unknown) {
         lastError = e;
       }
     }
@@ -463,7 +596,7 @@ export const tryonApi = {
       "http://localhost:8000/api/v1/try-on/combo",
     ];
 
-    let lastError: any = null;
+    let lastError: unknown = null;
     let gotResponse = false;
     for (const url of endpoints) {
       try {
@@ -476,7 +609,7 @@ export const tryonApi = {
         reportBackendReachable();
 
         if (res.ok) {
-          const data = await res.json();
+          const data: TryonDirectResponse = await res.json();
           const imgUrl = data.result_url?.startsWith("http")
             ? data.result_url
             : data.result_url?.startsWith("/")
@@ -496,7 +629,7 @@ export const tryonApi = {
             body: formData,
           });
           if (retryRes.ok) {
-            const data = await retryRes.json();
+            const data: TryonDirectResponse = await retryRes.json();
             const imgUrl = data.result_url?.startsWith("http")
               ? data.result_url
               : data.result_url?.startsWith("/")
@@ -508,13 +641,13 @@ export const tryonApi = {
               result_image_url: imgUrl,
             };
           }
-          const errorBody = await retryRes.json().catch(() => ({}));
+          const errorBody: ApiErrorBody = await retryRes.json().catch(() => ({}));
           lastError = new Error(errorBody.detail || `Server returned ${retryRes.status}`);
         } else {
-          const errorBody = await res.json().catch(() => ({}));
+          const errorBody: ApiErrorBody = await res.json().catch(() => ({}));
           lastError = new Error(errorBody.detail || `Server returned ${res.status}`);
         }
-      } catch (e: any) {
+      } catch (e: unknown) {
         lastError = e;
       }
     }
@@ -527,10 +660,27 @@ export const tryonApi = {
 // -------------------------------------------------------------
 // 5. USERS API (Admin)
 // -------------------------------------------------------------
+export interface UserRecord {
+  id: string | number;
+  email?: string;
+  first_name?: string;
+  last_name?: string;
+  full_name?: string;
+  name?: string;
+  phone?: string;
+  phone_number?: string;
+  role?: string;
+  is_active?: boolean;
+  created_at?: string;
+  tryon_count?: number;
+  chat_message_count?: number;
+  [key: string]: unknown;
+}
+
 export const usersApi = {
-  async listAll(): Promise<any[]> {
+  async listAll(): Promise<UserRecord[]> {
     try {
-      const res = await fetchApi<any[]>("/users/admin");
+      const res = await fetchApi<UserRecord[]>("/users/admin");
       return Array.isArray(res) ? res : [];
     } catch (err) {
       console.error("Failed to fetch users:", err);
@@ -542,18 +692,52 @@ export const usersApi = {
 // -------------------------------------------------------------
 // 6. ANALYTICS & APP SETTINGS API
 // -------------------------------------------------------------
+export interface AnalyticsOverview {
+  revenue: { total: number; growthPercent: number; avgOrderValue: number; ordersCount: number };
+  customers: { total: number; growthPercent: number };
+  salesWeekly: { labels: string[]; values: number[] };
+  conversionRate: { rate: number; change: number };
+  activeCampaigns: { count: number; reach: string; roi: string };
+}
+
+export interface RegionalSales {
+  regions: JsonObject[];
+}
+
+export interface AnalyticsUsage {
+  tryon: { total_sessions: number; completed: number; failed: number; processing: number; unique_users: number };
+  ai_assistant: { total_messages: number; total_sessions: number; unique_signed_in_users: number };
+}
+
+/** Free-form AI insights payload; shape is owned by the backend. */
+export interface AnalyticsInsights {
+  revenue?: InsightBlock;
+  customers?: InsightBlock;
+  products?: InsightBlock;
+  users?: InsightBlock;
+  orders?: InsightBlock;
+  [key: string]: unknown;
+}
+
+interface InsightBlock {
+  alertTitle?: string;
+  alertContent?: string;
+  insightTitle?: string;
+  insightContent?: string;
+}
+
 export const analyticsApi = {
-  async getInsights() {
+  async getInsights(): Promise<AnalyticsInsights | null> {
     try {
-      return await fetchApi<any>("/analytics/insights");
+      return await fetchApi<AnalyticsInsights>("/analytics/insights");
     } catch {
       return null;
     }
   },
 
-  async getOverview() {
+  async getOverview(): Promise<AnalyticsOverview> {
     try {
-      return await fetchApi<any>("/analytics/overview");
+      return await fetchApi<AnalyticsOverview>("/analytics/overview");
     } catch {
       return {
         revenue: { total: 0, growthPercent: 0, avgOrderValue: 0, ordersCount: 0 },
@@ -565,17 +749,17 @@ export const analyticsApi = {
     }
   },
 
-  async getRegionalSales() {
+  async getRegionalSales(): Promise<RegionalSales> {
     try {
-      return await fetchApi<any>("/analytics/regional-sales");
+      return await fetchApi<RegionalSales>("/analytics/regional-sales");
     } catch {
       return { regions: [] };
     }
   },
 
-  async getUsage() {
+  async getUsage(): Promise<AnalyticsUsage> {
     try {
-      return await fetchApi<any>("/analytics/usage");
+      return await fetchApi<AnalyticsUsage>("/analytics/usage");
     } catch {
       return {
         tryon: { total_sessions: 0, completed: 0, failed: 0, processing: 0, unique_users: 0 },
@@ -585,10 +769,27 @@ export const analyticsApi = {
   },
 };
 
+export interface AppSettings {
+  storeName: string;
+  supportEmail: string;
+  supportPhone: string;
+  currency: string;
+  timezone: string;
+  announcementText: string;
+  enableGuestCheckout: boolean;
+  enableLowStockAlerts: boolean;
+  lowStockThreshold: number;
+  autoArchiveOrders: boolean;
+  maintenanceMode: boolean;
+  stylistSystemPrompt: string;
+  activeOffers: string;
+  [key: string]: unknown;
+}
+
 export const settingsApi = {
-  async getApp() {
+  async getApp(): Promise<AppSettings> {
     try {
-      return await fetchApi<any>("/settings/app");
+      return await fetchApi<AppSettings>("/settings/app");
     } catch {
       return {
         storeName: "VASTRAX Luxury Apparel",
@@ -608,8 +809,8 @@ export const settingsApi = {
     }
   },
 
-  async updateApp(data: any) {
-    return await fetchApi<any>("/settings/app", {
+  async updateApp(data: Partial<AppSettings>): Promise<AppSettings> {
+    return await fetchApi<AppSettings>("/settings/app", {
       method: "PUT",
       body: JSON.stringify(data),
     });
@@ -631,8 +832,8 @@ export interface ChatResponse {
   }[];
   executed_tools?: {
     tool: string;
-    arguments?: any;
-    result?: any;
+    arguments?: unknown;
+    result?: unknown;
   }[];
   is_escalated?: boolean;
 }
@@ -649,18 +850,26 @@ export interface ChatHistoryMessage {
     image: string;
     category: string;
   }[];
-  tool_calls?: any;
+  tool_calls?: unknown;
   is_escalated?: boolean;
 }
+
+export interface ChatTurn {
+  role: string;
+  content: string;
+}
+
+/** Cart line forwarded to the stylist for context. */
+export type ChatCartItem = JsonObject;
 
 export const chatApi = {
   async sendMessage(
     message: string,
     sessionId?: string,
-    history: { role: string; content: string }[] = [],
-    profile: Record<string, any> = {},
+    history: ChatTurn[] = [],
+    profile: JsonObject = {},
     contextUrl?: string,
-    cartItems?: any[],
+    cartItems?: ChatCartItem[],
     userId?: string
   ): Promise<ChatResponse> {
     const messagesPayload = [...history, { role: "user", content: message }];

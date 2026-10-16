@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Loader2 } from "lucide-react";
+
 import { probeBackendHealth, subscribeToBackendStatus } from "@/lib/backendStatus";
 import { ServerDownScreen } from "./ServerDownScreen";
 

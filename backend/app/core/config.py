@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     shiprocket_email: str = "vastrax.shop@gmail.com"
     shiprocket_password: str = ""
     pickup_pincode: str = "625706"
+    shiprocket_pickup_location: str = "Primary"
 
     # App
     allowed_origins: str = "http://localhost:3000,https://vastrax.ai"
@@ -47,6 +48,11 @@ class Settings(BaseSettings):
     fashn_weights: str = "/home/pkr/fashn-tryon/fashn-vton-1.5/weights"
     fashn_output: str = "/home/pkr/fashn-tryon/fashn-vton-1.5/results/output_00.png"
     fashn_results: str = "/home/pkr/fashn-tryon/fashn-vton-1.5/results"
+
+    # MiniMax
+    minimax_api_key: str = ""
+    minimax_model: str = "MiniMax-M3"
+    minimax_base_url: str = "https://api.minimax.io/v1/chat/completions"
 
     # Anthropic
     anthropic_api_key: str = ""

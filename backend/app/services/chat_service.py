@@ -145,12 +145,9 @@ def mock_chat(messages: list, profile: dict, db=None, user_id: str = None, sessi
         order_match = re.search(r"ORD-[\w-]+|[0-9a-f]{8}-[0-9a-f]{4}", last_user, re.I)
         order_id = order_match.group(0) if order_match else None
         
-        if not order_id and db is not None:
+        if not order_id and db is not None and user_id:
             from app.models.order import Order
-            q = db.query(Order)
-            if user_id:
-                q = q.filter(Order.user_id == user_id)
-            latest = q.order_by(Order.placed_at.desc()).first()
+            latest = db.query(Order).filter(Order.user_id == user_id).order_by(Order.placed_at.desc()).first()
             if latest:
                 order_id = latest.id
         
@@ -170,7 +167,7 @@ def mock_chat(messages: list, profile: dict, db=None, user_id: str = None, sessi
                 )
                 return reply, executed_tools
         return (
-            "I can track your order status in real time! Please provide your Order ID (e.g. #ORD-2026-1048) or the email address used during checkout. "
+            "I can track your order status in real time! Please sign in to the account that placed the order, then share your Order ID (e.g. #ORD-2026-1048). "
             "[CHIPS:Check recent order|Return policy|Contact human concierge]",
             executed_tools
         )
@@ -594,6 +591,111 @@ def _build_system_prompt(profile: dict, db=None, context_url: str = None, cart_i
     )
 
 
+def _call_minimax(
+    messages: list,
+    system_prompt: str,
+    api_key: str,
+    model: str = "MiniMax-M3",
+    base_url: str = "https://api.minimax.io/v1/chat/completions",
+    db=None,
+    user_id: str = None,
+    session_id: str = None,
+) -> tuple[str, list]:
+    from app.core.exceptions import BadGatewayError
+    from app.services.chat_tools import CHAT_TOOLS, execute_tool
+
+    minimax_messages = [{"role": "system", "content": system_prompt}] + messages
+    executed_tools = []
+    try:
+        with httpx.Client(timeout=60.0) as client:
+            headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+
+            def complete(include_tools: bool):
+                payload = {
+                    "model": model,
+                    "messages": minimax_messages,
+                    "max_completion_tokens": 4096,
+                    "temperature": 0.7,
+                    "reasoning_split": True,
+                }
+                if include_tools and db is not None:
+                    payload["tools"] = CHAT_TOOLS
+                    payload["tool_choice"] = "auto"
+                res = client.post(base_url, headers=headers, json=payload)
+                if res.status_code != 200:
+                    logger.error("MiniMax API returned HTTP %s", res.status_code)
+                    raise BadGatewayError(f"MiniMax service returned HTTP {res.status_code}")
+                data = res.json()
+                if not isinstance(data, dict):
+                    raise BadGatewayError("Invalid response structure from MiniMax provider")
+                base_resp = data.get("base_resp") or {}
+                if not isinstance(base_resp, dict):
+                    raise BadGatewayError("Invalid response structure from MiniMax provider")
+                if base_resp.get("status_code", 0) != 0:
+                    logger.error("MiniMax provider error %s", base_resp.get("status_code"))
+                    raise BadGatewayError("MiniMax provider rejected the request")
+                choices = data.get("choices")
+                if (
+                    not isinstance(choices, list)
+                    or not choices
+                    or not isinstance(choices[0], dict)
+                    or not isinstance(choices[0].get("message"), dict)
+                ):
+                    raise BadGatewayError("Invalid response structure from MiniMax provider")
+                return choices[0]["message"]
+
+            response_message = complete(include_tools=True)
+            tool_calls = response_message.get("tool_calls") or []
+            if tool_calls:
+                if db is None or len(tool_calls) > 3:
+                    raise BadGatewayError("MiniMax requested unsupported stylist actions")
+                # Validate the whole batch before executing anything so a malformed
+                # later call cannot leave earlier side effects (e.g. cancel_order) applied.
+                parsed_calls = []
+                for call in tool_calls:
+                    function = call.get("function") if isinstance(call, dict) else None
+                    if not isinstance(function, dict) or not call.get("id") or not function.get("name"):
+                        raise BadGatewayError("Invalid MiniMax tool call")
+                    try:
+                        arguments = json.loads(function.get("arguments") or "{}")
+                    except (TypeError, ValueError) as exc:
+                        raise BadGatewayError("Invalid MiniMax tool arguments") from exc
+                    if not isinstance(arguments, dict):
+                        raise BadGatewayError("Invalid MiniMax tool arguments")
+                    parsed_calls.append((call["id"], function["name"], arguments))
+
+                minimax_messages.append(response_message)
+                for call_id, name, arguments in parsed_calls:
+                    result = execute_tool(name, arguments, db=db, user_id=user_id, session_id=session_id)
+                    executed_tools.append({"tool": name, "arguments": arguments, "result": result})
+                    minimax_messages.append({
+                        "role": "tool", "tool_call_id": call_id, "content": json.dumps(result)
+                    })
+                response_message = complete(include_tools=False)
+
+            reply = response_message.get("content")
+            if not isinstance(reply, str) or not reply.strip():
+                raise BadGatewayError("MiniMax returned an empty reply")
+            return reply.strip(), executed_tools
+    except BadGatewayError:
+        raise
+    except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
+        logger.error("MiniMax request failed: %s", type(exc).__name__)
+        raise BadGatewayError("MiniMax service is temporarily unavailable") from exc
+
+
+_CLIENT_ROLES = ("user", "assistant")
+
+
+def _sanitize_client_messages(messages: list) -> list:
+    """Keep only user/assistant text turns from the client; system and tool turns stay server-side."""
+    return [
+        {"role": m["role"], "content": m["content"]}
+        for m in messages or []
+        if isinstance(m, dict) and m.get("role") in _CLIENT_ROLES and isinstance(m.get("content"), str)
+    ]
+
+
 # ── Public entry point ────────────────────────────────────────────────────────
 
 def chat(
@@ -606,109 +708,37 @@ def chat(
     session_id: str = None,
 ) -> tuple[str, list]:
     """
-    Executes conversational AI with multi-turn OpenAI tool calling.
+    Shopper stylist chat. MiniMax M3 is the only provider: when it is not configured
+    or fails, a controlled error is raised (HTTP 503/502) and no scripted, OpenAI or
+    Anthropic reply is substituted.
     Returns: (reply_text, executed_tools_list)
     """
-    openai_key = os.getenv("OPENAI_API_KEY", "").strip()
-    anthropic_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
-    from app.services.chat_tools import CHAT_TOOLS, execute_tool
+    from app.core.config import settings
+    from app.core.exceptions import ServiceUnavailableError
 
-    # 1. OpenAI with Secure Tool Execution (Priority)
-    if openai_key and not openai_key.startswith("your_"):
-        try:
-            model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-            system_prompt = _build_system_prompt(profile, db=db, context_url=context_url, cart_items=cart_items)
-            openai_messages = [{"role": "system", "content": system_prompt}] + messages
-            executed_tools = []
-            
-            with httpx.Client(timeout=45.0) as client:
-                res = client.post(
-                    "https://api.openai.com/v1/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {openai_key}",
-                        "Content-Type": "application/json",
-                    },
-                    json={
-                        "model": model,
-                        "messages": openai_messages,
-                        "tools": CHAT_TOOLS,
-                        "tool_choice": "auto",
-                        "max_tokens": 512,
-                        "temperature": 0.7,
-                    }
-                )
-                if res.status_code == 200:
-                    data = res.json()
-                    response_msg = data["choices"][0]["message"]
+    messages = _sanitize_client_messages(messages)
+    minimax_key = (os.getenv("MINIMAX_API_KEY", "") or getattr(settings, "minimax_api_key", "") or "").strip()
+    if not minimax_key or minimax_key.startswith("your_"):
+        logger.error("MINIMAX_API_KEY is not configured; stylist is out of service")
+        raise ServiceUnavailableError("Stylist is not configured")
 
-                    # Check for tool calls
-                    tool_calls = response_msg.get("tool_calls")
-                    if tool_calls and db is not None:
-                        openai_messages.append(response_msg)
-                        for tc in tool_calls:
-                            fn_name = tc["function"]["name"]
-                            fn_args = json.loads(tc["function"].get("arguments") or "{}")
-                            tool_result = execute_tool(
-                                fn_name,
-                                fn_args,
-                                db=db,
-                                user_id=user_id,
-                                session_id=session_id
-                            )
-                            executed_tools.append({
-                                "tool": fn_name,
-                                "arguments": fn_args,
-                                "result": tool_result
-                            })
-                            openai_messages.append({
-                                "role": "tool",
-                                "tool_call_id": tc["id"],
-                                "name": fn_name,
-                                "content": json.dumps(tool_result),
-                            })
-
-                        # Second completion turn incorporating verified tool results
-                        followup_res = client.post(
-                            "https://api.openai.com/v1/chat/completions",
-                            headers={
-                                "Authorization": f"Bearer {openai_key}",
-                                "Content-Type": "application/json",
-                            },
-                            json={
-                                "model": model,
-                                "messages": openai_messages,
-                                "max_tokens": 512,
-                                "temperature": 0.7,
-                            }
-                        )
-                        if followup_res.status_code == 200:
-                            follow_data = followup_res.json()
-                            return follow_data["choices"][0]["message"].get("content", ""), executed_tools
-
-                    return response_msg.get("content", ""), executed_tools
-                else:
-                    logger.warning("OpenAI API returned %s: %s", res.status_code, res.text)
-        except Exception as e:
-            logger.error("OpenAI chat error: %s", e)
-
-    # 2. Anthropic Claude (Alternative)
-    if anthropic_key and anthropic_key.startswith("sk-ant-"):
-        try:
-            response = _get_anthropic_client().messages.create(
-                model="claude-haiku-4-5-20251001",
-                max_tokens=512,
-                system=_build_system_prompt(profile, db=db, context_url=context_url, cart_items=cart_items),
-                messages=messages,
-            )
-            return response.content[0].text, []
-        except Exception as e:
-            logger.error("Anthropic chat error: %s", e)
-
-    # 3. Smart Fashion Intelligence Mock Fallback with Real DB Tools
-    res = mock_chat(messages, profile, db=db, user_id=user_id, session_id=session_id)
-    if isinstance(res, tuple) and len(res) == 2:
-        return res
-    return str(res), []
+    minimax_model = os.getenv("MINIMAX_MODEL", "").strip() or getattr(settings, "minimax_model", "") or "MiniMax-M3"
+    minimax_url = (
+        os.getenv("MINIMAX_BASE_URL", "").strip()
+        or getattr(settings, "minimax_base_url", "")
+        or "https://api.minimax.io/v1/chat/completions"
+    )
+    system_prompt = _build_system_prompt(profile, db=db, context_url=context_url, cart_items=cart_items)
+    return _call_minimax(
+        messages=messages,
+        system_prompt=system_prompt,
+        api_key=minimax_key,
+        model=minimax_model,
+        base_url=minimax_url,
+        db=db,
+        user_id=user_id,
+        session_id=session_id,
+    )
 
 
 def chat_stream(
@@ -721,7 +751,8 @@ def chat_stream(
     session_id: str = None,
 ):
     """
-    Generator yielding Server-Sent Events (SSE) chunks for streaming responses.
+    Server-Sent Events for a streamed reply. The provider call runs eagerly (before the
+    response starts) so MiniMax outages surface as a real HTTP 502/503, not a broken stream.
     """
     reply_text, executed_tools = chat(
         messages=messages,
@@ -732,17 +763,17 @@ def chat_stream(
         user_id=user_id,
         session_id=session_id,
     )
+    return _sse_events(reply_text, executed_tools, session_id)
 
+
+def _sse_events(reply_text: str, executed_tools: list, session_id: str):
     # Emit tool events if any were executed
     for tool_event in executed_tools:
         yield f"data: {json.dumps({'type': 'tool_result', 'tool': tool_event['tool'], 'result': tool_event['result']})}\n\n"
 
-    # Emit words/tokens with subtle simulation for seamless UI typewriter effect
     words = reply_text.split(" ")
     for i, word in enumerate(words):
         chunk = word + (" " if i < len(words) - 1 else "")
         yield f"data: {json.dumps({'type': 'token', 'content': chunk})}\n\n"
 
-    # Emit done event
     yield f"data: {json.dumps({'type': 'done', 'session_id': session_id, 'executed_tools': executed_tools})}\n\n"
-

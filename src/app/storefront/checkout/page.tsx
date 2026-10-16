@@ -1,21 +1,19 @@
 "use client";
+import Image from "next/image";
 
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import Link from "next/link";
 import Script from "next/script";
-import {
-  ChevronLeft, ShieldCheck, Lock, CreditCard, CheckCircle2,
-  Truck, Sparkles, MapPin, Phone, Mail, User, ArrowRight, Loader2,
-  Package, ShoppingBag
-} from "lucide-react";
+import { ChevronLeft, ShieldCheck, Lock, CreditCard, CheckCircle2, Truck, Phone, Mail, ArrowRight, Loader2, Package, ShoppingBag } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useSession } from "next-auth/react";
 import { AuthModal } from "@/components/auth/AuthModal";
 import { reportBackendReachable, reportBackendUnreachable } from "@/lib/backendStatus";
-import { getCart, clearCart, CartItem } from "@/lib/cart";
+import { clearCart } from "@/lib/cart";
+import { useCartItems } from "@/hooks/useCartItems";
 import { showToast } from "@/lib/toast";
 
-const BACKEND_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8090/api/v1";
+const BACKEND_BASE = "/api/v1";
 
 /** Wraps fetch to report backend connectivity — a thrown network error means the backend
  * is unreachable, distinct from a normal HTTP error response (which still reaches the server). */
@@ -40,6 +38,43 @@ interface OrderItem {
   image?: string;
 }
 
+interface PaymentInitiateData {
+  razorpay_key_id: string;
+  amount: number;
+  currency: string;
+  razorpay_order_id: string;
+  txn_id: string;
+}
+
+interface RazorpayPaymentResponse {
+  razorpay_order_id: string;
+  razorpay_payment_id: string;
+  razorpay_signature: string;
+}
+
+interface RazorpayInstance {
+  open(): void;
+}
+
+interface RazorpayOptions {
+  key: string;
+  amount: number;
+  currency: string;
+  order_id: string;
+  name: string;
+  description: string;
+  prefill: { name: string; email: string; contact: string };
+  theme: { color: string };
+  handler(response: RazorpayPaymentResponse): Promise<void>;
+  modal: { ondismiss(): void };
+}
+
+declare global {
+  interface Window {
+    Razorpay?: new (options: RazorpayOptions) => RazorpayInstance;
+  }
+}
+
 export default function CheckoutPage() {
   // Step State
   const [isProcessing, setIsProcessing] = useState(false);
@@ -52,13 +87,13 @@ export default function CheckoutPage() {
 
   React.useEffect(() => {
     if (typeof window !== "undefined") {
-      setLocalToken(localStorage.getItem("vastrax_token"));
+      void Promise.resolve().then(() => setLocalToken(localStorage.getItem("vastrax_token")));
     }
   }, [status]);
 
   React.useEffect(() => {
     if (status === "unauthenticated" && !localToken) {
-      setIsAuthOpen(true);
+      void Promise.resolve().then(() => setIsAuthOpen(true));
     }
   }, [status, localToken]);
 
@@ -70,23 +105,26 @@ export default function CheckoutPage() {
   const [address, setAddress] = useState("742 Evergreen Terrace");
   const [apartment, setApartment] = useState("Penthouse 4B");
   const [city, setCity] = useState("New York");
-  const [postalCode, setPostalCode] = useState("10001");
-  const [country, setCountry] = useState("United States");
+  const [postalCode, setPostalCode] = useState("");
 
   // Pre-fill customer details from active session
   React.useEffect(() => {
     if (session?.user) {
-      if (session.user.email) setEmail(session.user.email);
-      if (session.user.name) {
-        const parts = session.user.name.split(" ");
-        setFirstName(parts[0] || "");
-        setLastName(parts.slice(1).join(" ") || "");
-      }
+      void Promise.resolve().then(() => {
+        if (session.user.email) setEmail(session.user.email);
+        if (session.user.name) {
+          const parts = session.user.name.split(" ");
+          setFirstName(parts[0] || "");
+          setLastName(parts.slice(1).join(" ") || "");
+        }
+      });
     }
   }, [session]);
   
-  // Delivery Method
-  const [deliveryMethod, setDeliveryMethod] = useState<"standard" | "express" | "concierge">("express");
+  // Delivery charges and courier choice come from Shiprocket serviceability for the entered pincode.
+  const [shippingQuote, setShippingQuote] = useState<{ courierId: number; courierName: string; rate: number; etd?: string } | null>(null);
+  const [shippingQuoteError, setShippingQuoteError] = useState("");
+  const [shippingQuoteLoading, setShippingQuoteLoading] = useState(false);
 
   // Payment Method
   const [paymentMethod, setPaymentMethod] = useState<"card" | "apple" | "cod">("card");
@@ -99,38 +137,65 @@ export default function CheckoutPage() {
   const [simPayment, setSimPayment] = useState<{ txnId: string; orderId: string } | null>(null);
 
   // Cart items
-  const [items, setItems] = useState<OrderItem[]>([]);
-  
-  React.useEffect(() => {
-    const loadItems = () => {
-      const currentCart = getCart();
-      setItems(currentCart.map(c => ({
-        id: c.id,
-        name: c.name,
-        price: Number(c.price) || 0,
-        quantity: c.quantity || 1,
-        size: c.size,
-        color: c.color,
-        image: c.image
-      })));
-    };
-
-    loadItems();
-    window.addEventListener("cart-updated", loadItems);
-    window.addEventListener("storage", loadItems);
-    return () => {
-      window.removeEventListener("cart-updated", loadItems);
-      window.removeEventListener("storage", loadItems);
-    };
-  }, []);
+  const cartItems = useCartItems();
+  const items = useMemo<OrderItem[]>(() => cartItems.map((item) => ({
+    id: item.id,
+    name: item.name,
+    price: Number(item.price) || 0,
+    quantity: item.quantity || 1,
+    size: item.size,
+    color: item.color,
+    image: item.image,
+  })), [cartItems]);
 
   const subtotal = items.reduce((acc, item) => acc + item.price * item.quantity, 0);
-  const shippingCost = deliveryMethod === "standard" ? 0 : deliveryMethod === "express" ? 150 : 350;
+  const shippingCost = shippingQuote?.rate ?? 0;
   const tax = subtotal * 0.08;
   const total = subtotal + shippingCost + tax;
 
+  React.useEffect(() => {
+    const pincode = postalCode.trim();
+    if (!/^\d{6}$/.test(pincode) || items.length === 0) {
+      const invalidTimer = window.setTimeout(() => {
+        setShippingQuote(null);
+        setShippingQuoteLoading(false);
+        setShippingQuoteError(pincode ? "Enter a valid 6-digit pincode to check delivery." : "Enter your delivery pincode to check shipping.");
+      }, 0);
+      return () => window.clearTimeout(invalidTimer);
+    }
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setShippingQuoteLoading(true);
+      setShippingQuoteError("");
+      try {
+        const weight = Math.max(0.5, items.reduce((sum, item) => sum + item.quantity * 0.5, 0));
+        const ratesUrl = BACKEND_BASE + "/shipping/rates?pincode=" + encodeURIComponent(pincode) + "&weight=" + weight + "&cod=" + (paymentMethod === "cod" ? "true" : "false");
+        const response = await backendFetch(ratesUrl, { method: "GET", signal: controller.signal });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || data.error) throw new Error(data.detail || data.error || "Shiprocket could not quote delivery for this pincode.");
+        const couriers = data?.data?.available_courier_companies || data?.available_courier_companies || [];
+        const options = couriers.map((courier: Record<string, unknown>) => ({
+          courierId: Number(courier.courier_company_id || courier.id),
+          courierName: String(courier.courier_name || "Shiprocket courier"),
+          rate: Number(courier.rate ?? courier.freight_charge),
+          etd: String(courier.etd || courier.estimated_delivery_days || ""),
+        })).filter((courier: { courierId: number; rate: number }) => Number.isFinite(courier.courierId) && Number.isFinite(courier.rate) && courier.rate >= 0);
+        if (!options.length) throw new Error("No Shiprocket courier is available for this pincode.");
+        options.sort((a: { rate: number }, b: { rate: number }) => a.rate - b.rate);
+        setShippingQuote(options[0]);
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setShippingQuote(null);
+        setShippingQuoteError(error instanceof Error ? error.message : "Could not fetch Shiprocket rates.");
+      } finally {
+        setShippingQuoteLoading(false);
+      }
+    }, 350);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [postalCode, items, paymentMethod]);
+
   const getEffectiveToken = () => {
-    return (session as any)?.accessToken || localToken || (typeof window !== "undefined" ? localStorage.getItem("vastrax_token") : null);
+    return session?.accessToken || localToken || (typeof window !== "undefined" ? localStorage.getItem("vastrax_token") : null);
   };
 
   const completeOrder = (orderId: string) => {
@@ -148,7 +213,6 @@ export default function CheckoutPage() {
 
     // Clear cart across application
     clearCart();
-    setItems([]);
 
     showToast({
       title: "Order Placed Successfully",
@@ -158,8 +222,9 @@ export default function CheckoutPage() {
     });
   };
 
-  const openRazorpayCheckout = (token: string, orderId: string, initiateData: any) => {
-    const rzp = new (window as any).Razorpay({
+  const openRazorpayCheckout = (token: string, orderId: string, initiateData: PaymentInitiateData) => {
+    if (!window.Razorpay) throw new Error("Payment checkout is still loading. Please try again.");
+    const rzp = new window.Razorpay({
       key: initiateData.razorpay_key_id,
       amount: initiateData.amount,
       currency: initiateData.currency,
@@ -168,7 +233,7 @@ export default function CheckoutPage() {
       description: `Order ${orderId}`,
       prefill: { name: `${firstName} ${lastName}`, email, contact: phone },
       theme: { color: "#E07A3F" },
-      handler: async (response: any) => {
+      handler: async (response: RazorpayPaymentResponse) => {
         try {
           const verifyRes = await backendFetch(`${BACKEND_BASE}/payments/verify`, {
             method: "POST",
@@ -183,12 +248,12 @@ export default function CheckoutPage() {
           const verifyData = await verifyRes.json().catch(() => ({}));
           if (!verifyRes.ok) throw new Error(verifyData.detail || verifyData.message || "Payment verification failed");
           completeOrder(orderId);
-        } catch (err: any) {
+        } catch (err: unknown) {
           console.error(err);
           setIsProcessing(false);
           showToast({
             title: "Verification Error",
-            description: err?.message || "Payment succeeded but verification failed. Please contact support.",
+            description: err instanceof Error ? err.message : "Payment succeeded but verification failed. Please contact support.",
             type: "error",
             duration: 6000,
           });
@@ -231,12 +296,12 @@ export default function CheckoutPage() {
           duration: 5000,
         });
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
       setIsProcessing(false);
       showToast({
         title: "Payment Error",
-        description: err?.message || "Failed to process payment response.",
+        description: err instanceof Error ? err.message : "Failed to process payment response.",
         type: "error",
         duration: 4000,
       });
@@ -267,9 +332,27 @@ export default function CheckoutPage() {
       return;
     }
 
+    if (!shippingQuote || shippingQuoteLoading) {
+      showToast({ title: "Delivery rate required", description: shippingQuoteError || "Wait for Shiprocket to confirm the delivery rate for your pincode.", type: "error" });
+      return;
+    }
+
     setIsProcessing(true);
 
     try {
+      if (paymentMethod !== "cod") {
+        const readinessRes = await backendFetch(`${BACKEND_BASE}/payments/readiness`, {
+          method: "GET",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const readiness = await readinessRes.json().catch(() => ({}));
+        const productionBuild = process.env.NODE_ENV === "production";
+        if (!readinessRes.ok || !readiness.checkout_available ||
+            (productionBuild && !readiness.razorpay_available)) {
+          throw new Error("Online payments are not ready yet. Please choose Cash on Delivery or contact support.");
+        }
+      }
+
       // 1. Create Address
       const addressRes = await backendFetch(`${BACKEND_BASE}/users/me/addresses`, {
         method: "POST",
@@ -294,7 +377,8 @@ export default function CheckoutPage() {
           address_id: addressData.id,
           payment_method: paymentMethod === "cod" ? "COD" : paymentMethod.toUpperCase(),
           total_amount: total,
-          delivery_method: deliveryMethod,
+          delivery_method: "shiprocket",
+          shipping_courier_id: shippingQuote.courierId,
           items: items.map(item => ({
             product_id: String(item.id),
             size: item.size || "M",
@@ -320,7 +404,7 @@ export default function CheckoutPage() {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           order_id: orderData.id,
-          amount: total,
+          amount: Number(orderData.total_amount) || total,
           payment_method: paymentMethod.toUpperCase(),
         })
       });
@@ -330,18 +414,19 @@ export default function CheckoutPage() {
       if (initiateData.mode === "razorpay") {
         setIsProcessing(false);
         openRazorpayCheckout(token, orderData.id, initiateData);
-      } else {
-        // No live Razorpay credentials configured — fall back to an in-page simulated gateway.
+      } else if (initiateData.mode === "simulation" && process.env.NODE_ENV !== "production") {
         setIsProcessing(false);
         setSimPayment({ txnId: initiateData.txn_id, orderId: orderData.id });
+      } else {
+        throw new Error("Online payments are unavailable. Please choose Cash on Delivery or contact support.");
       }
 
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
       setIsProcessing(false);
       showToast({
         title: "Order Failed",
-        description: err?.message || "Failed to place order. Please verify your items and try again.",
+        description: err instanceof Error ? err.message : "Failed to place order. Please verify your items and try again.",
         type: "error",
         duration: 5000,
       });
@@ -430,7 +515,7 @@ export default function CheckoutPage() {
               <span className="text-xs font-bold uppercase tracking-widest text-accent">Order Confirmed</span>
               <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight">Thank You For Your Order</h1>
               <p className="text-sm text-muted-foreground max-w-md mx-auto">
-                We've received your purchase. A bespoke confirmation email and receipt has been sent to <span className="text-foreground font-medium">{email}</span>.
+                We&apos;ve received your purchase. A bespoke confirmation email and receipt has been sent to <span className="text-foreground font-medium">{email}</span>.
               </p>
             </div>
 
@@ -442,7 +527,7 @@ export default function CheckoutPage() {
               <div className="flex justify-between items-center text-xs pb-3 border-b border-border">
                 <span className="text-muted-foreground">Estimated Delivery</span>
                 <span className="font-medium text-foreground">
-                  {deliveryMethod === 'concierge' ? 'Today (by 8:00 PM)' : deliveryMethod === 'express' ? '1-2 Business Days' : '3-5 Business Days'}
+                  {shippingQuote?.etd || "Confirmed after courier pickup"}
                 </span>
               </div>
               <div className="flex justify-between items-center text-xs">
@@ -477,7 +562,7 @@ export default function CheckoutPage() {
               <span className="text-xs font-bold uppercase tracking-widest text-accent">Simulated Payment Gateway</span>
               <h1 className="text-2xl font-extrabold tracking-tight">Complete Test Payment</h1>
               <p className="text-sm text-muted-foreground">
-                Razorpay live credentials aren't configured yet. Simulate the outcome of this ${total.toFixed(2)} charge below.
+                Razorpay live credentials aren&apos;t configured yet. Simulate the outcome of this ₹{total.toFixed(2)} charge below.
               </p>
             </div>
 
@@ -636,6 +721,9 @@ export default function CheckoutPage() {
                       <input 
                         type="text" 
                         required
+                        inputMode="numeric"
+                        pattern="[0-9]{6}"
+                        maxLength={6}
                         value={postalCode}
                         onChange={(e) => setPostalCode(e.target.value)}
                         className="w-full px-3.5 py-2.5 bg-background border border-border rounded-lg focus:outline-none focus:border-accent text-foreground transition-all"
@@ -645,83 +733,20 @@ export default function CheckoutPage() {
                 </div>
               </div>
 
-              {/* Step 2: Delivery Method */}
-              <div className="bg-surface border border-border rounded-2xl p-6 md:p-8 space-y-5">
-                <div className="flex items-center gap-3 pb-4 border-b border-border">
+              {/* Shiprocket live delivery quote */}
+              <div className="bg-surface border border-border rounded-2xl p-6 md:p-8 space-y-3">
+                <div className="flex items-center gap-3 pb-3 border-b border-border">
                   <div className="w-8 h-8 rounded-full bg-accent text-white flex items-center justify-center text-xs font-bold">2</div>
-                  <h2 className="text-lg font-bold">Delivery Method</h2>
+                  <h2 className="text-lg font-bold">Shipping</h2>
                 </div>
-
-                <div className="space-y-3">
-                  <label 
-                    onClick={() => setDeliveryMethod("standard")}
-                    className={`flex items-center justify-between p-4 rounded-xl border cursor-pointer transition-all ${
-                      deliveryMethod === "standard" 
-                        ? "border-accent bg-accent/5 ring-1 ring-accent" 
-                        : "border-border bg-background hover:border-border/80"
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${
-                        deliveryMethod === "standard" ? "border-accent" : "border-muted-foreground"
-                      }`}>
-                        {deliveryMethod === "standard" && <div className="w-2 h-2 rounded-full bg-accent" />}
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-foreground">Complimentary Standard Delivery</p>
-                        <p className="text-xs text-muted-foreground">3-5 Business Days · Signature upon receipt</p>
-                      </div>
-                    </div>
-                    <span className="text-sm font-bold text-green-500">Free</span>
-                  </label>
-
-                  <label 
-                    onClick={() => setDeliveryMethod("express")}
-                    className={`flex items-center justify-between p-4 rounded-xl border cursor-pointer transition-all ${
-                      deliveryMethod === "express" 
-                        ? "border-accent bg-accent/5 ring-1 ring-accent" 
-                        : "border-border bg-background hover:border-border/80"
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${
-                        deliveryMethod === "express" ? "border-accent" : "border-muted-foreground"
-                      }`}>
-                        {deliveryMethod === "express" && <div className="w-2 h-2 rounded-full bg-accent" />}
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-foreground">Global Priority Express</p>
-                        <p className="text-xs text-muted-foreground">1-2 Business Days · Priority Air Freight</p>
-                      </div>
-                    </div>
-                    <span className="text-sm font-bold text-foreground">₹150.00</span>
-                  </label>
-
-                  <label 
-                    onClick={() => setDeliveryMethod("concierge")}
-                    className={`flex items-center justify-between p-4 rounded-xl border cursor-pointer transition-all ${
-                      deliveryMethod === "concierge" 
-                        ? "border-accent bg-accent/5 ring-1 ring-accent" 
-                        : "border-border bg-background hover:border-border/80"
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${
-                        deliveryMethod === "concierge" ? "border-accent" : "border-muted-foreground"
-                      }`}>
-                        {deliveryMethod === "concierge" && <div className="w-2 h-2 rounded-full bg-accent" />}
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-foreground flex items-center gap-2">
-                          Private Concierge White-Glove
-                          <Sparkles className="w-3.5 h-3.5 text-accent" />
-                        </p>
-                        <p className="text-xs text-muted-foreground">Same-Day Dedicated Courier with Garment Steaming</p>
-                      </div>
-                    </div>
-                    <span className="text-sm font-bold text-foreground">₹350.00</span>
-                  </label>
-                </div>
+                {shippingQuoteLoading ? (
+                  <p className="text-sm text-muted-foreground">Checking live Shiprocket availability and price…</p>
+                ) : shippingQuote ? (
+                  <div className="flex items-start justify-between gap-4 text-sm">
+                    <div><p className="font-semibold text-foreground">{shippingQuote.courierName}</p><p className="text-xs text-muted-foreground">Estimated delivery: {shippingQuote.etd || "provided after pickup"}</p></div>
+                    <p className="font-bold text-foreground">₹{shippingQuote.rate.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                  </div>
+                ) : <p className="text-sm text-red-500">{shippingQuoteError || "Enter a 6-digit pincode to get a Shiprocket quote."}</p>}
               </div>
 
               {/* Step 3: Payment Method */}
@@ -847,7 +872,7 @@ export default function CheckoutPage() {
               {/* Submit Button */}
               <button 
                 type="submit"
-                disabled={isProcessing}
+                disabled={isProcessing || !shippingQuote || shippingQuoteLoading}
                 className="w-full py-4 bg-accent hover:bg-accent/90 text-white rounded-full font-bold text-sm tracking-widest uppercase flex items-center justify-center gap-2 transition-all shadow-[0_0_25px_rgba(224,122,63,0.4)] disabled:opacity-75"
               >
                 {isProcessing ? (
@@ -857,7 +882,7 @@ export default function CheckoutPage() {
                   </>
                 ) : (
                   <>
-                    Place Order · ${total.toFixed(2)}
+                    Place Order · ₹{(shippingQuote ? total : 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     <ArrowRight className="w-5 h-5" />
                   </>
                 )}
@@ -877,7 +902,7 @@ export default function CheckoutPage() {
                   {items.map((item) => (
                     <div key={item.id} className="flex gap-4 items-center">
                       <div className="w-16 h-20 rounded-lg bg-background overflow-hidden shrink-0 border border-border relative">
-                        <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
+                        <Image width={1200} height={900} unoptimized src={item.image || "/placeholder.svg"} alt={item.name} className="w-full h-full object-cover" />
                         <span className="absolute -top-1 -right-1 bg-accent text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
                           {item.quantity}
                         </span>
@@ -898,8 +923,8 @@ export default function CheckoutPage() {
                     <span className="text-foreground font-medium">₹{subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                   </div>
                   <div className="flex justify-between text-muted-foreground">
-                    <span>Shipping ({deliveryMethod.toUpperCase()})</span>
-                    <span className="text-foreground font-medium">{shippingCost === 0 ? "Free" : `₹${shippingCost.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}</span>
+                    <span>Shipping ({shippingQuote?.courierName || "Shiprocket"})</span>
+                    <span className="text-foreground font-medium">{shippingQuote ? "₹" + shippingCost.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "Enter pincode"}</span>
                   </div>
                   <div className="flex justify-between text-muted-foreground">
                     <span>Estimated Sales Tax (8%)</span>

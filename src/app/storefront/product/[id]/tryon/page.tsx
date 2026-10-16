@@ -1,12 +1,13 @@
 "use client";
+import Image from "next/image";
 
 import React, { useState, useRef, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { 
+import {
   Sparkles, Upload, RefreshCw, Check, ShoppingBag,
-  AlertCircle, Layers, X, Camera 
+  AlertCircle, Layers, X, Camera
 } from "lucide-react";
-import { tryonApi, productsApi } from "@/lib/api";
+import { tryonApi, productsApi, ProductItem } from "@/lib/api";
 import { useSession } from "next-auth/react";
 import { addToCart as addCartItem } from "@/lib/cart";
 import { showToast } from "@/lib/toast";
@@ -23,6 +24,19 @@ const TIP_LABEL = {
   "dresses": "Dress/Kurti Try-On Guide",
 };
 
+interface TryOnGarment {
+  id: string | number;
+  name?: string;
+  title?: string;
+  category?: string;
+  category_id?: string | number;
+  price?: number | string;
+  price_selling?: number;
+  colour?: string;
+  image?: string;
+  images?: ProductItem["images"];
+}
+
 export default function VirtualTryOnPage() {
   const params = useParams();
   const router = useRouter();
@@ -30,20 +44,20 @@ export default function VirtualTryOnPage() {
   const { data: session } = useSession();
 
   const defaultGarment = {
-    id: id || "vtx-default",
-    name: "Cyber Silk Trench Coat",
-    category: "Outerwear",
-    price: "4999",
-    image: "https://images.unsplash.com/photo-1551028719-00167b16eac5?q=80&w=800&auto=format&fit=crop"
+    id: id || "",
+    name: "",
+    category: "",
+    price: "",
+    image: "/product-placeholder.svg"
   };
 
-  const [products, setProducts] = useState<any[]>([]);
-  const [product, setProduct] = useState<any>(defaultGarment);
-  
+  const [products, setProducts] = useState<ProductItem[]>([]);
+  const [product, setProduct] = useState<TryOnGarment>(defaultGarment);
+
   const [personFile, setPersonFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  
-  const [selectedTop, setSelectedTop] = useState<any>(null);
+
+  const [selectedTop, setSelectedTop] = useState<ProductItem | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [statusType, setStatusType] = useState("");
   const [statusText, setStatusText] = useState("");
@@ -61,14 +75,14 @@ export default function VirtualTryOnPage() {
         const allProducts = await productsApi.list();
         if (allProducts && allProducts.length > 0) {
           setProducts(allProducts);
-          const current = allProducts.find((p: any) => p.id.toString() === id);
-          setProduct(current || allProducts[0]);
+          const current = allProducts.find((p) => p.id.toString() === id) || allProducts[0];
+          setProduct({ ...current, name: current.name || current.title || "Luxury garment" });
         }
       } catch (e) {
         console.error("Failed to load products", e);
       }
     }
-    loadData();
+    void Promise.resolve().then(loadData);
   }, [id]);
 
   // Auth guard — redirect to product page if not logged in (direct URL access)
@@ -115,19 +129,14 @@ export default function VirtualTryOnPage() {
     );
   }
 
-  const getGarmentImage = (p: any) => {
-    if (!p) return "https://images.unsplash.com/photo-1572804013309-59a88b7e92f1?q=80&w=800&auto=format&fit=crop";
+  const getGarmentImage = (p: TryOnGarment | null) => {
+    if (!p) return "/product-placeholder.svg";
     if (p.image && !p.image.includes("photo-1515347619362")) return p.image;
     if (Array.isArray(p.images) && p.images.length > 0) {
       const url = typeof p.images[0] === "string" ? p.images[0] : p.images[0]?.s3_url;
       if (url && !url.includes("photo-1515347619362")) return url;
     }
-    const name = (p.name || p.title || "").toLowerCase();
-    if (/frock|dress|gown/i.test(name)) return "https://images.unsplash.com/photo-1572804013309-59a88b7e92f1?q=80&w=800&auto=format&fit=crop";
-    if (/jacket|coat|outerwear/i.test(name)) return "https://images.unsplash.com/photo-1551028719-00167b16eac5?q=80&w=800&auto=format&fit=crop";
-    if (/hoodie/i.test(name)) return "https://images.unsplash.com/photo-1556821840-3a63f95609a7?q=80&w=800&auto=format&fit=crop";
-    if (/pant|trouser|denim/i.test(name)) return "https://images.unsplash.com/photo-1542272604-787c3835535d?q=80&w=800&auto=format&fit=crop";
-    return "https://images.unsplash.com/photo-1572804013309-59a88b7e92f1?q=80&w=800&auto=format&fit=crop";
+    return "/product-placeholder.svg";
   };
 
   const getFashnCategory = (cat: string, name: string = "") => {
@@ -138,11 +147,11 @@ export default function VirtualTryOnPage() {
   };
 
   const fashnType = getFashnCategory(
-    product.category?.name || product.category || product.category_id || "",
+    String(product.category || product.category_id || ""),
     product.name || product.title || ""
   );
   const isBottoms = fashnType === "bottoms";
-  const availableTops = products.filter(p => getFashnCategory(p.category?.name || p.category || p.category_id || "", p.name || "") === "tops" && String(p.id) !== String(product.id));
+  const availableTops = products.filter(p => getFashnCategory(String(p.category_name || p.category || p.category_id || ""), p.name || "") === "tops" && String(p.id) !== String(product.id));
 
   const startTryOnPipeline = async () => {
     if (!personFile || !product) return;
@@ -171,9 +180,9 @@ export default function VirtualTryOnPage() {
       } else {
         throw new Error("Try-on response failed.");
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       setStatusType("error");
-      setStatusText(err.message || "Failed to process virtual try-on.");
+      setStatusText(err instanceof Error ? err.message : "Failed to process virtual try-on.");
     } finally {
       setIsProcessing(false);
     }
@@ -184,27 +193,27 @@ export default function VirtualTryOnPage() {
       setSizeError(true);
       return;
     }
-    const priceNum = typeof product.price_selling === 'number' 
-      ? product.price_selling 
-      : typeof product.price === 'number' 
-      ? product.price 
+    const priceNum = typeof product.price_selling === 'number'
+      ? product.price_selling
+      : typeof product.price === 'number'
+      ? product.price
       : 2499;
 
     addCartItem({
       id: product.id,
-      name: product.name,
+      name: product.name || product.title || "Luxury garment",
       price: priceNum,
       quantity: 1,
       size: selectedSize,
       color: product.colour || "Default",
-      image: product.images?.[0]?.s3_url || product.image
+      image: getGarmentImage(product)
     });
 
     showToast({
       title: "Added to Shopping Bag",
       description: `${product.name} (Size: ${selectedSize})`,
       type: "gold",
-      image: product.images?.[0]?.s3_url || product.image,
+      image: getGarmentImage(product),
       duration: 3000
     });
 
@@ -244,10 +253,10 @@ export default function VirtualTryOnPage() {
 
       {/* Main Grid */}
       <div className="max-w-[1000px] mx-auto mt-8 px-4 grid grid-cols-1 md:grid-cols-[400px_1fr] gap-8 items-start">
-        
+
         {/* Left Controls */}
         <div className="flex flex-col gap-6">
-          
+
           {/* Step 1 */}
           <div className="bg-slate-900/50 border border-slate-800 p-6 rounded-2xl">
             <h3 className="text-[10px] font-bold uppercase tracking-widest text-[#D4AF37] mb-4">Step 1 — Your Photo</h3>
@@ -261,7 +270,7 @@ export default function VirtualTryOnPage() {
             >
               <input type="file" ref={fileInputRef} onChange={onFileChange} accept="image/*" className="hidden" />
               {previewUrl ? (
-                <img src={previewUrl} alt="Portrait" className="max-h-[220px] object-contain rounded-lg" />
+                <Image width={1200} height={900} unoptimized src={previewUrl} alt="Portrait" className="max-h-[220px] object-contain rounded-lg" />
               ) : (
                 <div className="flex flex-col items-center text-center">
                   <div className="w-12 h-12 rounded-full bg-[#D4AF37]/20 flex items-center justify-center mb-3">
@@ -279,7 +288,7 @@ export default function VirtualTryOnPage() {
           <div className="bg-slate-900/50 border border-slate-800 p-6 rounded-2xl relative">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-[10px] font-bold uppercase tracking-widest text-[#D4AF37]">Step 2 — Garment Selected</h3>
-              <button 
+              <button
                 onClick={() => setShowGarmentList(!showGarmentList)}
                 className="text-[10px] font-bold uppercase text-slate-400 hover:text-white"
               >
@@ -290,7 +299,7 @@ export default function VirtualTryOnPage() {
             {showGarmentList && (
               <div className="absolute top-14 right-6 w-[280px] max-h-[300px] overflow-y-auto bg-[#0f2341] border border-[#D4AF37]/30 rounded-xl shadow-2xl z-20 p-2 flex flex-col gap-2">
                 {products.map(p => {
-                  const pImg = p.images?.[0]?.s3_url || p.image;
+                  const pImg = getGarmentImage(p);
                   const isSelected = p.id === product.id;
                   return (
                     <button
@@ -306,7 +315,7 @@ export default function VirtualTryOnPage() {
                         isSelected ? "bg-[#D4AF37]/20 border border-[#D4AF37]" : "hover:bg-white/5 border border-transparent"
                       }`}
                     >
-                      <img src={pImg} alt={p.name} className="w-10 h-12 object-cover rounded bg-white" />
+                      <Image width={1200} height={900} unoptimized src={String(pImg || "/placeholder.svg")} alt={String(p.name || "Product")} className="w-10 h-12 object-cover rounded bg-white" />
                       <div>
                         <p className="text-xs font-semibold text-white truncate max-w-[180px]">{p.name}</p>
                         <p className="text-[10px] text-slate-400">₹{(p.price_selling || p.price)?.toLocaleString()}</p>
@@ -318,7 +327,7 @@ export default function VirtualTryOnPage() {
             )}
 
             <div className="flex gap-4 items-center">
-              <img src={productImgUrl} alt={product.name} className="w-20 h-24 object-cover rounded-lg border border-slate-700 bg-white" />
+              <Image width={1200} height={900} unoptimized src={String(productImgUrl || "/placeholder.svg")} alt={String(product.name || "Product")} className="w-20 h-24 object-cover rounded-lg border border-slate-700 bg-white" />
               <div>
                 <h4 className="text-sm font-semibold text-white">{product.name}</h4>
                 <span className="text-[9px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 mt-1 inline-block">
@@ -343,7 +352,7 @@ export default function VirtualTryOnPage() {
 
               {selectedTop ? (
                 <div className="flex items-center gap-4">
-                  <img src={selectedTop.images?.[0]?.s3_url || selectedTop.image} alt={selectedTop.name} className="w-16 h-20 object-cover rounded-lg border border-[#D4AF37] bg-white" />
+                  <Image width={1200} height={900} unoptimized src={getGarmentImage(selectedTop)} alt={selectedTop.name || "Selected garment"} className="w-16 h-20 object-cover rounded-lg border border-[#D4AF37] bg-white" />
                   <div>
                     <p className="text-xs font-semibold text-white">{selectedTop.name}</p>
                     <p className="text-[10px] text-slate-400 mt-1">Will be draped in pass 1, then your pants in pass 2.</p>
@@ -361,7 +370,7 @@ export default function VirtualTryOnPage() {
                         onClick={() => setSelectedTop(top)}
                         className="flex-shrink-0 flex flex-col items-center gap-1 p-1 border border-slate-700 rounded-lg hover:border-[#D4AF37] transition-colors"
                       >
-                        <img src={top.images?.[0]?.s3_url || top.image} alt={top.name} className="w-14 h-16 object-cover rounded bg-white" />
+                        <Image width={1200} height={900} unoptimized src={getGarmentImage(top)} alt={top.name || "Garment"} className="w-14 h-16 object-cover rounded bg-white" />
                         <span className="text-[8px] text-slate-400 w-14 truncate text-center">{top.name}</span>
                       </button>
                     ))}
@@ -388,8 +397,8 @@ export default function VirtualTryOnPage() {
               statusType === 'success' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' :
               'bg-red-500/10 border-red-500/30 text-red-400'
             }`}>
-              {statusType === 'processing' ? <RefreshCw className="w-5 h-5 animate-spin" /> : 
-               statusType === 'success' ? <Check className="w-5 h-5" /> : 
+              {statusType === 'processing' ? <RefreshCw className="w-5 h-5 animate-spin" /> :
+               statusType === 'success' ? <Check className="w-5 h-5" /> :
                <AlertCircle className="w-5 h-5" />}
               <div>
                 <strong className="text-xs uppercase tracking-wider block">
@@ -411,7 +420,7 @@ export default function VirtualTryOnPage() {
                       key={sz}
                       onClick={() => { setSelectedSize(sz); setSizeError(false); }}
                       className={`w-10 h-10 rounded-full border text-xs font-bold transition-colors ${
-                        selectedSize === sz ? 'bg-[#D4AF37] border-[#D4AF37] text-[#0A192F]' : 
+                        selectedSize === sz ? 'bg-[#D4AF37] border-[#D4AF37] text-[#0A192F]' :
                         sizeError ? 'border-red-500/50 text-red-400' : 'border-slate-700 text-slate-300 hover:border-slate-500'
                       }`}
                     >
@@ -421,14 +430,14 @@ export default function VirtualTryOnPage() {
                 </div>
                 {sizeError && <p className="text-[10px] text-red-400 mt-2">Please select a size to continue.</p>}
               </div>
-              <button 
-                onClick={handleAddBag} 
+              <button
+                onClick={handleAddBag}
                 className="w-full py-3 bg-white text-black font-bold text-xs uppercase tracking-wider rounded-lg flex items-center justify-center gap-2 hover:bg-slate-200 transition-colors"
               >
                 <ShoppingBag className="w-4 h-4" /> Add to Bag
               </button>
-              <button 
-                onClick={resetAll} 
+              <button
+                onClick={resetAll}
                 className="w-full py-2.5 border border-slate-700 text-slate-300 font-bold text-xs uppercase tracking-wider rounded-lg hover:bg-slate-800 transition-colors"
               >
                 Try Another Photo
@@ -450,23 +459,23 @@ export default function VirtualTryOnPage() {
           </span>
           <div className="w-full aspect-[3/4] max-w-[500px] mx-auto rounded-3xl overflow-hidden border border-slate-700 bg-black relative flex items-center justify-center shadow-2xl">
             {tryOnComplete && tryOnResultUrl ? (
-              <img 
-                src={tryOnResultUrl} 
-                alt="Try On Result" 
+              <Image width={1200} height={900} unoptimized
+                src={tryOnResultUrl}
+                alt="Try On Result"
                 className="w-full h-full object-contain"
                 onError={(e) => {
                   const img = e.currentTarget;
                   if (!img.dataset.retried) {
                     img.dataset.retried = "true";
-                    img.src = tryOnResultUrl.startsWith("http") 
-                      ? tryOnResultUrl 
+                    img.src = tryOnResultUrl.startsWith("http")
+                      ? tryOnResultUrl
                       : `http://localhost:8090${tryOnResultUrl.startsWith("/") ? "" : "/"}${tryOnResultUrl}`;
                   }
                 }}
               />
             ) : isProcessing ? (
               <>
-                <img src={productImgUrl} alt={product.name} className="w-full h-full object-cover opacity-20 blur-sm" />
+                <Image width={1200} height={900} unoptimized src={String(productImgUrl || "/placeholder.svg")} alt={String(product.name || "Product")} className="w-full h-full object-cover opacity-20 blur-sm" />
                 <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6">
                   <RefreshCw className="w-10 h-10 text-[#D4AF37] animate-spin mb-4" />
                   <p className="text-sm font-bold text-[#D4AF37]">
@@ -476,7 +485,7 @@ export default function VirtualTryOnPage() {
               </>
             ) : previewUrl ? (
               <>
-                <img src={previewUrl} alt="Portrait Preview" className="w-full h-full object-contain opacity-60" />
+                <Image width={1200} height={900} unoptimized src={String(previewUrl || "/placeholder.svg")} alt="Portrait Preview" className="w-full h-full object-contain opacity-60" />
                 <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6 bg-black/40">
                   <Sparkles className="w-8 h-8 text-[#D4AF37] mb-3" />
                   <p className="text-sm font-bold text-white tracking-wide">Click Generate to try on</p>
@@ -484,7 +493,7 @@ export default function VirtualTryOnPage() {
               </>
             ) : (
               <div className="w-full h-full flex flex-col items-center justify-center bg-slate-900/40 p-6">
-                <img src={productImgUrl} alt={product.name} className="max-h-[60%] w-auto object-contain opacity-50 drop-shadow-xl mb-6 rounded-lg" />
+                <Image width={1200} height={900} unoptimized src={String(productImgUrl || "/placeholder.svg")} alt={String(product.name || "Product")} className="max-h-[60%] w-auto object-contain opacity-50 drop-shadow-xl mb-6 rounded-lg" />
                 <p className="text-xs text-slate-400 uppercase tracking-wider">Upload your photo to begin</p>
               </div>
             )}

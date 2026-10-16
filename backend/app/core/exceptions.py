@@ -50,6 +50,17 @@ class PaymentRequiredError(AppException):
     def __init__(self, detail: str = "Payment required") -> None:
         super().__init__(status.HTTP_402_PAYMENT_REQUIRED, detail)
 
+
+class BadGatewayError(AppException):
+    def __init__(self, detail: str = "External provider error") -> None:
+        super().__init__(status.HTTP_502_BAD_GATEWAY, detail)
+
+
+class ServiceUnavailableError(AppException):
+    def __init__(self, detail: str = "Service unavailable") -> None:
+        super().__init__(status.HTTP_503_SERVICE_UNAVAILABLE, detail)
+
+
 # this is global exception handler for all AppException subclasses.
 def register_exception_handlers(app: FastAPI) -> None:
     """Attach a single JSON handler for all AppException subclasses."""

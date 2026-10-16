@@ -357,60 +357,37 @@ async def generate_3d(
                                 await resume_fashn()
 
                     if hy_res and hy_res.status_code == 200:
-                        with open(dest_path, "wb") as out_f:
-                            out_f.write(hy_res.content)
-                        generated = True
                         generation_mode = hy_res.headers.get("X-Generation-Mode", "hunyuan_untextured")
-                        logger.info(f"[{job_id}] Hunyuan3D GPU service generated mesh: {dest_path}")
+                        if generation_mode == "hunyuan_textured" and hy_res.content.startswith(b"glTF"):
+                            with open(dest_path, "wb") as out_f:
+                                out_f.write(hy_res.content)
+                            generated = True
+                            logger.info(f"[{job_id}] Hunyuan3D GPU service generated textured mesh: {dest_path}")
+                        else:
+                            generation_mode = "unverified"
+                            logger.warning(f"[{job_id}] Hunyuan3D returned an untextured or invalid model; refusing to attach it")
             except Exception as hy_err:
-                logger.info(f"[{job_id}] Hunyuan3D 8082 not available ({hy_err}); using category-matched 3D mesh.")
+                logger.info(f"[{job_id}] Hunyuan3D 8082 unavailable ({hy_err}); generic templates are disabled.")
 
-            # 3. Fallback: Select matching 3D garment mesh and bake full-coverage texture
-            if not generated or not os.path.exists(dest_path):
-                # Detect garment category
-                cat_lower = (category_id or "").lower()
-                name_lower = (product_name or "").lower()
-
-                aspect_is_tall = False
-                try:
-                    from PIL import Image
-                    with Image.open(front_path) as _im:
-                        _w, _h = _im.size
-                        aspect_is_tall = _h > (_w * 1.1)
-                except Exception:
-                    pass
-
-                is_dress = any(w in cat_lower or w in name_lower for w in ["dress", "frock", "gown", "saree", "kurti", "skirt"]) or aspect_is_tall
-                is_bottom = any(w in cat_lower or w in name_lower for w in ["pant", "bottom", "trouser", "jean", "short"])
-
-                if is_dress:
-                    master_glb = os.path.join(MODELS_DIR, "textured_garment.glb")
-                    if not os.path.exists(master_glb):
-                        master_glb = os.path.join(MODELS_DIR, "garment.glb")
-                elif is_bottom:
-                    master_glb = os.path.join(MODELS_DIR, "garment_photo_textured.glb")
-                else:
-                    master_glb = os.path.join(MODELS_DIR, "garment3_multiview.glb")
-
-                if not os.path.exists(master_glb):
-                    master_glb = os.path.join(MODELS_DIR, "garment2_textured.glb")
-
-                try:
-                    baked_bytes = bake_garment_texture_atlas(front_path, back_path, side_path, is_dress=is_dress)
-                    replace_glb_texture(master_glb, dest_path, baked_bytes)
-                    logger.info(f"[{job_id}] Category-tailored ({'dress' if is_dress else ('bottom' if is_bottom else 'top')}) GLB generated at {dest_path}")
-                except Exception as bake_err:
-                    logger.warning(f"[{job_id}] Texture baking fallback notice: {bake_err}")
-                    shutil.copyfile(master_glb, dest_path)
+            # Never return a generic template as a successful reconstruction: it can
+            # look like a different garment and then be permanently attached to a product.
+            if not generated or not os.path.isfile(dest_path) or os.path.getsize(dest_path) < 20:
+                logger.error(f"[{job_id}] Neural reconstruction unavailable; refusing generic garment fallback")
+                raise HTTPException(
+                    status_code=503,
+                    detail="3D garment reconstruction is temporarily unavailable. No model was attached; please retry later.",
+                )
 
             return {
                 "status": "success",
                 "job_id": job_id,
                 "model_url": f"/models/3d/{out_filename}",
                 "filename": out_filename,
-                "generation_mode": generation_mode if generated else "template",
-                "message": "Hunyuan mesh generated" if generated else "Template mesh created; Hunyuan service unavailable"
+                "generation_mode": generation_mode,
+                "message": "Hunyuan neural garment reconstruction generated"
             }
+        except HTTPException:
+            raise
         except Exception as err:
             logger.error(f"[{job_id}] 3D reconstruction failed: {err}")
             raise HTTPException(status_code=500, detail=str(err))

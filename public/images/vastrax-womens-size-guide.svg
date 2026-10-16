@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="834" height="1390" viewBox="0 0 834 1390" role="img" aria-labelledby="title description">
+  <title id="title">Vastrax women’s size guide</title>
+  <desc id="description">Women’s body measurements in inches for sizes XS through 4XL, showing bust, waist, and hip measurements.</desc>
+  <rect width="834" height="1390" rx="28" fill="#fff"/>
+  <text x="417" y="83" text-anchor="middle" fill="#432368" font-family="Arial, sans-serif" font-size="58" font-weight="700" letter-spacing="2">VASTRAX</text>
+  <text x="417" y="151" text-anchor="middle" fill="#432368" font-family="Arial, sans-serif" font-size="38" font-weight="700">WOMEN’S SIZE GUIDE</text>
+  <text x="417" y="207" text-anchor="middle" fill="#555" font-family="Arial, sans-serif" font-size="29">Bust · Waist · Hip · Inches</text>
+  <path d="M30 260H804" stroke="#432368" stroke-width="5"/>
+  <g fill="#111" font-family="Arial, sans-serif" font-size="29" font-weight="700">
+    <text x="30" y="340">Size</text><text x="225" y="340">Bust</text><text x="435" y="340">Waist</text><text x="680" y="340">Hip</text>
+  </g>
+  <g stroke="#dedede" stroke-width="2">
+    <path d="M30 365H804"/><path d="M30 455H804"/><path d="M30 545H804"/><path d="M30 635H804"/><path d="M30 725H804"/><path d="M30 815H804"/><path d="M30 905H804"/><path d="M30 995H804"/><path d="M30 1085H804"/>
+  </g>
+  <g fill="#111" font-family="Arial, sans-serif" font-size="30">
+    <text x="30" y="420">XS</text><text x="225" y="420">30″</text><text x="435" y="420">24″</text><text x="680" y="420">34″</text>
+    <text x="30" y="510">S</text><text x="225" y="510">32″</text><text x="435" y="510">26″</text><text x="680" y="510">36″</text>
+    <text x="30" y="600">M</text><text x="225" y="600">34″</text><text x="435" y="600">28″</text><text x="680" y="600">38″</text>
+    <text x="30" y="690">L</text><text x="225" y="690">36″</text><text x="435" y="690">30″</text><text x="680" y="690">40″</text>
+    <text x="30" y="780">XL</text><text x="225" y="780">38″</text><text x="435" y="780">32″</text><text x="680" y="780">42″</text>
+    <text x="30" y="870">XXL</text><text x="225" y="870">40″</text><text x="435" y="870">34″</text><text x="680" y="870">44″</text>
+    <text x="30" y="960">3XL</text><text x="225" y="960">42″</text><text x="435" y="960">36″</text><text x="680" y="960">46″</text>
+    <text x="30" y="1050">4XL</text><text x="225" y="1050">44″</text><text x="435" y="1050">38″</text><text x="680" y="1050">48″</text>
+  </g>
+  <text x="30" y="1165" fill="#555" font-family="Arial, sans-serif" font-size="22">All values are approximate body measurements, not finished garment measurements.</text>
+  <path d="M30 1240H804" stroke="#432368" stroke-width="3"/>
+  <text x="417" y="1315" text-anchor="middle" fill="#432368" font-family="Arial, sans-serif" font-size="28" font-weight="600">VASTRAX · Style Your Way</text>
+</svg>

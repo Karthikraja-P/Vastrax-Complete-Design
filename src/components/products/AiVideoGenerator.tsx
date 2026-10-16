@@ -1,15 +1,9 @@
 "use client";
+import Image from "next/image";
 
 import { useState } from "react";
-import { Sparkles, Video, Play, RefreshCw, Upload, Image as ImageIcon } from "lucide-react";
+import { Sparkles, Video, Play, RefreshCw, Upload } from "lucide-react";
 import { motion } from "framer-motion";
-import { clsx } from "clsx";
-import { twMerge } from "tailwind-merge";
-
-function cn(...inputs: (string | undefined | null | false)[]) {
-  return twMerge(clsx(inputs));
-}
-
 export function AiVideoGenerator() {
   const [prompt, setPrompt] = useState("Create a slow, elegant fashion-model rotation showcasing the blue shirt from different angles in a premium luxury studio environment with smooth cinematic camera movement.");
   const [isGenerating, setIsGenerating] = useState(false);
@@ -42,7 +36,7 @@ export function AiVideoGenerator() {
             <label className="block text-sm font-medium text-foreground mb-3">Reference Images</label>
             <div className="flex gap-4 overflow-x-auto pb-2">
               <div className="w-24 h-24 rounded-lg border-2 border-accent border-solid overflow-hidden flex-shrink-0 relative">
-                <img src="https://images.unsplash.com/photo-1598033129183-c4f50c736f10?q=80&w=200" alt="Ref 1" className="w-full h-full object-cover" />
+                <Image width={1200} height={900} unoptimized src="/product-placeholder.svg" alt="Product image placeholder" className="w-full h-full object-cover" />
                 <div className="absolute top-1 right-1 bg-accent text-accent-foreground text-[10px] px-1.5 py-0.5 rounded-sm font-bold">Main</div>
               </div>
               <div className="w-24 h-24 rounded-lg border border-border border-dashed flex flex-col items-center justify-center text-muted-foreground hover:border-accent hover:text-accent cursor-pointer transition-colors flex-shrink-0 bg-surface-hover">

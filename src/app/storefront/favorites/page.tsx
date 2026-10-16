@@ -1,7 +1,8 @@
 "use client";
+import Image from "next/image";
 
 import { useState, useEffect } from "react";
-import { Search, Heart, Star, ShoppingBag, Menu, User, Box } from "lucide-react";
+import { Search, Heart, ShoppingBag, User, Box } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { AuthModal } from "@/components/auth/AuthModal";
 import { useSession } from "next-auth/react";
@@ -11,18 +12,21 @@ import { performSignOut } from "@/lib/auth-utils";
 import { CartDrawer } from "@/components/layout/CartDrawer";
 import { StylistDrawer } from "@/components/stylist/StylistDrawer";
 import { Product3DModal } from "@/components/3d/Product3DModal";
-import { productsApi } from "@/lib/api";
+import type { AddToCartProduct } from "@/components/3d/Product3DModal";
+import { productsApi, StorefrontProduct } from "@/lib/api";
 import { useFavorites } from "@/hooks/useFavorites";
-import { addToCart as addCartItem, getCart } from "@/lib/cart";
+import { addToCart as addCartItem } from "@/lib/cart";
+import { useCartItems } from "@/hooks/useCartItems";
 import { showToast } from "@/lib/toast";
+import StorefrontMobileControls from "@/components/layout/StorefrontMobileControls";
 
 export default function FavoritesPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [userName, setUserName] = useState("");
+  const [isLoggedIn, setIsLoggedIn] = useState(Boolean(session?.user?.name));
+  const [userName, setUserName] = useState(session?.user?.name || "");
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
 
   // Auth guard — redirect unauthenticated users back to home with modal
@@ -32,10 +36,10 @@ export default function FavoritesPage() {
     }
   }, [status, router]);
 
-  const [products, setProducts] = useState<any[]>([]);
+  const [products, setProducts] = useState<StorefrontProduct[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const { favorites, toggleFavorite, isFavorite } = useFavorites();
+  const { toggleFavorite, isFavorite } = useFavorites();
 
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isStylistOpen, setIsStylistOpen] = useState(false);
@@ -46,34 +50,31 @@ export default function FavoritesPage() {
     return () => window.removeEventListener("open-stylist", handleOpenStylist);
   }, []);
 
-  const [selectedProductForSize, setSelectedProductForSize] = useState<any | null>(null);
-  const [selected3DProduct, setSelected3DProduct] = useState<any | null>(null);
+  const [selectedProductForSize, setSelectedProductForSize] = useState<StorefrontProduct | null>(null);
+  const [selected3DProduct, setSelected3DProduct] = useState<StorefrontProduct | null>(null);
 
   useEffect(() => {
     async function fetchData() {
       setLoading(true);
       try {
         const data = await productsApi.list();
-        const mapped = (data || []).map((p: any) => {
-          const fallbackImg = "https://images.unsplash.com/photo-1551028719-00167b16eac5?q=80&w=400&auto=format&fit=crop";
-          let img = p.image || p.images?.[0]?.s3_url || (typeof p.images?.[0] === 'string' ? p.images[0] : "");
-          if (!img || img === "") {
-            const pTitle = p.name || p.title || "";
-            if (/frock|dress|gown/i.test(pTitle)) img = "https://images.unsplash.com/photo-1572804013309-59a88b7e92f1?q=80&w=400&auto=format&fit=crop";
-            else img = fallbackImg;
-          }
+        const mapped = data.map((p): StorefrontProduct => {
+          const fallbackImg = "/product-placeholder.svg";
+          const firstImage = p.images?.[0];
+          let img = p.image || (typeof firstImage === "string" ? firstImage : firstImage?.s3_url || "");
+          if (!img) img = fallbackImg;
 
           return {
             id: p.id,
-            name: p.name || p.title,
+            name: p.name || p.title || "Product",
             price: Number(p.price || p.price_selling || 0),
             originalPrice: p.originalPrice || p.price_mrp || p.compareAtPrice ? Number(p.originalPrice || p.price_mrp || p.compareAtPrice) : undefined,
-            rating: p.rating || 4.8,
+            rating: Number(p.rating || p.rating_average || 0),
             image: img,
-            isNew: p.isNew || p.is_featured,
+            isNew: Boolean(p.isNew || p.is_featured),
             categoryId: p.categoryId || p.category_id,
-            categoryName: p.category?.name || p.category || "Apparel",
-            model3dUrl: p.model_path || p.model3dUrl || (/frock|dress|gown/i.test(p.name || "") ? "/models/3d/textured_garment.glb" : /pant|trouser/i.test(p.name || "") ? "/models/3d/garment_photo_textured.glb" : "/models/3d/garment2_textured.glb")
+            categoryName: p.category_name || p.category || "Apparel",
+            model3dUrl: p.model_path || p.model3dUrl
           };
         });
         setProducts(mapped);
@@ -83,36 +84,16 @@ export default function FavoritesPage() {
         setLoading(false);
       }
     }
-    fetchData();
+    void Promise.resolve().then(fetchData);
   }, []);
 
-  useEffect(() => {
-    if (session?.user?.name) {
-      setIsLoggedIn(true);
-      setUserName(session.user.name);
-    }
-  }, [session]);
-
-  const [bagItems, setBagItems] = useState<any[]>([]);
-
-  useEffect(() => {
-    const syncCart = () => {
-      setBagItems(getCart());
-    };
-    syncCart();
-    window.addEventListener("cart-updated", syncCart);
-    window.addEventListener("storage", syncCart);
-    return () => {
-      window.removeEventListener("cart-updated", syncCart);
-      window.removeEventListener("storage", syncCart);
-    };
-  }, []);
+  const bagItems = useCartItems();
 
   const isItemInBag = (productId: string | number) => {
     return bagItems.some((item) => String(item.id) === String(productId));
   };
 
-  const addItemToBag = (product: any, size = "M") => {
+  const addItemToBag = (product: AddToCartProduct, size = "M") => {
     const priceNum = typeof product.price === 'string'
       ? parseFloat(String(product.price).replace(/[^0-9.-]+/g, "")) || 0
       : Number(product.price) || 0;
@@ -124,7 +105,7 @@ export default function FavoritesPage() {
       quantity: 1,
       size: size,
       color: product.colour || "Default",
-      image: product.image
+      image: product.image || ""
     });
 
     showToast({
@@ -138,7 +119,7 @@ export default function FavoritesPage() {
     setSelectedProductForSize(null);
   };
 
-  const handleAddToBagClick = (product: any, e: React.MouseEvent) => {
+  const handleAddToBagClick = (product: StorefrontProduct, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
 
@@ -157,10 +138,8 @@ export default function FavoritesPage() {
       {/* Header */}
       <header className="h-16 md:h-20 flex items-center justify-between relative px-3 sm:px-6 md:px-12 sticky top-2 md:top-4 bg-surface dark:bg-[#1a1a1a] z-50 rounded-[1.5rem] sm:rounded-[2rem] shadow-md border border-border dark:border-white/10 mx-2 md:mx-4 mt-2 md:mt-4">
         <div className="flex items-center gap-2 sm:gap-6 z-10">
-          <button className="md:hidden text-muted-foreground hover:text-foreground dark:text-white transition-colors p-1">
-            <Menu className="w-5 h-5 sm:w-6 sm:h-6" />
-          </button>
-          <nav className="hidden md:flex items-center gap-8">
+          <StorefrontMobileControls />
+          <nav className="hidden 2xl:flex items-center gap-8">
             <Link href="/storefront/collections?sort=newest" className="text-lg font-medium hover:text-[#e07a3f] transition-colors">New Arrivals</Link>
             <Link href="/storefront/collections?gender=Women" className="text-lg font-medium hover:text-[#e07a3f] transition-colors">Women</Link>
             <Link href="/storefront/collections?gender=Men" className="text-lg font-medium hover:text-[#e07a3f] transition-colors">Men</Link>
@@ -176,11 +155,14 @@ export default function FavoritesPage() {
         </div>
 
         <div className="flex items-center gap-1.5 sm:gap-4 md:gap-6 z-10">
+          {String(session?.user?.role || "").toLowerCase() === "admin" && (
+            <Link href="/" className="rounded-full border border-border px-3 py-2 text-xs font-semibold text-foreground hover:border-accent hover:text-accent">Admin</Link>
+          )}
           <ThemeToggle />
           <Link href="/storefront/favorites" className="relative p-1 text-[#e07a3f] transition-colors">
             <Heart className="w-5 h-5 fill-[#e07a3f]" />
           </Link>
-          <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-surface dark:bg-[#222] border border-border dark:border-white/10 rounded-full transition-all text-sm w-48 lg:w-64 focus-within:border-[#e07a3f] focus-within:ring-1 focus-within:ring-[#e07a3f]">
+          <div className="hidden 2xl:flex items-center gap-2 px-3 py-1.5 bg-surface dark:bg-[#222] border border-border dark:border-white/10 rounded-full transition-all text-sm w-48 lg:w-64 focus-within:border-[#e07a3f] focus-within:ring-1 focus-within:ring-[#e07a3f]">
             <Search className="w-4 h-4 text-muted-foreground" />
             <input
               type="text"
@@ -188,9 +170,7 @@ export default function FavoritesPage() {
               className="flex-1 bg-transparent border-none outline-none text-foreground dark:text-white placeholder:text-muted-foreground"
             />
           </div>
-          <button className="md:hidden p-1 text-muted-foreground hover:text-[#e07a3f] transition-colors">
-            <Search className="w-5 h-5" />
-          </button>
+
 
           <div className="relative">
             <button
@@ -330,7 +310,7 @@ export default function FavoritesPage() {
                   </div>
 
                   <Link href={`/storefront/product?id=${product.id}`} className="w-full h-full">
-                    <img
+                    <Image width={1200} height={900} unoptimized
                       src={product.image}
                       alt={product.name}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out"

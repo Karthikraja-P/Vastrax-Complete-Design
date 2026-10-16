@@ -10,6 +10,11 @@ from app.services.payment_service import PaymentService
 router = APIRouter(prefix="/payments", tags=["payments"])
 
 
+@router.get("/readiness")
+def payment_readiness():
+    return PaymentService.readiness()
+
+
 @router.post("/initiate")
 def initiate_payment(
     body: PaymentCreate,

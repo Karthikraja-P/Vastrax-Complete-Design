@@ -5,7 +5,7 @@
 |---|---|---|
 | Frontend (Next.js) | Docker | 127.0.0.1:3000 |
 | Backend (FastAPI, single uvicorn worker, SQLite volume) | Docker | 127.0.0.1:8090 |
-| 3D gateway `3d-model/server_3d.py` | WSL | 8081 |
+| 3D gateway `3d-model/server_3d.py` | Docker internal network | 8081 |
 | Hunyuan3D-2.1 worker (`--low_vram_mode`) | Windows | 8082 |
 | FASHN try-on worker | WSL | 8001 |
 
@@ -13,7 +13,7 @@ Internal calls use `X-Generator-Key` = `GENERATOR_3D_SECRET` (`.env`, git-ignore
 GPU jobs (3D + try-on) go through the backend priority queue (`GET /api/v1/gpu/queue`, admin). It is in-process, so keep ONE uvicorn worker.
 
 ## Start / auto-start
-- `scripts/start-all.sh` waits for Docker, runs `docker compose up -d`, then starts Hunyuan, the 3D gateway and FASHN and health-checks them.
+- `scripts/start-all.sh` waits for Docker, starts the app and internal 3D gateway, launches Hunyuan on Windows, starts FASHN, and health-checks the stack.
 - Windows scheduled tasks: **Vastrax Stack** (at logon) and **Vastrax Backup** (daily 03:30). Remove with `Unregister-ScheduledTask`.
 - Containers use `restart: unless-stopped` and healthchecks.
 
@@ -42,3 +42,11 @@ Backups are integrity-checked; set `BACKUP_SYNC_CMD` (e.g. an rclone copy) for a
 
 ## Production env
 `APP_ENV=production`, `ALLOWED_ORIGINS=https://vastrax.ai`, real `RAZORPAY_*` keys incl. webhook secret, `NEXT_PUBLIC_SITE_URL`.
+
+### Public-launch gates
+- SMS/phone OTP is intentionally deferred for the initial launch. Do not present a phone number as verified unless an SMS provider is configured and its challenge-bound send/verify flow has passed tests. Before enabling it later, add provider credentials, consent copy, rate limits, abuse monitoring, and delivery/failure tests.
+- Configure and verify live Razorpay keys and webhook signing secret before accepting real payments. Keep test mode for pre-launch checkout tests.
+- Set SHIPROCKET_EMAIL, SHIPROCKET_PASSWORD, PICKUP_PINCODE, and SHIPROCKET_PICKUP_LOCATION in the host environment file. The pickup location must exactly match a location configured in Shiprocket. Restart the backend after setting them. Checkout quotes and shipment actions fail closed if Shiprocket is unavailable; development mock rates are marked and never used in production. Orders store the quoted rate and courier ID; admins can retry booking, assign the AWB, schedule pickup, and generate a manifest. Test with a provider-approved test order before enabling live fulfilment.
+- Configure the transactional email provider, test order and account emails, and confirm failure handling.
+- Confirm production secrets are unique and rotated, off-machine backups restore successfully, the host has recovery/monitoring procedures, and public checkout/admin flows have passed mobile and desktop end-to-end tests.
+- The current local build and automated tests do not update the publicly hosted PC. Deploy only after these external credentials and operational gates are complete.

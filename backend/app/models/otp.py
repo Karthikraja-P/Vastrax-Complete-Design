@@ -1,3 +1,5 @@
+import hashlib
+import hmac
 import uuid
 from datetime import datetime, timezone
 
@@ -5,10 +7,20 @@ from sqlalchemy import Boolean, DateTime, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
+from app.core.config import settings
 
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def hash_otp_code(code: str) -> str:
+    """Return a keyed digest so short-lived OTPs are not stored as plain text."""
+    return hmac.new(
+        settings.jwt_secret_key.encode("utf-8"),
+        code.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()[:10]
 
 
 class OTP(Base):

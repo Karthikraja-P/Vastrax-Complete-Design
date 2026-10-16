@@ -64,3 +64,12 @@ def admin_update_status(
     db: Session = Depends(get_db),
 ):
     return OrderService(db).admin_update_status(order_id, body.status)
+
+
+@router.post("/admin/{order_id}/shiprocket/retry")
+def retry_shiprocket_booking(
+    order_id: str,
+    _: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    return OrderService(db).retry_shiprocket(order_id)

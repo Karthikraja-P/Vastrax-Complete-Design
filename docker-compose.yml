@@ -1,27 +1,57 @@
 services:
 
+  generator3d:
+    build:
+      context: ./3d-model
+      dockerfile: Dockerfile
+    container_name: vastrax-3d-generator
+    restart: unless-stopped
+    environment:
+      - GENERATOR_3D_SECRET=${GENERATOR_3D_SECRET:?Set GENERATOR_3D_SECRET in .env}
+      - HUNYUAN_API_URL=http://172.20.128.1:8082
+    volumes:
+      - ./public/models/3d:/public/models/3d
+      - ./backend/user_uploads:/backend/user_uploads
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8081/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
     container_name: vastrax-backend
     restart: unless-stopped
+    depends_on:
+      generator3d:
+        condition: service_healthy
     ports:
       - "127.0.0.1:8090:8090"
     environment:
       - DATABASE_URL=sqlite:////app/vastrax.db
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:?Set JWT_SECRET_KEY in .env}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3000,https://vastrax.ai}
-      - APP_ENV=${APP_ENV:-development}
-      - FRONTEND_URL=http://localhost:3000
+      - APP_ENV=${APP_ENV:-production}
+      - FRONTEND_URL=${FRONTEND_URL:-https://vastrax.ai}
+      - MINIMAX_API_KEY=${MINIMAX_API_KEY:-}
+      - MINIMAX_MODEL=${MINIMAX_MODEL:-MiniMax-M3}
+      - MINIMAX_BASE_URL=${MINIMAX_BASE_URL:-https://api.minimax.io/v1/chat/completions}
       - RESEND_API_KEY=${RESEND_API_KEY:-}
+      - SMS_API_KEY=${SMS_API_KEY:-}
       - RESEND_FROM_EMAIL=${RESEND_FROM_EMAIL:-noreply@vastrax.ai}
       - FASHN_TRYON_URL=http://172.17.0.1:8001
-      - GENERATOR_3D_URL=http://172.17.0.1:8081
+      - GENERATOR_3D_URL=http://generator3d:8081
       - GENERATOR_3D_SECRET=${GENERATOR_3D_SECRET:?Set GENERATOR_3D_SECRET in .env}
+      - RAZORPAY_KEY_ID=${RAZORPAY_KEY_ID:-}
+      - RAZORPAY_KEY_SECRET=${RAZORPAY_KEY_SECRET:-}
+      - RAZORPAY_WEBHOOK_SECRET=${RAZORPAY_WEBHOOK_SECRET:-}
       - SHIPROCKET_EMAIL=${SHIPROCKET_EMAIL:-vastrax.shop@gmail.com}
       - SHIPROCKET_PASSWORD=${SHIPROCKET_PASSWORD:-}
       - PICKUP_PINCODE=${PICKUP_PINCODE:-625706}
+      - SHIPROCKET_PICKUP_LOCATION=${SHIPROCKET_PICKUP_LOCATION:-Primary}
     volumes:
       - ./backend/app:/app/app
       - ./backend/vastrax.db:/app/vastrax.db

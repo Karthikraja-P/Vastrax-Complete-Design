@@ -1,14 +1,30 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
-import { 
-  Home, ChevronRight, Plus, Shield, UserCheck, UserX, Clock, Edit3, 
-  Search, Calendar, Filter, RotateCcw, ChevronDown, Eye, Edit2, Trash2, 
-  User, Settings, Crown, X as XIcon, UserCog, ShieldCheck, UserPlus, ShieldOff,
-  Mail, Phone, AlertCircle, Loader2, Check
-} from "lucide-react";
+import { useState, useEffect, useMemo } from "react";
+import { Home, ChevronRight, Plus, Shield, UserCheck, UserX, RotateCcw, ChevronDown, Eye, Edit2, Trash2, User, Settings, Crown, X as XIcon, UserCog, ShieldCheck, Mail, Phone, AlertCircle, Loader2, Check } from "lucide-react";
 import Link from "next/link";
 import { usersApi } from "@/lib/api";
+import type { UserRecord } from "@/lib/api";
+import type { LucideIcon } from "lucide-react";
+
+interface AdminRow {
+  id: string;
+  name: string;
+  role: string;
+  email: string;
+  phone: string;
+  date: string;
+}
+
+interface RoleRow {
+  id: string;
+  name: string;
+  guard: string;
+  desc: string;
+  status: string;
+  dateCreated: string;
+  icon: LucideIcon;
+}
 
 export default function AdminManagementPage() {
   const [activeTab, setActiveTab] = useState<"admins" | "roles">("admins");
@@ -17,11 +33,11 @@ export default function AdminManagementPage() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // --- ADMINS STATE ---
-  const [adminsData, setAdminsData] = useState<any[]>([]);
+  const [adminsData, setAdminsData] = useState<AdminRow[]>([]);
   const [isAddAdminOpen, setIsAddAdminOpen] = useState(false);
-  const [selectedAdminDetails, setSelectedAdminDetails] = useState<any | null>(null);
-  const [adminToDelete, setAdminToDelete] = useState<any | null>(null);
-  const [adminToAssignRole, setAdminToAssignRole] = useState<any | null>(null);
+  const [selectedAdminDetails, setSelectedAdminDetails] = useState<AdminRow | null>(null);
+  const [adminToDelete, setAdminToDelete] = useState<AdminRow | null>(null);
+  const [adminToAssignRole, setAdminToAssignRole] = useState<AdminRow | null>(null);
 
   // Add Admin Form
   const [newAdminName, setNewAdminName] = useState("");
@@ -36,7 +52,7 @@ export default function AdminManagementPage() {
   const pageSize = 10;
 
   // --- ROLES STATE ---
-  const [rolesData, setRolesData] = useState<any[]>([
+  const [rolesData, setRolesData] = useState<RoleRow[]>([
     { id: "role-1", name: "Super Admin", guard: "web", desc: "Full root access to all store and platform settings", status: "Active", dateCreated: "Aug 15, 2026", icon: Crown },
     { id: "role-2", name: "Admin", guard: "web", desc: "Access to inventory, orders, products, and metrics", status: "Active", dateCreated: "Aug 16, 2026", icon: Shield },
     { id: "role-3", name: "Manager", guard: "web", desc: "Manage store orders and customer support requests", status: "Active", dateCreated: "Aug 17, 2026", icon: Settings },
@@ -44,8 +60,8 @@ export default function AdminManagementPage() {
     { id: "role-5", name: "Viewer", guard: "web", desc: "Read-only access to store telemetry and reporting", status: "Inactive", dateCreated: "Aug 18, 2026", icon: User },
   ]);
   const [isAddRoleOpen, setIsAddRoleOpen] = useState(false);
-  const [selectedRoleDetails, setSelectedRoleDetails] = useState<any | null>(null);
-  const [roleToDelete, setRoleToDelete] = useState<any | null>(null);
+  const [selectedRoleDetails, setSelectedRoleDetails] = useState<RoleRow | null>(null);
+  const [roleToDelete, setRoleToDelete] = useState<RoleRow | null>(null);
   const [newRoleName, setNewRoleName] = useState("");
   const [newRoleDesc, setNewRoleDesc] = useState("");
   const [newRoleGuard, setNewRoleGuard] = useState("web");
@@ -67,8 +83,8 @@ export default function AdminManagementPage() {
         const data = await usersApi.listAll();
         if (data && Array.isArray(data)) {
           const mapped = data
-            .filter((u: any) => u.role === 'admin' || u.role === 'Admin' || u.role === 'Super Admin' || u.role === 'super_admin' || u.role === 'manager')
-            .map((admin: any) => ({
+            .filter((u: UserRecord) => u.role === 'admin' || u.role === 'Admin' || u.role === 'Super Admin' || u.role === 'super_admin' || u.role === 'manager')
+            .map((admin): AdminRow => ({
               id: String(admin.id),
               name: `${admin.first_name || ''} ${admin.last_name || ''}`.trim() || admin.full_name || admin.name || "System Administrator",
               role: String(admin.role || "Admin").charAt(0).toUpperCase() + String(admin.role || "Admin").slice(1),
@@ -93,7 +109,7 @@ export default function AdminManagementPage() {
         setLoading(false);
       }
     }
-    loadAdmins();
+    void Promise.resolve().then(loadAdmins);
   }, []);
 
   // --- ADMIN ACTIONS ---
@@ -209,7 +225,6 @@ export default function AdminManagementPage() {
     return filteredAdmins.slice(start, start + pageSize);
   }, [filteredAdmins, adminCurrentPage, pageSize]);
 
-  const roleTotalPages = Math.ceil(filteredRoles.length / pageSize);
   const paginatedRoles = useMemo(() => {
     const start = (roleCurrentPage - 1) * pageSize;
     return filteredRoles.slice(start, start + pageSize);

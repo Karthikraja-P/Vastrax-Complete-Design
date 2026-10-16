@@ -1,19 +1,36 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { 
   Home, ChevronRight, Plus, Package, Check, EyeOff, AlertTriangle, Star, 
-  Search, ChevronDown, Filter, RotateCcw, Edit2, Trash2, Image as ImageIcon,
+  ChevronDown, RotateCcw, Edit2, Trash2,
   AlertCircle, Loader2, Sparkles
 } from "lucide-react";
 import Link from "next/link";
-import { productsApi, categoriesApi, CategoryItem } from "@/lib/api";
+import Image from "next/image";
+import { productsApi, categoriesApi, CategoryItem, ProductItem } from "@/lib/api";
+
+interface CatalogProduct extends Omit<ProductItem, "price" | "originalPrice"> {
+  name: string;
+  sku: string;
+  category: string;
+  gender: string;
+  price: string;
+  originalPrice: string | null;
+  rawPrice: number;
+  stock: number;
+  status: string;
+  isFeatured: boolean;
+  categoryId: string;
+  date: string;
+  image: string;
+}
 
 export default function ProductsPage() {
   const [openActionId, setOpenActionId] = useState<string | null>(null);
   const [productToDelete, setProductToDelete] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [productsData, setProductsData] = useState<any[]>([]);
+  const [productsData, setProductsData] = useState<CatalogProduct[]>([]);
   const [categories, setCategories] = useState<CategoryItem[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -37,8 +54,8 @@ export default function ProductsPage() {
       ]);
       
       if (prods && Array.isArray(prods)) {
-        const catMap = new Map((cats || []).map((c: any) => [String(c.id), c.name]));
-        const mapped = prods.map((p: any) => {
+        const catMap = new Map((cats || []).map((c) => [String(c.id), c.name]));
+        const mapped = prods.map((p) => {
           let rawImg = p.image;
           if (!rawImg && p.images && p.images.length > 0) {
             rawImg = typeof p.images[0] === 'string' ? p.images[0] : p.images[0].s3_url;
@@ -74,7 +91,7 @@ export default function ProductsPage() {
   };
 
   useEffect(() => {
-    loadData();
+    void Promise.resolve().then(loadData);
   }, []);
 
   const handleResetFilters = () => {
@@ -98,14 +115,14 @@ export default function ProductsPage() {
       if (itemToDelete) {
         try {
           const key = "vastrax_deleted_products";
-          const existing = JSON.parse(localStorage.getItem(key) || "[]");
+          const existing = JSON.parse(localStorage.getItem(key) || "[]") as CatalogProduct[];
           const archived = [
             {
               ...itemToDelete,
               deletedAt: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
               originalStatus: itemToDelete.status || "Active"
             },
-            ...existing.filter((e: any) => String(e.id) !== String(targetId))
+            ...existing.filter((e) => String(e.id) !== String(targetId))
           ];
           localStorage.setItem(key, JSON.stringify(archived));
         } catch (e) {
@@ -115,9 +132,10 @@ export default function ProductsPage() {
 
       setProductsData(prev => prev.filter(p => String(p.id) !== String(targetId)));
       setProductToDelete(null);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Delete request error:", err);
-      alert(`Delete failed: ${err?.message || "Server could not delete the product"}`);
+      const message = err instanceof Error ? err.message : "Server could not delete the product";
+      alert(`Delete failed: ${message}`);
       setProductToDelete(null);
     } finally {
       setIsDeleting(false);
@@ -366,9 +384,12 @@ export default function ProductsPage() {
                       <div className="flex items-center gap-4">
                         {/* Garment Image */}
                         <div className="w-12 h-12 rounded-lg bg-surface border border-border overflow-hidden shrink-0">
-                          <img 
+                          <Image
                             src={product.image} 
                             alt={product.name} 
+                            width={48}
+                            height={48}
+                            unoptimized
                             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                             onError={(e) => {
                               (e.currentTarget as HTMLImageElement).src = "https://images.unsplash.com/photo-1572804013309-59a88b7e92f1?q=80&w=400&auto=format&fit=crop";
@@ -421,7 +442,7 @@ export default function ProductsPage() {
                     <td className="px-6 py-4 whitespace-nowrap text-right relative">
                       <div className="relative inline-block text-left">
                         <button 
-                          onClick={() => setOpenActionId(openActionId === product.id ? null : product.id)}
+                          onClick={() => setOpenActionId(openActionId === String(product.id) ? null : String(product.id))}
                           className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-background border border-border hover:bg-surface-hover text-xs font-medium text-foreground transition-colors ml-auto"
                         >
                           Actions
@@ -448,7 +469,7 @@ export default function ProductsPage() {
                               <div className="h-px bg-border/40 my-1" />
                               <button 
                                 onClick={() => {
-                                  setProductToDelete(product.id);
+                                  setProductToDelete(String(product.id));
                                   setOpenActionId(null);
                                 }}
                                 className="w-full flex items-center gap-2.5 px-3.5 py-2 text-xs font-medium text-red-500 hover:bg-red-500/10 transition-colors"

@@ -16,6 +16,7 @@ from app.models.product_variant import ProductVariant
 from app.models.user import User
 from app.models.business import StockMovement
 from app.schemas.orders import OrderCreate, OrderResponse
+from app.services.shiprocket_service import check_serviceability
 
 logger = get_logger(__name__)
 
@@ -25,7 +26,25 @@ VALID_ADMIN_STATUSES = {"packed", "shipped", "delivered", "cancelled"}
 _inventory_lock = threading.Lock()
 
 
-SHIPPING = {"standard": 0, "express": 150, "concierge": 350}  # mirrors checkout; tax is 8% of subtotal
+DEFAULT_ITEM_WEIGHT_KG = Decimal("0.5")
+
+
+def _checkout_shipping_quote(pincode: str, weight: Decimal, cod: bool, courier_id: int | None) -> dict:
+    from app.services.shiprocket_service import select_shipping_quote
+    result = check_serviceability(pincode, float(weight), cod)
+    if result.get("error") or result.get("status") not in (200, 201):
+        raise BadRequestError(result.get("error", "Shiprocket rates are unavailable for this pincode"))
+    companies = (result.get("data") or {}).get("available_courier_companies") or result.get("available_courier_companies") or []
+    if courier_id is not None:
+        matches = [c for c in companies if str(c.get("courier_company_id") or c.get("id")) == str(courier_id)]
+        if not matches:
+            raise BadRequestError("The selected Shiprocket courier is no longer available; refresh delivery options")
+        normalized = select_shipping_quote({"data": {"available_courier_companies": matches}})
+    else:
+        normalized = select_shipping_quote(result)
+    if normalized.get("error"):
+        raise BadRequestError(normalized["error"])
+    return normalized
 
 
 class OrderService:
@@ -37,6 +56,12 @@ class OrderService:
         if order.user:
             res.customer_name = order.user.full_name or order.user.email.split("@")[0]
             res.customer_email = order.user.email
+        if order.address:
+            res.shipping_address = ", ".join(part for part in (order.address.address_line1, order.address.city, order.address.state, order.address.pincode) if part)
+        for response_item, item in zip(res.items, order.items):
+            response_item.product_name = item.product.name if item.product else None
+            response_item.image_url = item.product.images[0].s3_url if item.product and item.product.images else None
+            response_item.size = item.variant.size if item.variant else None
         return res
 
     def place_order(self, user: User, payload: OrderCreate) -> OrderResponse:
@@ -53,7 +78,9 @@ class OrderService:
             if i.product_id not in prices:
                 raise NotFoundError(f"Product {i.product_id} not found")
         subtotal = sum((Decimal(prices[i.product_id]) * i.quantity for i in payload.items), Decimal("0"))
-        shipping = Decimal(SHIPPING.get(payload.delivery_method, 350))
+        package_weight = DEFAULT_ITEM_WEIGHT_KG * sum(i.quantity for i in payload.items)
+        shipping_quote = _checkout_shipping_quote(address.pincode, package_weight, payload.payment_method in ("COD", "Cash on Delivery"), payload.shipping_courier_id)
+        shipping = Decimal(str(shipping_quote["rate"])).quantize(Decimal("0.01"))
         total = (subtotal * Decimal("1.08") + shipping).quantize(Decimal("0.01"))
 
         order_id = f"VX-{datetime.now(timezone.utc).year}-{uuid.uuid4().hex[:10].upper()}"
@@ -66,6 +93,10 @@ class OrderService:
             total_amount=total,
             status="confirmed" if is_cod else "pending",
             payment_status="pending",
+            shipping_charge=shipping,
+            shipping_courier_id=shipping_quote.get("courier_id"),
+            shipping_courier=shipping_quote.get("courier_name"),
+            shipping_status="Rate quoted — shipment pending",
         )
         self.db.add(order)
         self.db.flush()
@@ -111,7 +142,7 @@ class OrderService:
 
         if is_cod:
             try:
-                _book_shiprocket(order, user, address)
+                _book_shiprocket(order, user, address, payment_method="COD")
                 send_order_email_notification(order, user, address)
                 self.db.commit()
             except Exception as exc:
@@ -172,6 +203,19 @@ class OrderService:
         logger.info("Order cancelled: %s by user: %s", order_id, user.id)
         return self._to_response(order)
 
+    def retry_shiprocket(self, order_id: str) -> OrderResponse:
+        order = self.db.query(Order).filter(Order.id == order_id).first()
+        if not order:
+            raise NotFoundError("Order not found")
+        if order.status == "cancelled" or order.payment_status not in ("paid", "pending"):
+            raise BadRequestError("Only active, confirmed or COD orders can be booked for shipment")
+        if order.payment_status != "paid" and order.status != "confirmed":
+            raise BadRequestError("Shipment can be booked only after payment is confirmed")
+        _book_shiprocket(order, order.user, order.address, payment_method="COD" if order.payment_status != "paid" else "Prepaid")
+        self.db.commit()
+        self.db.refresh(order)
+        return self._to_response(order)
+
     def list_all_orders(self, status_filter: Optional[str] = None) -> list[OrderResponse]:
         q = self.db.query(Order).order_by(Order.placed_at.desc())
         if status_filter:
@@ -217,13 +261,15 @@ def _restore_stock(db: Session, order: Order) -> None:
             db.add(StockMovement(product_id=item.product_id, variant_id=variant.id, quantity_delta=item.quantity, stock_before=before, stock_after=variant.stock_qty, reason='order_cancelled', reference_id=order.id, created_by=order.user_id))
 
 
-def _book_shiprocket(order: Order, user: User, address: Address) -> None:
-    from app.services.shiprocket_service import create_shipment_order
+def _book_shiprocket(order: Order, user: User, address: Address, payment_method: str = "Prepaid") -> bool:
+    from app.services.shiprocket_service import assign_awb, create_shipment_order
     customer_info = {
         "name": user.full_name or "Valued Customer",
         "address": f"{address.address_line1}, {address.city}, {address.state}",
         "pincode": address.pincode,
-        "phone": user.phone_number or "9999999999",
+        "city": address.city,
+        "state": address.state,
+        "phone": user.phone_number or "",
         "email": user.email,
     }
     items_to_ship = []
@@ -235,18 +281,45 @@ def _book_shiprocket(order: Order, user: User, address: Address) -> None:
             "unit_price": float(it.unit_price),
         })
 
-    shipment = create_shipment_order(
-        order_id=order.id,
-        customer_info=customer_info,
-        items=items_to_ship,
-        total_amount=float(order.total_amount),
-        payment_method="Cash on Delivery",
-    )
-    if shipment:
-        order.shipping_shipment_id = shipment.get("shipment_id")
-        order.shipping_awb = shipment.get("awb_code")
-        order.shipping_courier = shipment.get("courier_name")
-        order.shipping_status = "Manifested"
+    shipment = None
+    if order.shipping_shipment_id:
+        # A previous attempt may have created the Shiprocket order but failed before AWB assignment.
+        shipment = {"status": 200, "shipment_id": order.shipping_shipment_id}
+    else:
+        shipment = create_shipment_order(
+            order_id=order.id,
+            customer_info=customer_info,
+            items=items_to_ship,
+            total_amount=float(order.total_amount),
+            payment_method=payment_method,
+            weight=0.5 * sum(it.quantity for it in order.items),
+        )
+    if not shipment or shipment.get("error") or shipment.get("status", 200) not in (200, 201):
+        order.shipping_status = "Shipment booking failed — admin retry required"
+        logger.warning("Shiprocket booking failed for %s: %s", order.id, (shipment or {}).get("error", "unknown error"))
+        return False
+
+    shipment_id = shipment.get("shipment_id")
+    if not shipment_id:
+        order.shipping_status = "Shipment created — shipment id missing; admin review required"
+        logger.error("Shiprocket response for order %s did not include shipment_id", order.id)
+        return False
+    order.shipping_shipment_id = str(shipment_id)
+    order.shipping_awb = shipment.get("awb_code") or order.shipping_awb
+    order.shipping_courier = shipment.get("courier_name") or order.shipping_courier
+
+    if not order.shipping_awb:
+        assigned = assign_awb(str(shipment_id), order.shipping_courier_id)
+        if assigned and not assigned.get("error") and assigned.get("status", 200) in (200, 201):
+            order.shipping_awb = assigned.get("awb_code")
+            order.shipping_courier = assigned.get("courier_name") or order.shipping_courier
+        else:
+            order.shipping_status = "Shipment created — AWB assignment failed; admin retry required"
+            logger.warning("Shiprocket AWB failed for %s: %s", order.id, (assigned or {}).get("error", "unknown error"))
+            return False
+
+    order.shipping_status = "AWB assigned — pickup pending"
+    return True
 
 
 def send_order_email_notification(order: Order, user: User, address: Optional[Address] = None) -> None:

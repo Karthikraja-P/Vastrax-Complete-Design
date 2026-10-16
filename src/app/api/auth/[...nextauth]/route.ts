@@ -90,17 +90,17 @@ const handler = NextAuth({
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id;
-        token.role = (user as any).role || "CUSTOMER";
-        token.accessToken = (user as any).accessToken;
+        token.role = user.role || "CUSTOMER";
+        token.accessToken = user.accessToken;
         token.businessPermissions = user.businessPermissions || [];
       }
       return token;
     },
     async session({ session, token }) {
       if (token) {
-        (session as any).user.id = token.id;
-        (session as any).user.role = token.role;
-        (session as any).accessToken = token.accessToken;
+        session.user.id = token.id;
+        session.user.role = token.role;
+        session.accessToken = token.accessToken;
         session.businessPermissions = token.businessPermissions || [];
       }
       return session;

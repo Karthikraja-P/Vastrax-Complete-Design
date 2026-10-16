@@ -1,23 +1,34 @@
 "use client";
+import Image from "next/image";
 
 import React, { useState, useEffect, useMemo } from "react";
-import { 
-  Home, ChevronRight, Users, UserMinus, ShieldAlert, ShieldCheck, UserPlus, 
-  ChevronDown, Filter, RotateCcw, Plus, Eye, Key, Mail, Check, Trash2,
-  X as XIcon, AlertCircle, Loader2, User, Phone, Calendar, Sparkles, MessageCircle
-} from "lucide-react";
+import { Home, ChevronRight, Users, UserMinus, ShieldAlert, ShieldCheck, UserPlus, ChevronDown, RotateCcw, Plus, Eye, Mail, Check, Trash2, X as XIcon, AlertCircle, Loader2, Phone, Calendar, Sparkles, MessageCircle } from "lucide-react";
 import Link from "next/link";
-import { usersApi } from "@/lib/api";
+import { usersApi, UserRecord } from "@/lib/api";
+
+interface AdminUserRow extends UserRecord {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  firstName: string;
+  lastName: string;
+  phone: string;
+  status: string;
+  date: string;
+  tryonCount: number;
+  chatCount: number;
+}
 
 export default function AllUsersPage() {
-  const [usersData, setUsersData] = useState<any[]>([]);
+  const [usersData, setUsersData] = useState<AdminUserRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [openActionId, setOpenActionId] = useState<string | null>(null);
   
   // Modals & Slideovers
   const [isCreateUserOpen, setIsCreateUserOpen] = useState(false);
-  const [selectedUserDetails, setSelectedUserDetails] = useState<any | null>(null);
-  const [userToDelete, setUserToDelete] = useState<any | null>(null);
+  const [selectedUserDetails, setSelectedUserDetails] = useState<AdminUserRow | null>(null);
+  const [userToDelete, setUserToDelete] = useState<AdminUserRow | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -60,7 +71,7 @@ export default function AllUsersPage() {
     try {
       const data = await usersApi.listAll();
       if (data && Array.isArray(data) && data.length > 0) {
-        const mapped = data.map((u: any) => ({
+        const mapped = data.map((u): AdminUserRow => ({
           id: String(u.id),
           firstName: u.first_name || '',
           lastName: u.last_name || '',
@@ -112,7 +123,7 @@ export default function AllUsersPage() {
   };
 
   useEffect(() => {
-    loadUsers();
+    void Promise.resolve().then(loadUsers);
   }, []);
 
   const handleResetFilters = () => {
@@ -136,7 +147,9 @@ export default function AllUsersPage() {
         phone: newPhone || "+1 (555) 000-0000",
         role: newRole,
         status: "Verified",
-        date: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+        date: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+        tryonCount: 0,
+        chatCount: 0,
       };
       setUsersData(prev => [newUser, ...prev]);
       setNewFirstName("");
@@ -560,7 +573,7 @@ export default function AllUsersPage() {
                 <div className="flex items-center gap-3">
                   {newUserAvatar && (
                     <div className="w-10 h-10 rounded-full border border-accent overflow-hidden bg-background shrink-0">
-                      <img src={newUserAvatar} alt="Avatar" className="w-full h-full object-cover" />
+                      <Image width={1200} height={900} unoptimized src={newUserAvatar} alt="Avatar" className="w-full h-full object-cover" />
                     </div>
                   )}
                   <input 

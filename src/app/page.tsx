@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Bell, Sparkles, ChevronDown, Download, Home, ChevronRight, TrendingUp, Loader2, ShoppingCart, Calendar, RotateCcw, Users, Package, ShoppingBag } from "lucide-react";
+import { Bell, Sparkles, ChevronDown, Download, Home, ChevronRight, TrendingUp, Loader2, ShoppingCart, RotateCcw, Users, Package } from "lucide-react";
 import { NotchedCard } from "@/components/admin/NotchedCard";
-import { analyticsApi, ordersApi, usersApi, productsApi, OrderItemRecord } from "@/lib/api";
+import { analyticsApi, ordersApi, usersApi, productsApi, OrderItemRecord, AnalyticsInsights } from "@/lib/api";
 import Link from "next/link";
 
 export default function Dashboard() {
@@ -12,7 +12,7 @@ export default function Dashboard() {
   const [productsCount, setProductsCount] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [isExportOpen, setIsExportOpen] = useState(false);
-  const [insights, setInsights] = useState<any>(null);
+  const [insights, setInsights] = useState<AnalyticsInsights | null>(null);
 
   const loadData = async () => {
     setLoading(true);
@@ -33,21 +33,21 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
-    loadData();
-    // Load insights asynchronously to prevent blocking dashboard render
-    analyticsApi.getInsights().then((data) => {
+    void Promise.resolve().then(loadData);
+    void Promise.resolve().then(() => analyticsApi.getInsights()).then((data) => {
       if (data) setInsights(data);
     });
   }, []);
 
   // Compute live metrics strictly from database records
-  const totalRevenue = orders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0);
+  const paidOrders = orders.filter(o => o.paymentStatus === "PAID");
+  const totalRevenue = paidOrders.reduce((sum, o) => sum + o.totalAmount, 0);
   const ordersCount = orders.length;
-  const avgOrderValue = ordersCount > 0 ? (totalRevenue / ordersCount).toFixed(2) : "0.00";
+  const avgOrderValue = paidOrders.length > 0 ? (totalRevenue / paidOrders.length).toFixed(2) : "0.00";
 
   // Real-time day-of-week sales from confirmed orders
   const dayTotals = [0, 0, 0, 0, 0, 0, 0]; // Sun=0, Mon=1...
-  orders.forEach(o => {
+  paidOrders.forEach(o => {
     if (o.createdAt) {
       const d = new Date(o.createdAt);
       const dayIdx = isNaN(d.getDay()) ? 0 : d.getDay();
@@ -66,21 +66,21 @@ export default function Dashboard() {
     
     // KPI Summary
     csv += "KEY PERFORMANCE INDICATORS\r\n";
-    csv += `Total Revenue,$${totalRevenue.toFixed(2)}\r\n`;
-    csv += `Average Order Value,$${avgOrderValue}\r\n`;
+    csv += `Total Revenue (INR),${totalRevenue.toFixed(2)}\r\n`;
+    csv += `Average Paid Order Value (INR),${avgOrderValue}\r\n`;
     csv += `Total Orders Recorded,${ordersCount}\r\n`;
     csv += `Registered Customers,${usersCount}\r\n`;
     csv += `Active Products In Catalog,${productsCount}\r\n\r\n`;
 
     // Live Orders
     csv += "LIVE ORDERS BREAKDOWN\r\n";
-    csv += "Order ID,Customer Name,Email,Total ($),Status,Items Count,Date\r\n";
+    csv += "Order ID,Customer Name,Email,Total (INR),Status,Payment Status,Items Count,Date\r\n";
     if (orders && orders.length > 0) {
       orders.forEach((o) => {
-        csv += `"${o.orderNumber || o.id}","${o.customerName || 'Customer'}","${o.customerEmail || '—'}","${Number(o.totalAmount || 0).toFixed(2)}","${o.status || 'CONFIRMED'}","${o.itemsCount || 1}","${o.createdAt || dateStr}"\r\n`;
+        csv += `"${o.orderNumber || o.id}","${o.customerName || 'Customer'}","${o.customerEmail || '—'}","${Number(o.totalAmount || 0).toFixed(2)}","${o.status || 'CONFIRMED'}","${o.paymentStatus}","${o.itemsCount}","${o.createdAt || dateStr}"\r\n`;
       });
     } else {
-      csv += "No individual orders recorded in database,N/A,N/A,0.00,N/A,0,N/A\r\n";
+      csv += "No individual orders recorded in database,N/A,N/A,0.00,N/A,N/A,0,N/A\r\n";
     }
 
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
@@ -367,13 +367,13 @@ export default function Dashboard() {
             alertTitle="Weekly Overview"
             alertContent={`Week-to-date sales total ₹${totalWeeklySales.toFixed(2)}.`}
             insightTitle="Real-time Tracking"
-            insightContent="Daily volume reflects actual sales transactions recorded in PostgreSQL."
+            insightContent="Daily volume reflects paid orders recorded in the store database."
             className="h-[200px]"
           >
             <div className="flex items-center justify-between h-full px-4">
               <div className="flex flex-col">
                 <span className="text-3xl font-bold">₹{totalWeeklySales.toFixed(2)}</span>
-                <span className="text-xs text-muted-foreground mt-1">Confirmed weekly volume</span>
+                <span className="text-xs text-muted-foreground mt-1">Paid order revenue</span>
               </div>
               
               {/* Mini Bar Chart */}
@@ -446,10 +446,10 @@ export default function Dashboard() {
                           <div className="text-[10px] text-muted-foreground">{order.customerEmail || "—"}</div>
                         </td>
                         <td className="px-4 py-3 font-medium">
-                          {order.itemsCount || 1} {order.itemsCount === 1 ? 'item' : 'items'}
+                          {order.itemsCount} {order.itemsCount === 1 ? 'item' : 'items'}
                         </td>
                         <td className="px-4 py-3 font-bold text-foreground">
-                          ${typeof order.totalAmount === 'number' ? order.totalAmount.toFixed(2) : order.totalAmount}
+                          ₹{order.totalAmount.toFixed(2)}
                         </td>
                         <td className="px-4 py-3">
                           <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${

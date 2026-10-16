@@ -7,9 +7,10 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel, EmailStr
 
 from app.db.database import get_db
-from app.models.otp import OTP
+from app.models.otp import OTP, hash_otp_code
 from app.services.email_service import send_email
 from app.core.rate_limit import enforce, reset
+from app.core.config import settings
 
 router = APIRouter()
 
@@ -38,6 +39,10 @@ async def send_otp(request: OTPSendRequest, db: Session = Depends(get_db)):
         
     identifier = request.phone_number if request.phone_number else request.email
     enforce(f"otp-send:{identifier}", 3, 600)
+    if request.phone_number and not os.getenv("SMS_API_KEY"):
+        raise HTTPException(status_code=503, detail="Phone verification is temporarily unavailable.")
+    if request.email and not settings.resend_api_key:
+        raise HTTPException(status_code=503, detail="Email verification is temporarily unavailable.")
 
     # 1. Invalidate any existing unused OTPs for this identifier to prevent spam
     existing_otps = db.query(OTP).filter(OTP.identifier == identifier, OTP.is_used == False).all()
@@ -52,7 +57,7 @@ async def send_otp(request: OTPSendRequest, db: Session = Depends(get_db)):
     # 3. Save to database
     new_otp = OTP(
         identifier=identifier,
-        code=code,
+        code=hash_otp_code(code),
         expires_at=expires_at,
         is_used=False
     )
@@ -88,7 +93,7 @@ async def send_otp(request: OTPSendRequest, db: Session = Depends(get_db)):
                     raise Exception(f"SMS Provider returned {response.status_code}: {response.text}")
                     
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to send OTP SMS: {str(e)}")
+            raise HTTPException(status_code=502, detail="Failed to send OTP SMS. Please try again later.")
     else:
         # Send Email via Resend
         html_content = f"""
@@ -107,7 +112,7 @@ async def send_otp(request: OTPSendRequest, db: Session = Depends(get_db)):
                 html_content=html_content
             )
         except Exception as e:
-            raise HTTPException(status_code=500, detail="Failed to send OTP email.")
+            raise HTTPException(status_code=503, detail="Email verification is temporarily unavailable.")
         
     return {"message": "OTP sent successfully"}
 
@@ -127,7 +132,7 @@ async def verify_otp(request: OTPVerifyRequest, db: Session = Depends(get_db)):
     # Find the latest unused OTP for this identifier
     otp = db.query(OTP).filter(
         OTP.identifier == identifier,
-        OTP.code == request.code,
+        OTP.code == hash_otp_code(request.code),
         OTP.is_used == False
     ).first()
     

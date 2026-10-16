@@ -1,22 +1,27 @@
 "use client";
+import Image from "next/image";
 
-import React, { useState, useEffect, useMemo } from "react";
-import { 
-  Home, ChevronRight, Search, ChevronDown, Filter, RotateCcw,
-  RotateCw, Trash2, AlertCircle, Loader2, ArrowLeft, Package, Sparkles
-} from "lucide-react";
+import { useState, useEffect, useMemo } from "react";
+import { Home, ChevronRight, ChevronDown, RotateCcw, RotateCw, Trash2, AlertCircle, Loader2, ArrowLeft, Package } from "lucide-react";
 import Link from "next/link";
-import { productsApi } from "@/lib/api";
+import { productsApi, ProductItem } from "@/lib/api";
 
 const DELETED_PRODUCTS_KEY = "vastrax_deleted_products";
 
+interface DeletedProduct extends Omit<ProductItem, "price" | "originalPrice"> {
+  name: string; sku: string; category: string; price: string;
+  originalPrice: string | null; rawPrice: number; stock: number; status: string;
+  isFeatured: boolean; categoryId: string; date: string; image: string;
+  deletedAt?: string; originalStatus?: string;
+}
+
 export default function DeletedProductsPage() {
-  const [deletedProducts, setDeletedProducts] = useState<any[]>([]);
+  const [deletedProducts, setDeletedProducts] = useState<DeletedProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [sortOrder, setSortOrder] = useState("default");
-  const [productToRestore, setProductToRestore] = useState<any | null>(null);
-  const [productToPurge, setProductToPurge] = useState<any | null>(null);
+  const [productToRestore, setProductToRestore] = useState<DeletedProduct | null>(null);
+  const [productToPurge, setProductToPurge] = useState<DeletedProduct | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [feedbackToast, setFeedbackToast] = useState<string | null>(null);
 
@@ -26,19 +31,22 @@ export default function DeletedProductsPage() {
 
   // Load deleted products from persistent local storage
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem(DELETED_PRODUCTS_KEY);
-      if (stored) {
-        setDeletedProducts(JSON.parse(stored));
+    let active = true;
+    void Promise.resolve().then(() => {
+      if (!active) return;
+      try {
+        const stored = localStorage.getItem(DELETED_PRODUCTS_KEY);
+        if (stored) setDeletedProducts(JSON.parse(stored) as DeletedProduct[]);
+      } catch (error) {
+        console.warn("Failed to load deleted products:", error);
+      } finally {
+        setLoading(false);
       }
-    } catch (e) {
-      console.warn("Failed to load deleted products:", e);
-    } finally {
-      setLoading(false);
-    }
+    });
+    return () => { active = false; };
   }, []);
 
-  const saveDeletedProducts = (items: any[]) => {
+  const saveDeletedProducts = (items: DeletedProduct[]) => {
     setDeletedProducts(items);
     try {
       localStorage.setItem(DELETED_PRODUCTS_KEY, JSON.stringify(items));
@@ -53,7 +61,7 @@ export default function DeletedProductsPage() {
     setCurrentPage(1);
   };
 
-  const handleRestore = async (prod: any) => {
+  const handleRestore = async (prod: DeletedProduct) => {
     setIsProcessing(true);
     try {
       // Recreate product in active database catalog
@@ -75,15 +83,15 @@ export default function DeletedProductsPage() {
       setProductToRestore(null);
       setFeedbackToast(`Product "${prod.name}" has been restored to the active catalog.`);
       setTimeout(() => setFeedbackToast(null), 4000);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Restore failed:", err);
-      alert(`Restore error: ${err?.message || "Failed to restore product"}`);
+      alert(`Restore error: ${err instanceof Error ? err.message : "Failed to restore product"}`);
     } finally {
       setIsProcessing(false);
     }
   };
 
-  const handlePermanentDelete = async (prod: any) => {
+  const handlePermanentDelete = async (prod: DeletedProduct) => {
     setIsProcessing(true);
     try {
       // Ensure backend permanently deletes if record still exists
@@ -93,7 +101,7 @@ export default function DeletedProductsPage() {
       setProductToPurge(null);
       setFeedbackToast(`Product "${prod.name}" was permanently deleted.`);
       setTimeout(() => setFeedbackToast(null), 4000);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Purge failed:", err);
     } finally {
       setIsProcessing(false);
@@ -102,7 +110,7 @@ export default function DeletedProductsPage() {
 
   // Filter & Sort Logic
   const filteredProducts = useMemo(() => {
-    let result = deletedProducts.filter((prod) => {
+    const result = deletedProducts.filter((prod) => {
       const matchesSearch = !searchQuery.trim() || 
         (prod.name && prod.name.toLowerCase().includes(searchQuery.toLowerCase())) ||
         (prod.sku && prod.sku.toLowerCase().includes(searchQuery.toLowerCase())) ||
@@ -303,7 +311,7 @@ export default function DeletedProductsPage() {
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-lg overflow-hidden bg-background border border-border shrink-0 flex items-center justify-center">
                           {prod.image ? (
-                            <img src={prod.image} alt={prod.name} className="w-full h-full object-cover" />
+                            <Image width={1200} height={900} unoptimized src={prod.image} alt={prod.name} className="w-full h-full object-cover" />
                           ) : (
                             <Package className="w-5 h-5 text-muted-foreground" />
                           )}
@@ -407,7 +415,7 @@ export default function DeletedProductsPage() {
             </div>
             <h2 className="text-xl font-bold text-foreground mb-2">Restore this product?</h2>
             <p className="text-xs text-muted-foreground mb-6 leading-relaxed">
-              Product <span className="font-semibold text-foreground">"{productToRestore.name}"</span> will be restored to your active catalog and storefront immediately.
+              Product <span className="font-semibold text-foreground">&quot;{productToRestore.name}&quot;</span> will be restored to your active catalog and storefront immediately.
             </p>
             <div className="flex items-center gap-3 w-full justify-center">
               <button 
@@ -443,7 +451,7 @@ export default function DeletedProductsPage() {
             </div>
             <h2 className="text-xl font-bold text-foreground mb-2">Permanently purge product?</h2>
             <p className="text-xs text-muted-foreground mb-6 leading-relaxed">
-              Product <span className="font-semibold text-foreground">"{productToPurge.name}"</span> will be permanently deleted from archive history. This action cannot be undone.
+              Product <span className="font-semibold text-foreground">&quot;{productToPurge.name}&quot;</span> will be permanently deleted from archive history. This action cannot be undone.
             </p>
             <div className="flex items-center gap-3 w-full justify-center">
               <button 

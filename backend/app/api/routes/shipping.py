@@ -12,7 +12,9 @@ from app.services.shiprocket_service import (
     check_serviceability,
     create_return_shipment,
     generate_label,
+    generate_manifest,
     schedule_pickup,
+    track_shipment,
 )
 
 router = APIRouter(prefix="/shipping", tags=["shipping"])
@@ -78,19 +80,33 @@ def generate_shipping_manifest(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    shipment_id = body.get("shipment_id") if body else "MOCK_SHIP_001"
-    return {
-        "status": 200,
-        "manifest_url": f"https://api.shiprocket.in/v1/manifest/{shipment_id}.pdf",
-        "message": "Manifest generated successfully"
-    }
+    shipment_id = str(body.get("shipment_id", "")).strip() if body else ""
+    order = db.query(Order).filter(Order.shipping_shipment_id == shipment_id).first()
+    _authorize_order_access(order, current_user)
+    if not order.shipping_awb:
+        raise HTTPException(status_code=409, detail="Assign an AWB before generating the manifest")
+    result = generate_manifest(shipment_id)
+    if result.get("error") or result.get("status_code") not in (200, 201) or not result.get("manifest_url"):
+        raise HTTPException(status_code=502, detail=result.get("error", "Shiprocket manifest generation failed"))
+    return result
 
 
-@router.get("/track/{awb}")
-@router.get("/track")
-def track_courier_shipment(awb: str = "AWB123456789"):
-    from app.services.shiprocket_service import track_shipment
-    return track_shipment(awb)
+@router.get("/track/{shipment_ref}")
+def track_courier_shipment(
+    shipment_ref: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    order = db.query(Order).filter(
+        (Order.shipping_awb == shipment_ref) | (Order.shipping_shipment_id == shipment_ref)
+    ).first()
+    _authorize_order_access(order, current_user)
+    if not order.shipping_shipment_id:
+        raise HTTPException(status_code=404, detail="Shipment has not been booked")
+    result = track_shipment(order.shipping_shipment_id)
+    if result.get("error"):
+        raise HTTPException(status_code=502, detail=result["error"])
+    return result
 
 
 @router.post("/label")
@@ -102,8 +118,8 @@ def get_shipping_label(
     order = db.query(Order).filter(Order.shipping_shipment_id == body.shipment_id).first()
     _authorize_order_access(order, current_user)
     result = generate_label(body.shipment_id)
-    if result.get("status") != 200:
-        raise HTTPException(status_code=400, detail="Failed to generate shipping label")
+    if result.get("error") or result.get("status") != 200:
+        raise HTTPException(status_code=400, detail=result.get("error", "Failed to generate shipping label"))
     return result
 
 
@@ -116,8 +132,10 @@ def book_shipping_pickup(
     order = db.query(Order).filter(Order.shipping_shipment_id == body.shipment_id).first()
     _authorize_order_access(order, current_user)
     result = schedule_pickup(body.shipment_id, body.pickup_date)
-    if result.get("status") != 200:
-        raise HTTPException(status_code=400, detail="Failed to schedule courier pickup")
+    if result.get("error") or result.get("status") != 200:
+        raise HTTPException(status_code=400, detail=result.get("error", "Failed to schedule courier pickup"))
+    order.shipping_status = "Pickup scheduled"
+    db.commit()
     return result
 
 
@@ -144,6 +162,6 @@ def create_reverse_return(
     order = db.query(Order).filter(Order.id == body.order_id).first()
     _authorize_order_access(order, current_user)
     result = create_return_shipment(body.order_id, body.return_data)
-    if result.get("status") != 200:
-        raise HTTPException(status_code=400, detail="Failed to create return shipment")
+    if result.get("error") or result.get("status") != 200:
+        raise HTTPException(status_code=400, detail=result.get("error", "Failed to create return shipment"))
     return result

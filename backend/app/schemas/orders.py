@@ -27,6 +27,7 @@ class OrderCreate(BaseModel):
     total_amount: Optional[Decimal] = None  # ignored: the server prices the order
     delivery_method: str = "standard"
     payment_method: str = "UPI"
+    shipping_courier_id: Optional[int] = None
 
 
 class OrderItemResponse(BaseModel):
@@ -35,6 +36,9 @@ class OrderItemResponse(BaseModel):
     variant_id: str
     quantity: int
     unit_price: Decimal
+    product_name: Optional[str] = None
+    image_url: Optional[str] = None
+    size: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -50,6 +54,9 @@ class OrderResponse(BaseModel):
     shipping_awb: str | None = None
     shipping_courier: str | None = None
     shipping_status: str | None = None
+    shipping_courier_id: int | None = None
+    shipping_charge: Decimal = Decimal("0.00")
+    shipping_address: str | None = None
     placed_at: datetime
     updated_at: datetime
     items: list[OrderItemResponse] = []

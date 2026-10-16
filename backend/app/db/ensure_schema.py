@@ -13,6 +13,10 @@ ADDITIVE_COLUMNS = {
         "is_active": "BOOLEAN NOT NULL DEFAULT 1",
         "image_url": "TEXT",
     },
+    "orders": {
+        "shipping_courier_id": "INTEGER",
+        "shipping_charge": "NUMERIC(10, 2) NOT NULL DEFAULT 0.00",
+    },
 }
 
 

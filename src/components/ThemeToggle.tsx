@@ -10,7 +10,7 @@ export function ThemeToggle({ className = "" }: { className?: string }) {
 
   // Avoid hydration mismatch by waiting until mounted
   useEffect(() => {
-    setMounted(true);
+    void Promise.resolve().then(() => setMounted(true));
   }, []);
 
   if (!mounted) {

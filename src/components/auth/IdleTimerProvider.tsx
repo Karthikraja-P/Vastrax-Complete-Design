@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { performSignOut } from "@/lib/auth-utils";
-import { AlertTriangle, Clock, LogOut, CheckCircle } from "lucide-react";
+import { Clock, LogOut, CheckCircle } from "lucide-react";
 
 // Inactivity timeout configurations
 const IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
@@ -15,7 +15,7 @@ export function IdleTimerProvider({ children }: { children: React.ReactNode }) {
   const [showWarning, setShowWarning] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(60);
 
-  const lastActivityRef = useRef<number>(Date.now());
+  const lastActivityRef = useRef<number>(0);
   const warningTimerRef = useRef<NodeJS.Timeout | null>(null);
   const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const lastThrottleRef = useRef<number>(0);
@@ -78,10 +78,10 @@ export function IdleTimerProvider({ children }: { children: React.ReactNode }) {
   }, [showWarning, resetTimer]);
 
   useEffect(() => {
-    if (typeof window !== "undefined" && (session as any)?.accessToken) {
+    if (typeof window !== "undefined" && session?.accessToken) {
       const current = localStorage.getItem("vastrax_token");
-      if (current !== (session as any).accessToken) {
-        localStorage.setItem("vastrax_token", (session as any).accessToken);
+      if (current !== session.accessToken) {
+        localStorage.setItem("vastrax_token", session.accessToken);
       }
     }
   }, [session]);
@@ -89,19 +89,23 @@ export function IdleTimerProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!isAuthenticated) {
       clearAllTimers();
-      setShowWarning(false);
+      void Promise.resolve().then(() => setShowWarning(false));
       return;
     }
 
-    resetTimer();
+    let active = true;
+    void Promise.resolve().then(() => {
+      if (active) resetTimer();
+    });
 
     const events = ["mousedown", "keydown", "touchstart", "scroll", "wheel"];
-    const throttledMouseMove = (e: Event) => handleUserActivity();
+    const throttledMouseMove = () => handleUserActivity();
 
     events.forEach((evt) => window.addEventListener(evt, handleUserActivity, { passive: true }));
     window.addEventListener("mousemove", throttledMouseMove, { passive: true });
 
     return () => {
+      active = false;
       clearAllTimers();
       events.forEach((evt) => window.removeEventListener(evt, handleUserActivity));
       window.removeEventListener("mousemove", throttledMouseMove);

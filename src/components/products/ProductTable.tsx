@@ -1,7 +1,8 @@
 "use client";
+import Image from "next/image";
 
 import { useState, useEffect } from "react";
-import { MoreHorizontal, Edit, Trash, Video, Image as ImageIcon, Box, Shirt, Loader2 } from "lucide-react";
+import { MoreHorizontal, Edit, Trash, Shirt, Loader2, Box } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { productsApi, ProductItem } from "@/lib/api";
@@ -19,7 +20,7 @@ export function ProductTable() {
   };
 
   useEffect(() => {
-    loadProducts();
+    void Promise.resolve().then(loadProducts);
   }, []);
 
   const handleDelete = async (id: string | number) => {
@@ -67,17 +68,22 @@ export function ProductTable() {
                 <tr key={product.id} className="hover:bg-surface-hover/30 transition-colors group">
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-4">
-                      <div className="h-12 w-12 rounded-md overflow-hidden bg-surface-hover flex-shrink-0 border border-border">
-                        <img 
-                          src={product.image || product.images?.[0] || "https://images.unsplash.com/photo-1588850561407-ed78c282e89b?q=80&w=400&auto=format&fit=crop"} 
-                          alt={product.name || product.title || "Product"} 
-                          className="w-full h-full object-cover" 
+                      <div className="relative h-12 w-12 rounded-md overflow-hidden bg-surface-hover flex-shrink-0 border border-border">
+                        <Image width={1200} height={900} unoptimized
+                          src={product.image || (typeof product.images?.[0] === "string" ? product.images[0] : product.images?.[0]?.s3_url) || "/product-placeholder.svg"}
+                          alt={product.name || product.title || "Product"}
+                          className="w-full h-full object-cover"
                         />
+                        {(product.model_path || product.model3dUrl) && (
+                          <span title="Product-specific 3D model saved" className="absolute right-0 top-0 inline-flex items-center gap-1 rounded-bl-md bg-sky-500 px-1 py-0.5 text-[8px] font-bold text-white">
+                            <Box className="h-3 w-3" /> 3D
+                          </span>
+                        )}
                       </div>
                       <span className="font-medium text-foreground">{product.name || product.title}</span>
                     </div>
                   </td>
-                  <td className="px-6 py-4 text-muted-foreground">{product.category || "Apparel"}</td>
+                  <td className="px-6 py-4 text-muted-foreground">{product.category || product.category_name || "Uncategorized"}</td>
                   <td className="px-6 py-4 text-foreground font-medium">{typeof product.price === 'number' ? `₹${product.price.toFixed(2)}` : (String(product.price).startsWith('₹') ? product.price : `₹${String(product.price).replace(/^\$/, '')}`)}</td>
                   <td className="px-6 py-4">
                     <span className={(product.stock || product.inventoryCount || 0) < 20 ? "text-amber-500 font-medium" : "text-foreground"}>
@@ -90,13 +96,13 @@ export function ProductTable() {
                     </span>
                   </td>
                   <td className="px-6 py-4 text-right relative">
-                    <button 
+                    <button
                       onClick={() => toggleActions(product.id)}
                       className="p-2 text-muted-foreground hover:text-foreground rounded-md hover:bg-surface-hover transition-colors"
                     >
                       <MoreHorizontal className="w-5 h-5" />
                     </button>
-                    
+
                     <AnimatePresence>
                       {openActionId === product.id && (
                         <motion.div
@@ -113,7 +119,7 @@ export function ProductTable() {
                             <Shirt className="w-4 h-4 mr-3" /> Virtual Try-On
                           </Link>
                           <div className="h-px bg-border my-1" />
-                          <button 
+                          <button
                             onClick={() => handleDelete(product.id)}
                             className="w-full flex items-center px-4 py-2 text-sm text-red-500 hover:bg-red-500/10 transition-colors"
                           >

@@ -1,16 +1,15 @@
 "use client";
+import Image from "next/image";
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { 
-  Package, MapPin, Heart, User, ChevronRight, 
-  Clock, CheckCircle2, Truck, ExternalLink, Plus, Trash2, Edit2, ShoppingBag, LogOut
-} from "lucide-react";
+import { Package, Heart, User, ChevronRight, Clock, CheckCircle2, Truck, ExternalLink, Plus, Trash2, Edit2, ShoppingBag, LogOut } from "lucide-react";
 import { Header } from "@/components/layout/Header";
 import { CartDrawer } from "@/components/layout/CartDrawer";
 import { StylistDrawer } from "@/components/stylist/StylistDrawer";
 import { performSignOut } from "@/lib/auth-utils";
-import { fetchApi } from "@/lib/api";
+import { fetchApi, ordersApi, type OrderItemRecord } from "@/lib/api";
+import { useFavoriteProducts, useFavorites } from "@/hooks/useFavorites";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +18,10 @@ interface OrderItem {
   orderNumber: string;
   date: string;
   total: string;
-  status: "CONFIRMED" | "PROCESSING" | "SHIPPED" | "DELIVERED";
+  status: string;
+  shippingStatus?: string | null;
+  shippingCourier?: string | null;
+  shippingCharge?: number | string;
   items: {
     name: string;
     variant: string;
@@ -30,7 +32,19 @@ interface OrderItem {
   shippingAddress: string;
 }
 
-const mockCustomerOrders: OrderItem[] = [];
+interface AccountAddress {
+  id: string | number;
+  name?: string;
+  title?: string;
+  address?: string;
+  street?: string;
+  city?: string;
+  state?: string;
+  pincode?: string;
+  zip?: string;
+  phone?: string;
+  isDefault?: boolean;
+}
 
 export default function CustomerAccountPage() {
   return (
@@ -42,6 +56,10 @@ export default function CustomerAccountPage() {
 
 function CustomerAccountContent() {
   const [activeTab, setActiveTab] = useState<"orders" | "favorites" | "profile">("orders");
+  const [customerOrders, setCustomerOrders] = useState<OrderItem[]>([]);
+  const [ordersLoading, setOrdersLoading] = useState(true);
+  const [trackingLoading, setTrackingLoading] = useState<Record<string, boolean>>({});
+  const [trackingSnapshots, setTrackingSnapshots] = useState<Record<string, { status: string; scans: Array<{ activity: string; date: string; location?: string }> }>>({});
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isStylistOpen, setIsStylistOpen] = useState(false);
   
@@ -50,6 +68,57 @@ function CustomerAccountContent() {
     window.addEventListener("open-stylist", handleOpenStylist);
     return () => window.removeEventListener("open-stylist", handleOpenStylist);
   }, []);
+
+
+  useEffect(() => {
+    let active = true;
+    ordersApi.myOrders().then((records: OrderItemRecord[]) => {
+      if (!active) return;
+      setCustomerOrders(records.map((order) => {
+        const rawItems = Array.isArray(order.items) ? order.items as Array<Record<string, unknown>> : [];
+        return {
+          id: String(order.id),
+          orderNumber: order.orderNumber,
+          date: order.createdAt ? new Date(order.createdAt).toLocaleDateString("en-IN") : "",
+          total: "₹" + Number(order.totalAmount || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+          status: String(order.status || "CONFIRMED"),
+          shippingStatus: order.shippingStatus,
+          shippingCourier: order.shippingCourier,
+          shippingCharge: order.shippingCharge,
+          trackingNumber: order.shippingAwb || undefined,
+          shippingAddress: order.shippingAddress || "Address not available",
+          items: rawItems.map((item) => ({
+            name: String(item.product_name || "VASTRAX item"),
+            variant: item.size ? "Size " + String(item.size) : "",
+            price: "₹" + (Number(item.unit_price || 0) * Number(item.quantity || 1)).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+            image: String(item.image_url || "/product-placeholder.svg"),
+          })),
+        };
+      }));
+    }).finally(() => { if (active) setOrdersLoading(false); });
+    return () => { active = false; };
+  }, []);
+
+  const refreshOrderTracking = async (orderId: string) => {
+    setTrackingLoading((current) => ({ ...current, [orderId]: true }));
+    try {
+      const detail = await fetchApi<Record<string, unknown>>("/orders/my/" + encodeURIComponent(orderId));
+      const trackingInfo = detail.tracking_info as { tracking_data?: { shipment_track?: Array<{ current_status?: string; scans?: Array<{ activity?: string; date?: string; location?: string }> }> } } | undefined;
+      const shipment = trackingInfo?.tracking_data?.shipment_track?.[0];
+      setTrackingSnapshots((current) => ({
+        ...current,
+        [orderId]: {
+          status: shipment?.current_status || "Tracking update unavailable",
+          scans: (shipment?.scans || []).map((scan) => ({ activity: scan.activity || "Update", date: scan.date || "", location: scan.location })),
+        },
+      }));
+    } catch (error) {
+      console.error("Could not refresh Shiprocket tracking:", error);
+      setTrackingSnapshots((current) => ({ ...current, [orderId]: { status: "Could not load tracking. Retry shortly.", scans: [] } }));
+    } finally {
+      setTrackingLoading((current) => ({ ...current, [orderId]: false }));
+    }
+  };
 
   // Profile state
   const [firstName, setFirstName] = useState("");
@@ -76,24 +145,14 @@ function CustomerAccountContent() {
   }, []);
 
   // Address state
-  const [addresses, setAddresses] = useState<any[]>([]);
+  const [addresses] = useState<AccountAddress[]>([]);
   const [isAddingAddress, setIsAddingAddress] = useState(false);
 
-  const [favorites, setFavorites] = useState<any[]>([]);
-
-  useEffect(() => {
-    const saved = localStorage.getItem("vastrax_favorites");
-    if (saved) {
-      try {
-        setFavorites(JSON.parse(saved));
-      } catch (e) {}
-    }
-  }, []);
+  const favorites = useFavoriteProducts();
+  const { toggleFavorite: toggleStoredFavorite } = useFavorites();
 
   const toggleFavorite = (id: string | number) => {
-    const newFavorites = favorites.filter(f => f.id !== id);
-    setFavorites(newFavorites);
-    localStorage.setItem("vastrax_favorites", JSON.stringify(newFavorites));
+    toggleStoredFavorite(id);
   };
 
   const handleSaveProfile = async (e: React.FormEvent) => {
@@ -223,17 +282,17 @@ function CustomerAccountContent() {
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 mt-8">
           {/* Navigation Sidebar */}
           <div className="lg:col-span-1 space-y-2">
-            {[
+            {([
               { id: "orders", label: "Orders & Shipments", icon: Package },
               { id: "favorites", label: "Favorites", icon: Heart },
               { id: "profile", label: "Account Profile", icon: User },
-            ].map((tab) => {
+            ] as const).map((tab) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
               return (
                 <button
                   key={tab.id}
-                  onClick={() => setActiveTab(tab.id as any)}
+                  onClick={() => setActiveTab(tab.id)}
                   className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-lg font-medium transition-all ${
                     isActive 
                       ? "bg-accent/15 text-accent border border-accent/30 shadow-[0_0_15px_rgba(224,122,63,0.15)]" 
@@ -269,7 +328,7 @@ function CustomerAccountContent() {
                 </div>
 
                 <div className="space-y-6">
-                  {mockCustomerOrders.map((order) => (
+                  {ordersLoading ? <p className="text-sm text-muted-foreground">Loading orders…</p> : customerOrders.length === 0 ? <div className="rounded-2xl border border-border p-8 text-center text-sm text-muted-foreground">No orders yet.</div> : customerOrders.map((order) => (
                     <div 
                       key={order.id}
                       className="bg-surface/60 border border-border/80 rounded-2xl p-6 transition-all hover:border-border backdrop-blur-md shadow-lg"
@@ -284,12 +343,13 @@ function CustomerAccountContent() {
                           <p className="text-xs text-muted-foreground mt-1">Placed on {order.date} • Total: <span className="text-foreground font-semibold">{order.total}</span></p>
                         </div>
 
-                        {order.trackingNumber && (
-                          <div className="flex items-center gap-2 text-xs text-muted-foreground bg-surface-hover/80 px-3 py-1.5 rounded-lg border border-border">
-                            <Truck className="w-3.5 h-3.5 text-accent" />
-                            <span>Tracking: <strong className="text-foreground font-mono">{order.trackingNumber}</strong></span>
-                          </div>
-                        )}
+                        <div className="text-xs text-muted-foreground bg-surface-hover/80 px-3 py-1.5 rounded-lg border border-border space-y-1">
+                          {order.shippingCourier && <p>Courier: <strong className="text-foreground">{order.shippingCourier}</strong></p>}
+                          {order.trackingNumber && <p><Truck className="inline w-3.5 h-3.5 text-accent mr-1" />AWB: <strong className="text-foreground font-mono">{order.trackingNumber}</strong></p>}
+                          <p>Shipping: <strong className="text-foreground">{order.shippingStatus || "Awaiting shipment"}</strong></p>
+                          {order.trackingNumber && <button type="button" onClick={() => void refreshOrderTracking(order.id)} disabled={trackingLoading[order.id]} className="text-accent hover:underline disabled:opacity-50">{trackingLoading[order.id] ? "Refreshing…" : "Refresh live tracking"}</button>}
+                          {trackingSnapshots[order.id] && <div className="pt-1"><p>Latest: <strong className="text-foreground">{trackingSnapshots[order.id].status}</strong></p>{trackingSnapshots[order.id].scans.slice(0, 3).map((scan, index) => <p key={index}>{scan.activity} · {scan.date}{scan.location ? " · " + scan.location : ""}</p>)}</div>}
+                        </div>
                       </div>
 
                       {/* Visual Fulfillment Timeline */}
@@ -328,7 +388,7 @@ function CustomerAccountContent() {
                         {order.items.map((item, i) => (
                           <div key={i} className="flex items-center justify-between gap-4">
                             <div className="flex items-center gap-4">
-                              <img src={item.image} alt={item.name} className="w-12 h-16 object-cover rounded-lg border border-border" />
+                              <Image width={1200} height={900} unoptimized src={item.image} alt={item.name} className="w-12 h-16 object-cover rounded-lg border border-border" />
                               <div>
                                 <h4 className="text-sm font-semibold text-foreground">{item.name}</h4>
                                 <p className="text-xs text-muted-foreground">{item.variant}</p>
@@ -365,7 +425,7 @@ function CustomerAccountContent() {
                   {favorites.map((item) => (
                     <div key={item.id} className="group bg-surface/60 border border-border/80 rounded-2xl overflow-hidden flex flex-col justify-between">
                       <div className="aspect-[3/4] overflow-hidden bg-surface-hover relative">
-                        <img src={item.image} alt={item.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                        <Image width={1200} height={900} unoptimized src={item.image || "/placeholder.svg"} alt={item.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                         <button 
                           onClick={() => toggleFavorite(item.id)}
                           className="absolute top-3 right-3 p-2 rounded-full bg-white/20 backdrop-blur-md hover:bg-white/40 transition-colors z-10"
