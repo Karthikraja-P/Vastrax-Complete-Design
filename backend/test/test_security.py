@@ -46,6 +46,7 @@ def test_default_webhook_secret_is_rejected(monkeypatch):
 
 def test_production_razorpay_failure_does_not_simulate(monkeypatch):
     monkeypatch.setattr(ps.settings, "app_env", "production")
+    monkeypatch.setattr(ps.PaymentService, "_mark_payment_failed", lambda self, payment: None)
 
     def fail_request(*args, **kwargs):
         raise ps.requests.ConnectionError("provider unavailable")
