@@ -110,7 +110,7 @@ export default function DeletedUsersPage() {
             </Link>
             <h1 className="text-3xl font-bold tracking-tight text-foreground">Deleted Users</h1>
           </div>
-          <p className="text-muted-foreground mt-1 text-sm">Review soft-deleted client accounts, restore access, or purge records</p>
+
         </div>
       </div>
 

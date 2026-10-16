@@ -179,7 +179,7 @@ export default function SettingsPage() {
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold tracking-tight text-foreground">Settings</h1>
-        <p className="text-muted-foreground mt-1 text-sm">Manage your account settings and preferences</p>
+
       </div>
 
       <div className="flex flex-col md:flex-row gap-6 mt-6">
@@ -373,7 +373,7 @@ export default function SettingsPage() {
                   </div>
                   <div>
                     <h2 className="text-xl font-bold text-foreground">Change Password</h2>
-                    <p className="text-sm text-muted-foreground mt-0.5">Update your password to keep your account secure</p>
+
                   </div>
                 </div>
 
@@ -479,7 +479,7 @@ export default function SettingsPage() {
                     </div>
                     <div>
                       <h2 className="text-xl font-bold text-foreground">App & Storefront Configuration</h2>
-                      <p className="text-sm text-muted-foreground mt-0.5">Control global store parameters, checkout behavior, and storefront rules</p>
+
                     </div>
                   </div>
                 </div>

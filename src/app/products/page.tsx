@@ -195,7 +195,7 @@ export default function ProductsPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-foreground">All Products</h1>
-          <p className="text-muted-foreground mt-1 text-sm">Manage store inventory, garment catalog, and live pricing</p>
+
         </div>
         <Link 
           href="/products/add" 

@@ -33,7 +33,7 @@ const navGroups = [
     title: "SALES",
     items: [
       { name: "Orders", href: "/orders", icon: ShoppingCart },
-      { name: "Restock Waitlist", href: "/stock-notifications", icon: Bell },
+      { name: "Restock Waitlist", href: "/restock-waitlist", icon: Bell },
       { 
         name: "Users", 
         href: "/users",

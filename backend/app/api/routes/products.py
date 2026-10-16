@@ -52,8 +52,12 @@ def search_products(
 
 @router.get("/stock-notifications")
 def list_stock_notifications(_: User = Depends(require_admin), db: Session = Depends(get_db)):
-    rows = db.query(StockNotification).order_by(StockNotification.created_at.desc()).limit(500).all()
-    return [{"id": r.id, "product_id": r.product_id, "product_name": r.product.name if r.product else "Deleted product", "email": r.email, "size": r.size, "is_notified": r.is_notified, "created_at": r.created_at, "notified_at": r.notified_at} for r in rows]
+    return StockNotificationService(db).list_for_admin()
+
+
+@router.post("/stock-notifications/{notification_id}/send")
+async def send_stock_notification(notification_id: str, _: User = Depends(require_admin), db: Session = Depends(get_db)):
+    return await StockNotificationService(db).send_one(notification_id)
 
 
 @router.get("/{product_id}")

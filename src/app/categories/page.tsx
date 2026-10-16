@@ -32,7 +32,6 @@ export default function CategoriesPage() {
   // New Category form state
   const [newCatName, setNewCatName] = useState("");
   const [newCatDesc, setNewCatDesc] = useState("");
-  const [newCatImage, setNewCatImage] = useState<string | null>(null);
   const [isActiveStatus, setIsActiveStatus] = useState(true);
 
   // Filter State
@@ -51,8 +50,6 @@ export default function CategoriesPage() {
       reader.onloadend = () => {
         if (isEdit && editingCategory) {
           setEditingCategory({ ...editingCategory, image_url: reader.result as string });
-        } else {
-          setNewCatImage(reader.result as string);
         }
       };
       reader.readAsDataURL(file);
@@ -109,20 +106,18 @@ export default function CategoriesPage() {
       count: 0,
       status: isActiveStatus ? "Active" : "Inactive",
       sort: String(categories.length + 1),
-      image_url: newCatImage
     };
 
     // Optimistic UI update
     setCategories(prev => [...prev, newCategory]);
     setNewCatName("");
     setNewCatDesc("");
-    setNewCatImage(null);
     setIsAddCategoryOpen(false);
 
     try {
       const created = await categoriesApi.create({
         name: cleanName, slug: cleanSlug, description: newCatDesc || null,
-        is_active: isActiveStatus, image_url: newCatImage,
+        is_active: isActiveStatus,
       });
       setCategories(prev => prev.map(c => c.id === tempId ? { ...c, id: created.id } : c));
     } catch (err) {
@@ -232,7 +227,7 @@ export default function CategoriesPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-foreground">Categories</h1>
-          <p className="text-muted-foreground mt-1 text-sm">Manage product collections and navigation taxonomy</p>
+
         </div>
         <div className="flex items-center gap-3">
           <Link
@@ -536,23 +531,6 @@ export default function CategoriesPage() {
                   placeholder="Brief description of this collection..." 
                   className="w-full px-4 py-3 bg-background border border-border rounded-lg text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-accent transition-all resize-none" 
                 />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-xs font-semibold text-foreground">Banner / Thumbnail Image</label>
-                <div className="flex items-center gap-3">
-                  {newCatImage && (
-                    <div className="w-12 h-12 rounded-lg border border-accent overflow-hidden bg-background shrink-0">
-                      <Image width={1200} height={900} unoptimized src={newCatImage} alt="Preview" className="w-full h-full object-cover" />
-                    </div>
-                  )}
-                  <input 
-                    type="file" 
-                    accept="image/*" 
-                    onChange={(e) => handleCatImageUpload(e, false)}
-                    className="w-full text-xs text-muted-foreground file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-accent file:text-white hover:file:bg-accent/90 cursor-pointer"
-                  />
-                </div>
               </div>
 
               <div className="space-y-2">

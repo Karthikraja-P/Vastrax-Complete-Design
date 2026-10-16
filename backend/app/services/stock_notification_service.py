@@ -1,10 +1,13 @@
 import uuid
 from datetime import datetime, timezone
+from html import escape
 from typing import Optional
+from urllib.parse import quote
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import BadRequestError, ConflictError, NotFoundError
 from app.core.logging import get_logger
 from app.models.product import Product
 from app.models.product_variant import ProductVariant
@@ -12,24 +15,6 @@ from app.models.stock_notification import StockNotification
 from app.services.email_service import send_email
 
 logger = get_logger(__name__)
-
-
-async def _dispatch_notification_batch(jobs: list[dict]) -> None:
-    """Dispatches emails in paced, throttled batches to avoid SMTP/API rate limits."""
-    import asyncio
-    chunk_size = 5
-    for i in range(0, len(jobs), chunk_size):
-        chunk = jobs[i:i + chunk_size]
-        tasks = [
-            send_email(to_email=j["email"], subject=j["subject"], html_content=j["body"])
-            for j in chunk
-        ]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        for job, res in zip(chunk, results):
-            if isinstance(res, Exception):
-                logger.error("Failed to dispatch restock email to %s: %s", job["email"], str(res))
-        if i + chunk_size < len(jobs):
-            await asyncio.sleep(0.15)
 
 
 class StockNotificationService:
@@ -53,9 +38,8 @@ class StockNotificationService:
         if not product:
             raise NotFoundError(f"Product {product_id} not found")
 
-        # Resolve variant if variant_id provided or if size provided
         if not variant_id and size:
-            var = (
+            variant = (
                 self.db.query(ProductVariant)
                 .filter(
                     ProductVariant.product_id == product.id,
@@ -63,19 +47,17 @@ class StockNotificationService:
                 )
                 .first()
             )
-            if var:
-                variant_id = var.id
+            if variant:
+                variant_id = variant.id
 
-        # Check existing subscription for same email and product (and size if specified)
-        query = self.db.query(StockNotification).filter(
+        existing_query = self.db.query(StockNotification).filter(
             StockNotification.product_id == product.id,
             StockNotification.email == email.strip().lower(),
             StockNotification.is_notified.is_(False),
         )
         if size:
-            query = query.filter(StockNotification.size.ilike(size))
-
-        existing = query.first()
+            existing_query = existing_query.filter(StockNotification.size.ilike(size))
+        existing = existing_query.first()
         if existing:
             return existing
 
@@ -99,89 +81,82 @@ class StockNotificationService:
         )
         return notification
 
-    def notify_subscribers_for_product(
-        self, product_id: str, variant_id: Optional[str] = None, new_qty: int = 1
-    ) -> int:
-        """Trigger email notifications for users waiting for this product/variant."""
-        if new_qty <= 0:
-            return 0
-
-        product = (
-            self.db.query(Product)
-            .filter(Product.id == product_id)
-            .first()
-        )
-        if not product:
-            return 0
-
-        query = self.db.query(StockNotification).filter(
-            StockNotification.product_id == product_id,
-            StockNotification.is_notified.is_(False),
-        )
-
-        variant = None
-        if variant_id:
+    def _stock_for(self, notification: StockNotification) -> int:
+        variant = notification.variant
+        if variant is None and notification.size:
             variant = (
                 self.db.query(ProductVariant)
-                .filter(ProductVariant.id == variant_id)
+                .filter(
+                    ProductVariant.product_id == notification.product_id,
+                    ProductVariant.size.ilike(notification.size),
+                )
                 .first()
             )
-            if variant and variant.size:
-                # Notify users waiting for this specific size OR users waiting for any size
-                query = query.filter(
-                    (StockNotification.size.is_(None))
-                    | (StockNotification.size.ilike(variant.size))
-                    | (StockNotification.variant_id == variant_id)
-                )
+        if variant is not None:
+            return int(variant.stock_qty or 0)
+        if notification.size:
+            return 0
+        total = (
+            self.db.query(func.coalesce(func.sum(ProductVariant.stock_qty), 0))
+            .filter(ProductVariant.product_id == notification.product_id)
+            .scalar()
+        )
+        return int(total or 0)
 
-        subscribers = query.all()
-        email_jobs = []
-        notified_count = 0
-        for sub in subscribers:
-            size_label = f" (Size: {sub.size})" if sub.size else ""
-            subject = f"Back in Stock: {product.name} is now available!"
-            html_body = f"""
-            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
-                <h2 style="color: #111;">Good news! Your item is back in stock.</h2>
-                <p style="color: #555; font-size: 15px;">
-                    You recently asked to be notified when <strong>{product.name}</strong>{size_label} became available again.
-                </p>
-                <div style="margin: 25px 0;">
-                    <a href="https://vastrax.shop/storefront/product?id={product.id}" 
-                       style="background-color: #000; color: #fff; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">
-                        Order Now Before It Sells Out
-                    </a>
-                </div>
-                <p style="color: #888; font-size: 12px;">
-                    Thank you for choosing VastraX Luxury Fashion.
-                </p>
-            </div>
-            """
-            email_jobs.append({"email": sub.email, "subject": subject, "body": html_body})
-            sub.is_notified = True
-            sub.notified_at = datetime.now(timezone.utc)
-            notified_count += 1
+    def list_for_admin(self, limit: int = 1000) -> list[dict]:
+        rows = (
+            self.db.query(StockNotification)
+            .order_by(StockNotification.created_at.desc())
+            .limit(limit)
+            .all()
+        )
+        return [
+            {
+                "id": row.id,
+                "product_id": row.product_id,
+                "product_name": row.product.name if row.product else "Deleted product",
+                "size": row.size,
+                "email": row.email,
+                "current_stock": self._stock_for(row),
+                "is_notified": row.is_notified,
+                "created_at": row.created_at,
+                "notified_at": row.notified_at,
+            }
+            for row in rows
+        ]
 
-        if notified_count > 0:
-            self.db.commit()
-            logger.info(
-                "Queued %d restock notifications for product %s",
-                notified_count,
-                product_id,
-            )
-            # Dispatch batch in background without blocking response
-            try:
-                import asyncio
-                import threading
-                try:
-                    loop = asyncio.get_running_loop()
-                    loop.create_task(_dispatch_notification_batch(email_jobs))
-                except RuntimeError:
-                    threading.Thread(
-                        target=lambda: asyncio.run(_dispatch_notification_batch(email_jobs)),
-                        daemon=True,
-                    ).start()
-            except Exception as e:
-                logger.error("Failed to schedule restock notification batch: %s", str(e))
+    async def send_one(self, notification_id: str) -> dict:
+        notification = (
+            self.db.query(StockNotification)
+            .filter(StockNotification.id == notification_id)
+            .first()
+        )
+        if not notification:
+            raise NotFoundError("Restock request not found")
+        if notification.is_notified:
+            raise ConflictError("This customer has already been notified")
+        product = self.db.query(Product).filter(Product.id == notification.product_id).first()
+        if not product:
+            raise NotFoundError("The product for this restock request no longer exists")
+        if self._stock_for(notification) <= 0:
+            raise BadRequestError("Add stock for this size before sending the restock email")
 
-        return notified_count
+        size_label = f" in size {escape(notification.size)}" if notification.size else ""
+        subject = f"{product.name} is back in stock"
+        product_url = f"https://vastrax.ai/storefront/product?id={quote(product.id)}"
+        html_body = f"""
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; color: #241a22;">
+          <h2>Your Vastrax pick is available again</h2>
+          <p>You asked us to let you know when <strong>{escape(product.name)}</strong>{size_label} was back in stock.</p>
+          <p>Stock is now available. Visit the product page to take another look.</p>
+          <p style="margin: 28px 0;"><a href="{product_url}" style="background:#241a22;color:#fff;padding:12px 20px;text-decoration:none;border-radius:6px;">View the product</a></p>
+          <p style="font-size:12px;color:#746b70;">You received this because you requested a restock update from Vastrax.</p>
+        </div>
+        """
+
+        await send_email(to_email=notification.email, subject=subject, html_content=html_body)
+        notification.is_notified = True
+        notification.notified_at = datetime.now(timezone.utc)
+        self.db.commit()
+        logger.info("Manually sent restock notification %s", notification.id)
+        return {"status": "sent", "notification_id": notification.id, "notified_at": notification.notified_at}

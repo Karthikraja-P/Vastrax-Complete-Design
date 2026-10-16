@@ -46,6 +46,7 @@ export async function proxy(req: NextRequest) {
 
   // Protected Admin Management & Analytics routes
   const adminRoutes = [
+    "/restock-waitlist",
     "/products",
     "/categories",
     "/orders",

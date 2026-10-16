@@ -76,7 +76,8 @@ def test_full_purchase_flow(c, monkeypatch, admin_tok):
     r = order("M", 2, 1)  # tampered client total must be ignored
     assert r.status_code in (200, 201), r.text
     oid = r.json()["id"]
-    assert float(r.json()["total_amount"]) == 2160.0  # 2 x 1000 + 8% tax, server-priced
+    expected_total = round(2000 * 1.08 + float(r.json()["shipping_charge"]), 2)
+    assert float(r.json()["total_amount"]) == expected_total  # server prices items, tax, and Shiprocket delivery
     assert c.post("/api/v1/payments/initiate", headers=H(cust), json={"order_id": oid, "amount": 1}).status_code == 400
 
     # stock decremented on the right variant only
@@ -85,7 +86,7 @@ def test_full_purchase_flow(c, monkeypatch, admin_tok):
     assert stock == {"S": 2, "M": 3}
 
     # payments: dev mock works, production mock is blocked
-    r = c.post("/api/v1/payments/initiate", headers=H(cust), json={"order_id": oid, "amount": 2160})
+    r = c.post("/api/v1/payments/initiate", headers=H(cust), json={"order_id": oid, "amount": expected_total})
     assert r.status_code == 200 and r.json()["mode"] == "simulation", r.text
     txn = r.json()["txn_id"]
     assert c.post("/api/v1/payments/simulate", headers=H(cust), json={"txn_id": txn, "success": True}).status_code == 200
@@ -95,7 +96,7 @@ def test_full_purchase_flow(c, monkeypatch, admin_tok):
     payment_count = db.query(Payment).count()
     db.close()
     monkeypatch.setattr(settings, "app_env", "production")
-    assert c.post("/api/v1/payments/initiate", headers=H(cust), json={"order_id": oid, "amount": 2160}).status_code == 400
+    assert c.post("/api/v1/payments/initiate", headers=H(cust), json={"order_id": oid, "amount": 1}).status_code == 400
     db = SessionLocal()
     assert db.query(Payment).count() == payment_count
     db.close()

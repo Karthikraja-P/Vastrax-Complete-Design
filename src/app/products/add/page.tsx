@@ -2,7 +2,7 @@
 import Image from "next/image";
 
 import { useState, useRef, useEffect } from "react";
-import { ArrowLeft, Save, Sparkles, Image as ImageIcon, Box, Plus, X as XIcon, Upload, Loader2, Check, RotateCw, Eye, ChevronLeft, ChevronRight } from "lucide-react";
+import { ArrowLeft, Save, Sparkles, Image as ImageIcon, Box, Plus, X as XIcon, Upload, Loader2, Check, RotateCw, Eye, ChevronLeft, ChevronRight, Star, GripVertical } from "lucide-react";
 import Link from "next/link";
 import { clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
@@ -21,8 +21,8 @@ function cn(...inputs: (string | undefined | null | false)[]) {
 const tabs = [
   { id: "basic", label: "Basic Info" },
   { id: "pricing", label: "Pricing & Inventory" },
-  { id: "images", label: "Product Images", icon: ImageIcon },
-  { id: "3d", label: "3D Product", icon: Box, highlight: true },
+  { id: "images", label: "Product Images" },
+  { id: "3d", label: "3D Product" },
 ];
 
 interface UploadedImage {
@@ -116,16 +116,6 @@ export default function AddProductPage() {
     });
   };
 
-  const handleMoveImage = (fromIndex: number, toIndex: number) => {
-    if (toIndex < 0 || toIndex >= images.length) return;
-    setImages((prev) => {
-      const updated = [...prev];
-      const [moved] = updated.splice(fromIndex, 1);
-      updated.splice(toIndex, 0, moved);
-      return updated;
-    });
-  };
-
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     const files = Array.from(e.dataTransfer.files).filter((f) =>
@@ -137,6 +127,42 @@ export default function AddProductPage() {
       preview: URL.createObjectURL(file),
     }));
     setImages((prev) => [...prev, ...newImages]);
+  };
+
+  // Image Reordering & Swapping Handlers
+  const handleMoveImage = (fromIndex: number, toIndex: number) => {
+    if (toIndex < 0 || toIndex >= images.length) return;
+    setImages((prev) => {
+      const updated = [...prev];
+      const [moved] = updated.splice(fromIndex, 1);
+      updated.splice(toIndex, 0, moved);
+      return updated;
+    });
+  };
+
+  const handleMakePrimary = (index: number) => {
+    if (index === 0) return;
+    handleMoveImage(index, 0);
+    showToast("Primary cover image set");
+  };
+
+  const [draggedImageIndex, setDraggedImageIndex] = useState<number | null>(null);
+
+  const handleCardDragStart = (e: React.DragEvent, index: number) => {
+    setDraggedImageIndex(index);
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  const handleCardDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+  };
+
+  const handleCardDrop = (e: React.DragEvent, dropIndex: number) => {
+    e.preventDefault();
+    if (draggedImageIndex === null || draggedImageIndex === dropIndex) return;
+    handleMoveImage(draggedImageIndex, dropIndex);
+    setDraggedImageIndex(null);
   };
 
   // ─── 3D Photo Handlers ──────────────────────────────────────
@@ -243,11 +269,6 @@ export default function AddProductPage() {
       setActiveTab("basic");
       return;
     }
-    if (!colour.trim()) {
-      showToast("Please enter the product colour so customers can filter by colour.");
-      setActiveTab("basic");
-      return;
-    }
     if (!priceSelling || isNaN(parseFloat(priceSelling))) {
       showToast("Please enter a valid selling price");
       setActiveTab("pricing");
@@ -341,9 +362,7 @@ export default function AddProductPage() {
         </Link>
         <div>
           <h1 className="text-2xl font-bold text-foreground">Add New Product</h1>
-          <p className="text-sm text-muted-foreground">
-            Create a new product listing with AI-enhanced media.
-          </p>
+
         </div>
         <div className="ml-auto flex items-center gap-3">
           <button
@@ -391,12 +410,8 @@ export default function AddProductPage() {
                   )}
                 >
                   <div className="flex items-center gap-3">
-                    {tab.icon && <tab.icon className="w-4 h-4" />}
                     {tab.label}
                   </div>
-                  {tab.highlight && (
-                    <Sparkles className="w-3 h-3 text-accent" />
-                  )}
                 </button>
               ))}
             </nav>
@@ -429,8 +444,6 @@ export default function AddProductPage() {
                     <label className="block text-sm font-medium text-foreground mb-1.5">
                       SKU
                     </label>
-                    <p className="mb-2 text-xs text-muted-foreground">A unique internal code used to identify and track this product or size variant in inventory.</p>
-                    <p className="mb-2 text-xs text-muted-foreground">A unique internal code used to identify and track this product or size variant in inventory.</p>
                     <input
                       type="text"
                       value={sku}
@@ -489,14 +502,13 @@ export default function AddProductPage() {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-1.5">
-                      Colour <span className="text-red-500">*</span>
+                      Colour
                     </label>
                     <input
                       type="text"
                       value={colour}
                       onChange={(e) => setColour(e.target.value)}
                       placeholder="e.g. Ivory, Midnight Blue"
-                      required
                       className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent focus:ring-1 focus:ring-accent outline-none transition-all text-foreground"
                     />
                   </div>
@@ -625,6 +637,7 @@ export default function AddProductPage() {
                       </button>
                       <span className="text-sm font-medium text-foreground group-hover:text-accent transition-colors">
                         Featured Item
+                        <span className="mt-0.5 block text-xs font-normal text-muted-foreground">Highlights this product in featured storefront sections.</span>
                       </span>
                     </label>
                   </div>
@@ -726,62 +739,123 @@ export default function AddProductPage() {
 
               {/* Image preview grid */}
               {images.length > 0 && (
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 mt-4">
-                  {images.map((img, idx) => (
-                    <div
-                      key={img.id}
-                      className="relative aspect-square rounded-xl border border-border overflow-hidden group bg-surface-hover"
-                    >
-                      <Image width={1200} height={900} unoptimized
-                        src={img.preview}
-                        alt={`Product ${idx + 1}`}
-                        className="w-full h-full object-cover"
-                      />
-                      {/* Primary badge */}
-                      {idx === 0 && (
-                        <span className="absolute top-2 left-2 bg-accent text-white text-[10px] font-bold px-2 py-0.5 rounded-full z-10">
-                          PRIMARY
-                        </span>
-                      )}
-                      {/* Remove button */}
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveImage(img.id)}
-                        className="absolute top-2 right-2 w-6 h-6 bg-red-500/90 hover:bg-red-600 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10"
+                <div className="mt-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs text-muted-foreground">
+                      Drag cards or use arrow buttons to alter garment display order. <span className="text-accent font-medium">#1 is the primary storefront cover photo.</span>
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                    {images.map((img, idx) => (
+                      <div
+                        key={img.id}
+                        draggable
+                        onDragStart={(e) => handleCardDragStart(e, idx)}
+                        onDragOver={handleCardDragOver}
+                        onDrop={(e) => handleCardDrop(e, idx)}
+                        className={cn(
+                          "relative aspect-square rounded-xl border border-border overflow-hidden group bg-surface-hover transition-all cursor-grab active:cursor-grabbing select-none",
+                          draggedImageIndex === idx ? "opacity-30 ring-2 ring-accent scale-95" : "hover:border-accent/40 hover:shadow-lg"
+                        )}
                       >
-                        <XIcon className="w-3.5 h-3.5 text-white" />
-                      </button>
-                      {/* Reorder controls: gallery order follows the image list */}
-                      <div className="absolute inset-x-2 bottom-10 flex justify-between opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button type="button" disabled={idx === 0} onClick={() => handleMoveImage(idx, idx - 1)} aria-label="Move image earlier" title="Move image earlier" className="w-7 h-7 rounded-full bg-black/75 text-white flex items-center justify-center disabled:opacity-30"><ChevronLeft className="w-4 h-4" /></button>
-                        <button type="button" disabled={idx === images.length - 1} onClick={() => handleMoveImage(idx, idx + 1)} aria-label="Move image later" title="Move image later" className="w-7 h-7 rounded-full bg-black/75 text-white flex items-center justify-center disabled:opacity-30"><ChevronRight className="w-4 h-4" /></button>
+                        <Image width={1200} height={900} unoptimized
+                          src={img.preview}
+                          alt={`Product ${idx + 1}`}
+                          className="w-full h-full object-cover pointer-events-none"
+                        />
+
+                        {/* Top Bar Controls */}
+                        <div className="absolute top-2 inset-x-2 flex items-center justify-between z-10">
+                          <div className="flex items-center gap-1.5">
+                            {idx === 0 ? (
+                              <span className="bg-accent text-white text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 shadow-md">
+                                <Star className="w-3 h-3 fill-current" /> PRIMARY
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleMakePrimary(idx)}
+                                title="Set as primary cover image"
+                                className="bg-black/75 hover:bg-accent text-white text-[10px] font-medium px-2 py-0.5 rounded-full flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all shadow-md backdrop-blur-sm"
+                              >
+                                <Star className="w-3 h-3" /> Set Primary
+                              </button>
+                            )}
+                            <span className="bg-black/60 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full backdrop-blur-sm">
+                              #{idx + 1}
+                            </span>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveImage(img.id)}
+                            title="Remove image"
+                            className="w-6 h-6 bg-red-500/90 hover:bg-red-600 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-md"
+                          >
+                            <XIcon className="w-3.5 h-3.5 text-white" />
+                          </button>
+                        </div>
+
+                        {/* Swap Arrow Controls (Hover Overlay) */}
+                        <div className="absolute inset-x-2 top-1/2 -translate-y-1/2 flex items-center justify-between z-10 pointer-events-none">
+                          {idx > 0 ? (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleMoveImage(idx, idx - 1);
+                              }}
+                              title="Move Left (Earlier)"
+                              className="pointer-events-auto w-7 h-7 bg-black/80 hover:bg-accent text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all shadow-lg backdrop-blur-sm hover:scale-110"
+                            >
+                              <ChevronLeft className="w-4 h-4" />
+                            </button>
+                          ) : <div />}
+
+                          {idx < images.length - 1 ? (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleMoveImage(idx, idx + 1);
+                              }}
+                              title="Move Right (Later)"
+                              className="pointer-events-auto w-7 h-7 bg-black/80 hover:bg-accent text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all shadow-lg backdrop-blur-sm hover:scale-110 ml-auto"
+                            >
+                              <ChevronRight className="w-4 h-4" />
+                            </button>
+                          ) : <div />}
+                        </div>
+
+                        {/* Drag Handle Indicator (Bottom-right hover) */}
+                        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-40 transition-opacity pointer-events-none">
+                          <GripVertical className="w-8 h-8 text-white drop-shadow-md" />
+                        </div>
+
+                        {/* File info footer */}
+                        <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent px-2.5 py-1.5 pointer-events-none">
+                          <p className="text-[10px] text-white font-medium truncate">
+                            {img.file?.name || `Garment View ${idx + 1}`}
+                          </p>
+                          <p className="text-[9px] text-white/60">
+                            {((img.file?.size || 0) / 1024).toFixed(0)} KB
+                          </p>
+                        </div>
                       </div>
-                      {/* File name */}
-                      <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/70 to-transparent px-2 py-2">
-                        <p className="text-[10px] text-white font-medium truncate">
-                          {img.file?.name}
-                        </p>
-                        <p className="text-[9px] text-white/60">
-                          {((img.file?.size || 0) / 1024).toFixed(0)} KB
-                        </p>
-                      </div>
-                      {/* Order badge */}
-                      <span className="absolute top-2 right-10 bg-black/60 text-white text-[10px] font-bold px-2 py-0.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity z-10">
-                        #{idx + 1}
+                    ))}
+
+                    {/* Add more button */}
+                    <button
+                      type="button"
+                      onClick={() => imageInputRef.current?.click()}
+                      className="aspect-square bg-background border-2 border-dashed border-border rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-accent/50 hover:bg-accent/5 transition-all group"
+                    >
+                      <Plus className="w-6 h-6 text-muted-foreground group-hover:text-accent transition-colors" />
+                      <span className="text-[10px] text-muted-foreground mt-1.5 font-medium">
+                        Add more
                       </span>
-                    </div>
-                  ))}
-                  {/* Add more button */}
-                  <button
-                    type="button"
-                    onClick={() => imageInputRef.current?.click()}
-                    className="aspect-square bg-background border-2 border-dashed border-border rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-accent/50 hover:bg-accent/5 transition-all group"
-                  >
-                    <Plus className="w-6 h-6 text-muted-foreground group-hover:text-accent transition-colors" />
-                    <span className="text-[10px] text-muted-foreground mt-1.5 font-medium">
-                      Add more
-                    </span>
-                  </button>
+                    </button>
+                  </div>
                 </div>
               )}
 

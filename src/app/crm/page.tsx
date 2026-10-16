@@ -203,7 +203,7 @@ export default function CRMPage() {
 
   return <main className="min-h-screen bg-background p-5 md:p-8">
     <div className="mx-auto max-w-7xl space-y-6">
-      <header><p className="text-xs font-semibold uppercase tracking-[.2em] text-accent">Vastrax Business</p><h1 className="mt-2 text-3xl font-bold text-foreground">Customer relationships</h1><p className="mt-1 text-sm text-muted-foreground">Customer purchase history, prospects, and team follow-ups in one place.</p></header>
+      <header><h1 className="mt-2 text-3xl font-bold text-foreground">Customer relationships</h1></header>
       {error && <div role="alert" className="rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-400">{error}</div>}
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{[["Customers", overview.customers], ["Open leads", overview.open_leads], ["Tasks due", overview.due_tasks], ["Logged activities", overview.logged_activities]].map(([label, value]) => <div className={card} key={String(label)}><p className="text-sm text-muted-foreground">{label}</p><p className="mt-2 text-2xl font-semibold text-foreground">{value}</p></div>)}</section>
       <div className="flex flex-wrap gap-2">{(["customers", "leads", "followups", "campaigns", "support"] as const).map((name) => <button key={name} onClick={() => setTab(name)} className={`rounded-full px-4 py-2 text-sm capitalize ${tab === name ? "bg-accent text-white" : "bg-surface text-foreground"}`}>{name === "followups" ? "Follow-ups" : name === "support" ? "Support" : name}</button>)}</div>
