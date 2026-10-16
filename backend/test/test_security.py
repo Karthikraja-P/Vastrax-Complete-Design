@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from fastapi import HTTPException
 
 from app.core import rate_limit
-from app.core.exceptions import BadRequestError
+from app.core.exceptions import BadGatewayError
 from app.api.routes.settings import AppSettingsSchema, PUBLIC_FIELDS
 from app.services import payment_service as ps
 
@@ -52,5 +52,5 @@ def test_production_razorpay_failure_does_not_simulate(monkeypatch):
         raise ps.requests.ConnectionError("provider unavailable")
 
     monkeypatch.setattr(ps.requests, "post", fail_request)
-    with pytest.raises(BadRequestError, match="Online payments are not available"):
+    with pytest.raises(BadGatewayError, match="Razorpay could not create the payment order"):
         ps.PaymentService(db=None)._call_razorpay(SimpleNamespace(id="test-txn", status="created"), Decimal("10"))
