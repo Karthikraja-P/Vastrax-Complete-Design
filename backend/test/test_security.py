@@ -52,4 +52,4 @@ def test_production_razorpay_failure_does_not_simulate(monkeypatch):
 
     monkeypatch.setattr(ps.requests, "post", fail_request)
     with pytest.raises(BadRequestError, match="Online payments are not available"):
-        ps.PaymentService(db=None)._call_razorpay(SimpleNamespace(id="test-txn"), Decimal("10"))
+        ps.PaymentService(db=None)._call_razorpay(SimpleNamespace(id="test-txn", status="created"), Decimal("10"))
