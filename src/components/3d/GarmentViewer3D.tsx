@@ -43,9 +43,9 @@ export function GarmentViewer3D({
 
   // Backdrop presets
   const backdrops = [
-    { name: "Obsidian", bg: "radial-gradient(circle at 50% 35%, #181d28 0%, #090b10 100%)" },
-    { name: "Cyber Dark", bg: "radial-gradient(circle at 50% 30%, #1c1c1c 0%, #0a0a0a 100%)" },
-    { name: "Studio Slate", bg: "radial-gradient(circle at 50% 30%, #2e384d 0%, #151a24 100%)" },
+    { name: "Studio White", bg: "radial-gradient(circle at 50% 30%, #ffffff 0%, #f5f5f5 100%)" },
+    { name: "Warm White", bg: "radial-gradient(circle at 50% 30%, #ffffff 0%, #f7f4ef 100%)" },
+    { name: "Soft Gray", bg: "radial-gradient(circle at 50% 30%, #ffffff 0%, #eeeeee 100%)" },
   ];
 
   // Load model-viewer script dynamically with fallback

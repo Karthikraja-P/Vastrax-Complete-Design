@@ -1,8 +1,6 @@
 import Image from "next/image";
-import { useState } from "react";
-import { X, Trash2, Plus, Minus, ArrowRight, ShieldCheck, ShoppingBag, Sparkles } from "lucide-react";
+import { X, Trash2, Plus, Minus, ArrowRight, ShoppingBag } from "lucide-react";
 import Link from "next/link";
-import { promosApi } from "@/lib/api";
 import { CartItem, updateCartQuantity as updateQty, removeFromCart as removeItemFromCart } from "@/lib/cart";
 import { useCartItems } from "@/hooks/useCartItems";
 import { showToast } from "@/lib/toast";
@@ -17,12 +15,6 @@ interface CartDrawerProps {
 
 export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
   const cartItems = useCartItems();
-
-  const [promoCode, setPromoCode] = useState("");
-  const [discountPercent, setDiscountPercent] = useState(0);
-  const [, setPromoMessage] = useState("");
-  const [promoError, setPromoError] = useState("");
-  const [promoApplied, setPromoApplied] = useState(false);
 
   const updateQuantity = (id: number | string, delta: number, size?: string) => {
     updateQty(id, delta, size);
@@ -40,25 +32,8 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
 
   const subtotal = cartItems.reduce((acc, item) => acc + item.price * item.quantity, 0);
 
-  const applyPromo = async () => {
-    if (!promoCode.trim()) return;
-    const res = await promosApi.validate(promoCode, subtotal);
-    if (res.valid) {
-      setDiscountPercent(res.discountPercentage);
-      setPromoApplied(true);
-      setPromoMessage(res.message);
-      setPromoError("");
-    } else {
-      setPromoError(res.message);
-      setPromoMessage("");
-      setDiscountPercent(0);
-      setPromoApplied(false);
-    }
-  };
-
-  const discountAmount = (subtotal * discountPercent) / 100;
   const shipping = subtotal >= 1999 || subtotal === 0 ? 0 : 99;
-  const total = Math.max(0, subtotal - discountAmount + shipping);
+  const total = subtotal + shipping;
 
   if (!isOpen) return null;
 
@@ -92,28 +67,6 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
           </button>
         </div>
 
-        {/* Free Shipping Progress */}
-        <div className="px-6 py-3 bg-accent/5 border-b border-border/50">
-          <div className="flex items-center justify-between text-xs mb-1.5">
-            <span className="font-medium text-foreground">
-              {subtotal >= 1999 ? (
-                <span className="text-green-500 font-semibold flex items-center gap-1">
-                  <Sparkles className="w-3.5 h-3.5" /> You unlocked Complimentary Global Delivery!
-                </span>
-              ) : (
-                `Add ₹${(1999 - subtotal).toLocaleString('en-IN')} more for Complimentary Delivery`
-              )}
-            </span>
-            <span className="text-muted-foreground text-[11px]">₹{subtotal.toLocaleString('en-IN')} / ₹1,999</span>
-          </div>
-          <div className="w-full bg-border rounded-full h-1.5 overflow-hidden">
-            <div 
-              className="bg-accent h-full rounded-full transition-all duration-500"
-              style={{ width: `${Math.min(100, (subtotal / 1999) * 100)}%` }}
-            />
-          </div>
-        </div>
-
         {/* Cart Item List */}
         <div className="flex-1 overflow-y-auto p-6 space-y-4">
           {cartItems.length === 0 ? (
@@ -139,7 +92,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                 className="flex gap-4 p-3 bg-background/60 rounded-xl border border-border/80 group hover:border-accent/30 transition-all"
               >
                 <div className="w-20 h-24 rounded-lg bg-surface-hover overflow-hidden shrink-0 border border-border/40">
-                  <Image width={1200} height={900} unoptimized src={item.image} alt={item.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                  <Image width={1200} height={900} unoptimized src={item.image} alt={item.name} className="w-full h-full object-contain bg-[#f8f7f4] p-1" />
                 </div>
                 
                 <div className="flex-1 flex flex-col justify-between py-0.5">
@@ -186,39 +139,12 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
         {cartItems.length > 0 && (
           <div className="p-6 border-t border-border bg-surface/90 space-y-4">
             
-            {/* Promo Code Input */}
-            <div className="space-y-1.5">
-              <div className="flex gap-2">
-                <input 
-                  type="text" 
-                  value={promoCode}
-                  onChange={(e) => setPromoCode(e.target.value)}
-                  placeholder="Promo code (e.g. VASTRAX10)"
-                  className="flex-1 px-3 py-2 bg-background border border-border rounded-lg text-xs focus:outline-none focus:border-accent text-foreground uppercase placeholder:normal-case placeholder:text-muted-foreground"
-                />
-                <button 
-                  onClick={applyPromo}
-                  className="px-4 py-2 bg-background border border-border hover:bg-surface-hover rounded-lg text-xs font-semibold text-foreground transition-colors"
-                >
-                  Apply
-                </button>
-              </div>
-              {promoApplied && <p className="text-[11px] text-green-500 font-medium">✓ Promo applied: {discountPercent}% off</p>}
-              {promoError && <p className="text-[11px] text-red-400 font-medium">{promoError}</p>}
-            </div>
-
             {/* Price Calculations */}
             <div className="space-y-2 text-xs">
               <div className="flex justify-between text-muted-foreground">
                 <span>Subtotal</span>
                 <span className="text-foreground font-medium">₹{subtotal.toLocaleString('en-IN')}</span>
               </div>
-              {discountPercent > 0 && (
-                <div className="flex justify-between text-green-500">
-                  <span>Discount ({discountPercent}%)</span>
-                  <span>-₹{discountAmount.toLocaleString('en-IN')}</span>
-                </div>
-              )}
               <div className="flex justify-between text-muted-foreground">
                 <span>Estimated Shipping</span>
                 <span className="text-foreground font-medium">{shipping === 0 ? "Free" : `₹${shipping.toLocaleString('en-IN')}`}</span>
@@ -239,11 +165,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                 Proceed to Checkout
                 <ArrowRight className="w-4 h-4" />
               </Link>
-              
-              <div className="flex items-center justify-center gap-2 text-[11px] text-muted-foreground pt-1">
-                <ShieldCheck className="w-3.5 h-3.5 text-accent" />
-                <span>Encrypted 256-bit Secure Checkout</span>
-              </div>
+
             </div>
           </div>
         )}

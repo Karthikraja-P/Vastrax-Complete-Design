@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import DateTime, String, Text, Index
+from sqlalchemy import DateTime, String, Text, Index, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -28,5 +28,6 @@ class SupportTicket(Base):
     status: Mapped[str] = mapped_column(String(20), default="OPEN")  # OPEN, IN_PROGRESS, RESOLVED, CLOSED
     priority: Mapped[str] = mapped_column(String(20), default="MEDIUM")  # LOW, MEDIUM, HIGH, URGENT
     session_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    assigned_to: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now)

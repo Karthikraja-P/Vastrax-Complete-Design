@@ -2,7 +2,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class PaymentCreate(BaseModel):
@@ -12,8 +12,9 @@ class PaymentCreate(BaseModel):
 
 
 class RefundIn(BaseModel):
-    txn_id: str
-    amount: Decimal
+    txn_id: str = Field(min_length=1, max_length=50)
+    amount: Decimal = Field(gt=0, max_digits=10, decimal_places=2)
+    return_id: str | None = Field(default=None, max_length=36)
 
 
 class PaymentVerify(BaseModel):

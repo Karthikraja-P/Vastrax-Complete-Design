@@ -1,20 +1,23 @@
 from decimal import Decimal
 from typing import Optional
 
-from sqlalchemy import text
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.core.exceptions import BadRequestError, InternalError, NotFoundError
+from app.core.exceptions import BadRequestError, ForbiddenError, InternalError, NotFoundError
 from fastapi import UploadFile
 import requests
 from app.core.logging import get_logger
 from app.models.category import Category
 from app.models.product import Product
+from app.models.order import Order
+from app.models.order_item import OrderItem
 from app.models.business import StockMovement
 from app.models.product_image import ProductImage
 from app.models.product_variant import ProductVariant
 from app.schemas.products import ProductCreate, ProductResponse, ProductUpdate
+from app.services.product_image_storage import store_product_image
 
 logger = get_logger(__name__)
 
@@ -126,7 +129,7 @@ class ProductService:
         for img_data in payload.images:
             self.db.add(ProductImage(
                 product_id=product.id,
-                s3_url=img_data.s3_url,
+                s3_url=store_product_image(img_data.s3_url),
                 display_order=img_data.display_order,
             ))
         for var_data in payload.variants:
@@ -175,7 +178,7 @@ class ProductService:
             for img_data in payload.images:
                 self.db.add(ProductImage(
                     product_id=product.id,
-                    s3_url=img_data.s3_url,
+                    s3_url=store_product_image(img_data.s3_url),
                     display_order=img_data.display_order,
                 ))
 
@@ -358,6 +361,22 @@ class ProductService:
         )
         return [ReviewResponse.model_validate(r) for r in reviews]
 
+    def review_eligibility(self, product_id: str, user) -> dict:
+        from app.models.review import ProductReview
+
+        if not self.db.query(Product.id).filter(Product.id == product_id).first():
+            raise NotFoundError("Product not found")
+        delivered_purchase = self.db.query(OrderItem.id).join(Order).filter(
+            Order.user_id == user.id,
+            OrderItem.product_id == product_id,
+            func.lower(Order.status) == "delivered",
+        ).first() is not None
+        already_reviewed = self.db.query(ProductReview.id).filter(
+            ProductReview.product_id == product_id,
+            ProductReview.user_id == user.id,
+        ).first() is not None
+        return {"eligible": delivered_purchase and not already_reviewed, "already_reviewed": already_reviewed}
+
     def add_review(self, product_id: str, user, rating: int, comment: Optional[str] = None):
         import uuid
         from app.models.review import ProductReview
@@ -366,6 +385,12 @@ class ProductService:
         product = self.db.query(Product).filter(Product.id == product_id).first()
         if not product:
             raise NotFoundError("Product not found")
+
+        eligibility = self.review_eligibility(product_id, user)
+        if eligibility["already_reviewed"]:
+            raise BadRequestError("You have already reviewed this product")
+        if not eligibility["eligible"]:
+            raise ForbiddenError("Reviews are available after a delivered purchase of this product")
 
         rev = ProductReview(
             id=f"rev-{uuid.uuid4().hex[:8]}",

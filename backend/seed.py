@@ -16,6 +16,9 @@ from app.models.user import User
 
 
 def seed_database():
+    app_env = os.getenv("APP_ENV", os.getenv("ENVIRONMENT", "development")).strip().lower()
+    if app_env in {"production", "prod"} and os.getenv("ALLOW_DEMO_SEED", "").lower() != "true":
+        raise RuntimeError("Demo seed data is disabled in production. Enable it only for an intentional disposable test database.")
     db = SessionLocal()
     try:
         # Seed dummy users

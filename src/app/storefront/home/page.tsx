@@ -1,8 +1,8 @@
 "use client";
 import Image from "next/image";
 
-import { useState, useRef, useEffect } from "react";
-import { User, ShoppingBag, Search, ChevronRight, ChevronLeft, ArrowRight, Heart } from "lucide-react";
+import { useState, useEffect } from "react";
+import { User, ShoppingBag, ChevronRight, ArrowRight, Heart } from "lucide-react";
 import { AuthModal } from "@/components/auth/AuthModal";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { CartDrawer } from "@/components/layout/CartDrawer";
@@ -20,6 +20,7 @@ import StorefrontMobileControls from "@/components/layout/StorefrontMobileContro
 
 interface StoreCategory {
   id?: string;
+  productId?: string | number;
   name: string;
   title?: string;
   slug: string;
@@ -80,23 +81,36 @@ export default function StorefrontHome() {
           return null;
         };
 
-        // Create category -> latest uploaded product image mapping
+        const womenProducts = Array.isArray(prods)
+          ? prods.filter((p) => String(p.gender || "").trim().toLowerCase() === "women")
+          : [];
+        const womenCategoryKeys = new Set<string>();
+        for (const product of womenProducts) {
+          const categoryId = String(product.category_id || product.categoryId || "").toLowerCase();
+          const categoryName = String(product.category_name || product.category || "").toLowerCase();
+          if (categoryId) womenCategoryKeys.add(categoryId);
+          if (categoryName) womenCategoryKeys.add(categoryName);
+        }
+
+        // Create category -> latest uploaded women's product image mapping
         const catLatestImageMap = new Map<string, string>();
-        if (Array.isArray(prods)) {
-          for (const p of prods) {
-            const img = getProductImage(p);
-            if (img) {
-              const catId = String(p.category_id || p.categoryId || "").toLowerCase();
-              const catName = String(p.category_name || p.category || "").toLowerCase();
-              if (catId && !catLatestImageMap.has(catId)) catLatestImageMap.set(catId, img);
-              if (catName && !catLatestImageMap.has(catName)) catLatestImageMap.set(catName, img);
-            }
+        for (const p of womenProducts) {
+          const img = getProductImage(p);
+          if (img) {
+            const catId = String(p.category_id || p.categoryId || "").toLowerCase();
+            const catName = String(p.category_name || p.category || "").toLowerCase();
+            if (catId && !catLatestImageMap.has(catId)) catLatestImageMap.set(catId, img);
+            if (catName && !catLatestImageMap.has(catName)) catLatestImageMap.set(catName, img);
           }
         }
 
         if (cats && Array.isArray(cats) && cats.length > 0) {
           const mapped = cats
-            .filter((c: CategoryItem) => c.is_active !== false && Number(c.count || c.product_count || 0) > 0)
+            .filter((c: CategoryItem) =>
+              c.is_active !== false &&
+              Number(c.count || c.product_count || 0) > 0 &&
+              [c.id, c.name, c.slug].some((key) => womenCategoryKeys.has(String(key || "").toLowerCase()))
+            )
             .map((c: CategoryItem, idx: number) => {
             const catId = String(c.id || "").toLowerCase();
             const catName = String(c.name || "").toLowerCase();
@@ -115,10 +129,28 @@ export default function StorefrontHome() {
             };
           });
           setCategories(mapped);
-          setCollections(mapped);
+          setCollections(womenProducts
+            .filter((product) => getProductImage(product))
+            .map((product, idx) => ({
+              id: String(idx + 1).padStart(2, "0"),
+              productId: product.id,
+              name: product.name || product.title || "Collection",
+              title: product.name || product.title || "Collection",
+              slug: String(product.name || product.title || "collection").toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+              image: getProductImage(product) || "/product-placeholder.svg",
+            })));
         } else {
           setCategories([]);
-          setCollections([]);
+          setCollections(womenProducts
+            .filter((product) => getProductImage(product))
+            .map((product, idx) => ({
+              id: String(idx + 1).padStart(2, "0"),
+              productId: product.id,
+              name: product.name || product.title || "Collection",
+              title: product.name || product.title || "Collection",
+              slug: String(product.name || product.title || "collection").toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+              image: getProductImage(product) || "/product-placeholder.svg",
+            })));
 
         }
       } catch (err) {
@@ -132,9 +164,6 @@ export default function StorefrontHome() {
   const [isStylistOpen, setIsStylistOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [activeCollection, setActiveCollection] = useState(0);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const [canScrollLeft, setCanScrollLeft] = useState(false);
-  const [canScrollRight, setCanScrollRight] = useState(true);
 
   useEffect(() => {
     const handleOpenStylist = () => setIsStylistOpen(true);
@@ -142,55 +171,17 @@ export default function StorefrontHome() {
     return () => window.removeEventListener("open-stylist", handleOpenStylist);
   }, []);
 
-  const handleScroll = () => {
-    if (scrollRef.current) {
-      const { scrollLeft, scrollWidth, clientWidth } = scrollRef.current;
-      setCanScrollLeft(scrollLeft > 0);
-      setCanScrollRight(scrollLeft < scrollWidth - clientWidth - 5);
-    }
-  };
-
-  useEffect(() => {
-    handleScroll();
-    window.addEventListener("resize", handleScroll);
-    return () => window.removeEventListener("resize", handleScroll);
-  }, []);
-
-  const scrollRight = () => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollBy({ left: 350, behavior: "smooth" });
-    }
-  };
-
-  const scrollLeft = () => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollBy({ left: -350, behavior: "smooth" });
-    }
-  };
-
-  const getCollectionHeight = (idx: number) => {
-    const diff = Math.abs(idx - activeCollection);
-    if (diff === 0) return "100%";
-    if (diff === 1) return "90%";
-    if (diff === 2) return "80%";
-    if (diff === 3) return "70%";
-    return "65%";
-  };
-
   return (
     <div className="min-h-screen bg-surface text-foreground font-sans flex flex-col">
       {/* Storefront Header */}
       <header className="h-16 md:h-20 flex items-center justify-between relative px-3 sm:px-6 md:px-12 sticky top-2 md:top-4 bg-background z-40 rounded-[1.5rem] sm:rounded-[2rem] shadow-sm border border-border/50 mx-2 md:mx-4 mt-2 md:mt-4">
         {/* Left Side: Navigation */}
         <div className="flex items-center gap-2 sm:gap-6 z-10">
-          <StorefrontMobileControls />
-          <nav className="hidden 2xl:flex items-center gap-8">
-            <Link href="/storefront/collections?sort=newest" className="text-lg font-medium hover:text-accent transition-colors">New Arrivals</Link>
-            <Link href="/storefront/collections?gender=Women" className="text-lg font-medium hover:text-accent transition-colors">Women</Link>
-            <Link href="/storefront/collections?gender=Men" className="text-lg font-medium hover:text-accent transition-colors">Men</Link>
-            <Link href="/storefront/collections?gender=Kids" className="text-lg font-medium hover:text-accent transition-colors">Kids</Link>
-            <Link href="/storefront/collections" className="text-lg font-medium hover:text-accent transition-colors">Collections</Link>
+          <nav aria-label="Store navigation" className="flex items-center gap-2 sm:gap-4 2xl:gap-8">
+            <Link href="/storefront/home" className="text-xs sm:text-sm 2xl:text-lg font-medium hover:text-accent transition-colors">Home</Link>
+            <Link href="/storefront/collections?gender=Women" className="text-xs sm:text-sm 2xl:text-lg font-medium hover:text-accent transition-colors">Collections</Link>
           </nav>
+          <StorefrontMobileControls showMenu={false} inlineSearch />
         </div>
 
         {/* Center: Logo */}
@@ -219,20 +210,6 @@ export default function StorefrontHome() {
               <span className="absolute -top-1 -right-1 bg-[#e07a3f] text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center font-bold shadow-sm">{favorites.length}</span>
             )}
           </button>
-          <div className="hidden 2xl:flex items-center gap-2 px-3 py-1.5 bg-surface border border-border rounded-full transition-all text-sm w-48 lg:w-64 focus-within:border-accent focus-within:ring-1 focus-within:ring-accent">
-            <Search className="w-4 h-4 text-muted-foreground" />
-            <input
-              type="text"
-              placeholder="Search garments..."
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && (e.target as HTMLInputElement).value.trim()) {
-                  router.push(`/storefront/collections?search=${encodeURIComponent((e.target as HTMLInputElement).value.trim())}`);
-                }
-              }}
-              className="flex-1 bg-transparent border-none outline-none text-foreground placeholder:text-muted-foreground text-sm"
-            />
-          </div>
-
           <div className="relative">
             <button
               onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
@@ -315,7 +292,8 @@ export default function StorefrontHome() {
       {/* Hero Section Wrapper with Gap */}
       <div className="flex-1 bg-surface px-2 pb-2 md:px-4 md:pb-4 pt-4">
         <main className="relative h-full min-h-[calc(100vh-120px)] rounded-[2rem] md:rounded-[2.5rem] overflow-hidden bg-background shadow-sm border border-border/50">
-          <div className="absolute inset-0 z-0 bg-gradient-to-br from-background via-surface to-accent/10" />
+          <div className="absolute inset-0 z-0 bg-cover bg-center" style={{ backgroundImage: "url('/images/hero_hanger_dresses.jpg')" }} aria-hidden="true" />
+          <div className="absolute inset-0 z-0 bg-gradient-to-r from-background/90 via-background/65 to-background/30" aria-hidden="true" />
 
           <div className="relative z-10 h-full flex items-center px-6 md:px-12 max-w-7xl mx-auto py-20">
             <div className="max-w-xl text-foreground">
@@ -326,10 +304,10 @@ export default function StorefrontHome() {
                 Explore the products currently available in our store.
               </p>
               <div className="flex flex-wrap gap-4">
-                <Link href="/storefront/collections" className="inline-block px-10 py-4 bg-accent text-accent-foreground text-lg hover:bg-accent-hover rounded-full font-semibold transition-colors duration-300">
+                <Link href="/storefront/collections?gender=Women" className="inline-block px-10 py-4 bg-accent text-accent-foreground text-lg hover:bg-accent-hover rounded-full font-semibold transition-colors duration-300">
                   Shop Now &rarr;
                 </Link>
-                <Link href="/storefront/collections?sort=newest" className="inline-block px-10 py-4 bg-transparent border border-border text-foreground text-lg hover:bg-surface hover:border-foreground rounded-full font-semibold transition-colors duration-300">
+                <Link href="/storefront/collections?gender=Women&sort=newest" className="inline-block px-10 py-4 bg-transparent border border-border text-foreground text-lg hover:bg-surface hover:border-foreground rounded-full font-semibold transition-colors duration-300">
                   New Arrivals
                 </Link>
               </div>
@@ -346,52 +324,32 @@ export default function StorefrontHome() {
                 Shop by <span className="font-semibold">Category</span>
               </h2>
             </div>
-            <Link href="/storefront/collections" className="text-sm font-medium text-muted-foreground hover:text-accent transition-colors flex items-center gap-1">
+            <Link href="/storefront/collections?gender=Women" className="text-sm font-medium text-muted-foreground hover:text-accent transition-colors flex items-center gap-1">
               View All &rarr;
             </Link>
           </div>
 
-          <div className="relative group/slider mt-4 max-w-7xl mx-auto px-6 md:px-12">
-            {canScrollLeft && (
-              <button
-                onClick={scrollLeft}
-                className="absolute -left-6 top-1/2 -translate-y-1/2 z-10 w-12 h-12 bg-background border border-border shadow-lg rounded-full hidden md:flex items-center justify-center text-foreground hover:text-accent hover:border-accent transition-all opacity-0 group-hover/slider:opacity-100"
-                aria-label="Scroll left"
-              >
-                <ChevronLeft className="w-6 h-6 mr-1" />
-              </button>
-            )}
-
-            <div
-              ref={scrollRef}
-              onScroll={handleScroll}
-              className="flex gap-4 md:gap-8 overflow-x-auto pb-6 snap-x snap-mandatory [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
-            >
+          <div className="mt-4 max-w-7xl mx-auto px-6 md:px-12">
+            <div className="grid gap-4 md:gap-6 pb-2 [grid-template-columns:repeat(auto-fit,minmax(min(100%,17rem),1fr))]">
               {categories.map((cat, idx) => (
-                <Link key={idx} href={`/storefront/collections?category=${encodeURIComponent(cat.name)}`} className="flex-shrink-0 w-52 md:w-[280px] snap-start group">
-                  <div className="bg-background rounded-2xl md:rounded-3xl p-5 md:p-8 shadow-sm border border-border/30 h-72 md:h-[360px] flex flex-col items-center justify-between transition-transform duration-300 group-hover:-translate-y-2 group-hover:shadow-md">
-                    <div className="flex-1 w-full relative flex items-center justify-center overflow-hidden rounded-xl mb-4 md:mb-6">
+                <Link key={idx} href={`/storefront/collections?gender=Women&category=${encodeURIComponent(cat.name)}`} className="group min-w-0">
+                  <div className="overflow-hidden rounded-2xl md:rounded-3xl border border-border/50 bg-[#f6f4f0] transition-all duration-300 group-hover:-translate-y-1 group-hover:shadow-lg group-hover:border-accent/40">
+                    <div className="relative aspect-[4/5] w-full overflow-hidden bg-[#f6f4f0]">
                       <Image width={1200} height={900} unoptimized
                         src={cat.image}
                         alt={cat.name}
-                        className="w-full h-full object-cover dark:opacity-90"
+                        className="h-full w-full object-contain p-3 md:p-5"
                       />
                     </div>
-                    <h3 className="text-sm md:text-base font-semibold text-foreground text-center">{cat.name}</h3>
+                    <div className="flex items-center justify-between gap-3 bg-background px-4 py-4 md:px-6">
+                      <h3 className="text-sm md:text-base font-semibold text-foreground">{cat.name}</h3>
+                      <ArrowRight aria-hidden="true" className="h-4 w-4 shrink-0 text-accent transition-transform group-hover:translate-x-1" />
+                    </div>
                   </div>
                 </Link>
               ))}
+              {categories.length === 0 && <p className="col-span-full rounded-2xl border border-dashed border-border p-10 text-center text-sm text-muted-foreground">Categories will appear here as products are added.</p>}
             </div>
-
-            {canScrollRight && (
-              <button
-                onClick={scrollRight}
-                className="absolute -right-6 top-1/2 -translate-y-1/2 z-10 w-12 h-12 bg-background border border-border shadow-lg rounded-full hidden md:flex items-center justify-center text-foreground hover:text-accent hover:border-accent transition-all opacity-0 group-hover/slider:opacity-100"
-                aria-label="Scroll right"
-              >
-                <ChevronRight className="w-6 h-6 ml-1" />
-              </button>
-            )}
           </div>
         </section>
 
@@ -406,7 +364,6 @@ export default function StorefrontHome() {
 
           <div className="relative group/colSlider max-w-7xl mx-auto px-6 md:px-12">
             <div
-              ref={scrollRef} // Reusing the same ref or we can just scroll the target directly
               className="h-[400px] md:h-[500px] flex items-center justify-start gap-2 md:gap-4 w-full overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] py-4"
             >
               {collections.map((col, idx) => {
@@ -417,37 +374,38 @@ export default function StorefrontHome() {
                     key={idx}
                     onMouseEnter={() => setActiveCollection(idx)}
                   onClick={() => setActiveCollection(idx)}
-                  className={`relative overflow-hidden bg-[#1f1f1f] rounded-2xl md:rounded-[2rem] cursor-pointer transition-all duration-500 ease-[cubic-bezier(0.25,1,0.5,1)] flex items-end shrink-0
-                    ${isActive ? 'w-[280px] md:w-[450px] lg:w-[550px]' : 'w-20 md:w-28 lg:w-36'}
+                    className={`relative overflow-hidden bg-[#f8f7f4] rounded-2xl md:rounded-[2rem] cursor-pointer transition-all duration-500 ease-[cubic-bezier(0.25,1,0.5,1)] flex items-end shrink-0
+                    ${isActive ? 'flex-1 basis-0 min-w-[190px]' : 'w-14 md:w-20 lg:w-24'}
                   `}
-                  style={{ height: getCollectionHeight(idx) }}
+                  style={{ height: "100%" }}
                 >
                   <Image width={1200} height={900} unoptimized
                     src={String(col.image || "/placeholder.svg")}
                     alt={String(col.title || "Collection")}
-                    className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 hover:scale-105 opacity-90"
+                    className="absolute inset-0 w-full h-full object-contain p-3 md:p-5 bg-[#f8f7f4] transition-transform duration-500"
                   />
 
                   {/* Inactive Vertical Text */}
                   <div className={`absolute inset-0 flex items-center justify-center transition-opacity duration-300 ${isActive ? 'opacity-0' : 'opacity-100 delay-200'}`}>
-                    <span className="text-white/80 text-xs md:text-sm tracking-[0.3em] -rotate-90 whitespace-nowrap font-medium">{col.id}</span>
+                    <span className="text-foreground/70 text-xs md:text-sm tracking-[0.3em] -rotate-90 whitespace-nowrap font-medium">{col.id}</span>
                   </div>
 
                   {/* Active Content */}
                   <div className={`relative z-10 w-full p-6 md:p-10 flex items-end justify-between transition-opacity duration-500 delay-100 ${isActive ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
                     <div className="min-w-0 pr-4">
-                      <p className="text-white/70 text-[10px] md:text-xs font-bold tracking-[0.2em] mb-2">{col.id} / 06</p>
-                      <h3 className="text-white text-lg md:text-3xl font-light tracking-widest truncate drop-shadow-md">
+                      <p className="text-foreground/60 text-[10px] md:text-xs font-bold tracking-[0.2em] mb-2">COLLECTION {col.id}</p>
+                      <h3 className="text-foreground text-lg md:text-3xl font-light tracking-widest truncate">
                         {col.title}
                       </h3>
                     </div>
-                    <Link href={`/storefront/collections`} className="w-10 h-10 md:w-12 md:h-12 rounded-full border border-white/40 flex items-center justify-center text-white hover:bg-white hover:text-black transition-all shrink-0">
+                    <Link href={col.productId ? `/storefront/product?id=${encodeURIComponent(col.productId)}` : "/storefront/collections?gender=Women"} aria-label={`View ${col.title || col.name}`} className="w-10 h-10 md:w-12 md:h-12 rounded-full border border-foreground/30 flex items-center justify-center text-foreground hover:bg-foreground hover:text-background transition-all shrink-0">
                       <ArrowRight className="w-4 h-4 md:w-5 md:h-5" />
                     </Link>
                   </div>
                 </div>
                 );
               })}
+              {collections.length === 0 && <div className="flex h-full w-full items-center justify-center rounded-3xl border border-dashed border-border text-sm text-muted-foreground">Curated collections will appear here as products are added.</div>}
             </div>
 
             {/* Scroll Right Arrow */}

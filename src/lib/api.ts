@@ -293,6 +293,10 @@ export const productsApi = {
     }
   },
 
+  async getReviewEligibility(productId: string | number): Promise<{ eligible: boolean; already_reviewed: boolean }> {
+    return await fetchApi<{ eligible: boolean; already_reviewed: boolean }>(`/products/${productId}/reviews/eligibility`);
+  },
+
   async createReview(productId: string | number, data: { rating: number; comment?: string }): Promise<ProductReview> {
     return await fetchApi<ProductReview>(`/products/${productId}/reviews`, {
       method: "POST",
@@ -368,11 +372,6 @@ export interface OrderItemRecord {
   itemsCount: number;
   createdAt: string;
   deliveryMethod: string;
-  shippingShipmentId?: string | null;
-  shippingAwb?: string | null;
-  shippingCourier?: string | null;
-  shippingStatus?: string | null;
-  shippingCharge?: number | string;
   total_amount?: number | string;
   placed_at?: string;
   payment_status?: string;
@@ -389,11 +388,6 @@ interface BackendOrderRecord {
   customer_email?: string | null;
   delivery_method?: string | null;
   shipping_address?: string | null;
-  shipping_shipment_id?: string | null;
-  shipping_awb?: string | null;
-  shipping_courier?: string | null;
-  shipping_status?: string | null;
-  shipping_charge?: number | string;
   items?: unknown[];
 }
 
@@ -410,11 +404,6 @@ function normalizeOrder(order: BackendOrderRecord): OrderItemRecord {
     createdAt: order.placed_at,
     deliveryMethod: order.delivery_method || "—",
     shippingAddress: order.shipping_address || undefined,
-    shippingShipmentId: order.shipping_shipment_id,
-    shippingAwb: order.shipping_awb,
-    shippingCourier: order.shipping_courier,
-    shippingStatus: order.shipping_status,
-    shippingCharge: order.shipping_charge,
     items: order.items || [],
   };
 }
@@ -439,30 +428,15 @@ export const ordersApi = {
     }
   },
 
-  async retryShiprocket(id: string | number): Promise<OrderItemRecord> {
-    const order = await fetchApi<BackendOrderRecord>("/orders/admin/" + id + "/shiprocket/retry", { method: "POST" });
-    return normalizeOrder(order);
-  },
-
   async updateStatus(id: string | number, status: string): Promise<{ success: boolean }> {
     return await fetchApi<{ success: boolean }>(`/orders/admin/${id}/status`, {
       method: "PUT",
       body: JSON.stringify({ status }),
     });
   },
-};
-
-export const shippingApi = {
-  async schedulePickup(shipmentId: string, pickupDate: string): Promise<JsonObject> {
-    return await fetchApi<JsonObject>("/shipping/pickup", {
+  async markCodCollected(id: string | number): Promise<{ order_id: string; payment_status: string; amount: string }> {
+    return await fetchApi<{ order_id: string; payment_status: string; amount: string }>("/orders/admin/" + id + "/cod-collected", {
       method: "POST",
-      body: JSON.stringify({ shipment_id: shipmentId, pickup_date: pickupDate }),
-    });
-  },
-  async generateManifest(shipmentId: string): Promise<JsonObject> {
-    return await fetchApi<JsonObject>("/shipping/manifest", {
-      method: "POST",
-      body: JSON.stringify({ shipment_id: shipmentId }),
     });
   },
 };
@@ -477,7 +451,7 @@ export interface TryonResult {
   processing_time_ms?: number;
 }
 
-export const DEFAULT_API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8090";
+export const DEFAULT_API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
 
 interface TryonSubmitResponse {
   session_id?: string;
@@ -497,7 +471,11 @@ export const tryonApi = {
     return {
       session_id: res.session_id || `ses_${Date.now()}`,
       status: "COMPLETED",
-      result_image_url: res.result_image_url?.startsWith("http") ? res.result_image_url : `${DEFAULT_API_BASE.replace(/\/api\/v1\/?$/, "")}${res.result_image_url || ""}`,
+      result_image_url: res.result_image_url?.startsWith("http")
+        ? res.result_image_url
+        : res.result_image_url
+          ? (typeof window !== "undefined" ? "" : DEFAULT_API_BASE.replace("/api/v1", "")) + (res.result_image_url.startsWith("/") ? res.result_image_url : "/" + res.result_image_url)
+          : undefined,
       processing_time_ms: 1100,
     };
   },
@@ -512,12 +490,7 @@ export const tryonApi = {
     const token = typeof window !== "undefined" ? localStorage.getItem("vastrax_token") : null;
     const authHeaders: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
 
-    const endpoints = [
-      "/api/v1/try-on/",
-      "http://localhost:8090/api/v1/try-on/",
-      "http://localhost:8088/api/v1/try-on/",
-      "http://localhost:8000/api/v1/try-on/",
-    ];
+    const endpoints = ["/api/v1/try-on/"];
 
     let lastError: unknown = null;
     let gotResponse = false;
@@ -591,9 +564,6 @@ export const tryonApi = {
 
     const endpoints = [
       "/api/v1/try-on/combo",
-      "http://localhost:8090/api/v1/try-on/combo",
-      "http://localhost:8088/api/v1/try-on/combo",
-      "http://localhost:8000/api/v1/try-on/combo",
     ];
 
     let lastError: unknown = null;

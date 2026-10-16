@@ -6,14 +6,15 @@ import Link from "next/link";
 import { Menu, Search, X } from "lucide-react";
 
 const links = [
-  { label: "New Arrivals", href: "/storefront/collections?sort=newest" },
-  { label: "Women", href: "/storefront/collections?gender=Women" },
-  { label: "Men", href: "/storefront/collections?gender=Men" },
-  { label: "Kids", href: "/storefront/collections?gender=Kids" },
-  { label: "Collections", href: "/storefront/collections" },
+  { label: "Collections", href: "/storefront/collections?gender=Women" },
 ];
 
-export default function StorefrontMobileControls() {
+interface StorefrontMobileControlsProps {
+  showMenu?: boolean;
+  inlineSearch?: boolean;
+}
+
+export default function StorefrontMobileControls({ showMenu = true, inlineSearch = false }: StorefrontMobileControlsProps) {
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -24,12 +25,12 @@ export default function StorefrontMobileControls() {
     const value = query.trim();
     if (!value) return;
     setSearchOpen(false);
-    router.push("/storefront/collections?search=" + encodeURIComponent(value));
+    router.push("/storefront/collections?gender=Women&search=" + encodeURIComponent(value));
   };
 
   return (
-    <div className="relative z-[60] flex items-center gap-1 2xl:hidden">
-      <button
+    <div className={`relative z-[60] flex items-center gap-1 ${inlineSearch ? "" : "2xl:hidden"}`}>
+      {showMenu && <button
         type="button"
         aria-label={menuOpen ? "Close navigation menu" : "Open navigation menu"}
         aria-expanded={menuOpen}
@@ -40,7 +41,21 @@ export default function StorefrontMobileControls() {
         className="rounded-full p-2 text-foreground/80 transition-colors hover:bg-black/5 hover:text-accent dark:hover:bg-white/10"
       >
         {menuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-      </button>
+      </button>}
+      {inlineSearch && (
+        <form onSubmit={submitSearch} role="search" className="hidden sm:flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1.5 text-sm transition-colors focus-within:border-accent focus-within:ring-1 focus-within:ring-accent dark:bg-[#222]">
+          <Search aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <input
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search"
+            aria-label="Search products"
+            className="w-20 bg-transparent text-foreground outline-none placeholder:text-muted-foreground md:w-28 lg:w-36"
+          />
+          <button type="submit" aria-label="Search products" className="rounded-full bg-accent px-3 py-1.5 text-xs font-semibold text-accent-foreground">Search</button>
+        </form>
+      )}
       <button
         type="button"
         aria-label={searchOpen ? "Close product search" : "Search products"}
@@ -49,12 +64,12 @@ export default function StorefrontMobileControls() {
           setSearchOpen((open) => !open);
           setMenuOpen(false);
         }}
-        className="rounded-full p-2 text-foreground/80 transition-colors hover:bg-black/5 hover:text-accent dark:hover:bg-white/10"
+        className={`rounded-full p-2 text-foreground/80 transition-colors hover:bg-black/5 hover:text-accent dark:hover:bg-white/10 ${inlineSearch ? "sm:hidden" : ""}`}
       >
         {searchOpen ? <X className="h-5 w-5" /> : <Search className="h-5 w-5" />}
       </button>
 
-      {menuOpen && (
+      {showMenu && menuOpen && (
         <nav aria-label="Store navigation" className="absolute left-0 top-full mt-3 w-[min(88vw,20rem)] rounded-2xl border border-border bg-background p-3 text-foreground shadow-xl dark:bg-[#1a1a1a]">
           {links.map((link) => (
             <Link
@@ -70,7 +85,7 @@ export default function StorefrontMobileControls() {
       )}
 
       {searchOpen && (
-        <form onSubmit={submitSearch} role="search" className="absolute left-0 top-full mt-3 flex w-[min(88vw,24rem)] items-center gap-2 rounded-2xl border border-border bg-background p-3 shadow-xl dark:bg-[#1a1a1a]">
+        <form onSubmit={submitSearch} role="search" className={`absolute left-0 top-full mt-3 flex w-[min(88vw,24rem)] items-center gap-2 rounded-2xl border border-border bg-background p-3 shadow-xl dark:bg-[#1a1a1a] ${inlineSearch ? "sm:hidden" : ""}`}>
           <Search aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" />
           <input
             autoFocus

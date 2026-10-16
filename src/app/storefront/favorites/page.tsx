@@ -2,7 +2,7 @@
 import Image from "next/image";
 
 import { useState, useEffect } from "react";
-import { Search, Heart, ShoppingBag, User, Box } from "lucide-react";
+import { Heart, ShoppingBag, User } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { AuthModal } from "@/components/auth/AuthModal";
 import { useSession } from "next-auth/react";
@@ -10,9 +10,6 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { performSignOut } from "@/lib/auth-utils";
 import { CartDrawer } from "@/components/layout/CartDrawer";
-import { StylistDrawer } from "@/components/stylist/StylistDrawer";
-import { Product3DModal } from "@/components/3d/Product3DModal";
-import type { AddToCartProduct } from "@/components/3d/Product3DModal";
 import { productsApi, StorefrontProduct } from "@/lib/api";
 import { useFavorites } from "@/hooks/useFavorites";
 import { addToCart as addCartItem } from "@/lib/cart";
@@ -42,23 +39,17 @@ export default function FavoritesPage() {
   const { toggleFavorite, isFavorite } = useFavorites();
 
   const [isCartOpen, setIsCartOpen] = useState(false);
-  const [isStylistOpen, setIsStylistOpen] = useState(false);
-
-  useEffect(() => {
-    const handleOpenStylist = () => setIsStylistOpen(true);
-    window.addEventListener("open-stylist", handleOpenStylist);
-    return () => window.removeEventListener("open-stylist", handleOpenStylist);
-  }, []);
 
   const [selectedProductForSize, setSelectedProductForSize] = useState<StorefrontProduct | null>(null);
-  const [selected3DProduct, setSelected3DProduct] = useState<StorefrontProduct | null>(null);
 
   useEffect(() => {
     async function fetchData() {
       setLoading(true);
       try {
         const data = await productsApi.list();
-        const mapped = data.map((p): StorefrontProduct => {
+        const mapped = data
+          .filter((p) => String(p.gender || "").trim().toLowerCase() === "women")
+          .map((p): StorefrontProduct => {
           const fallbackImg = "/product-placeholder.svg";
           const firstImage = p.images?.[0];
           let img = p.image || (typeof firstImage === "string" ? firstImage : firstImage?.s3_url || "");
@@ -68,13 +59,11 @@ export default function FavoritesPage() {
             id: p.id,
             name: p.name || p.title || "Product",
             price: Number(p.price || p.price_selling || 0),
-            originalPrice: p.originalPrice || p.price_mrp || p.compareAtPrice ? Number(p.originalPrice || p.price_mrp || p.compareAtPrice) : undefined,
             rating: Number(p.rating || p.rating_average || 0),
             image: img,
             isNew: Boolean(p.isNew || p.is_featured),
             categoryId: p.categoryId || p.category_id,
             categoryName: p.category_name || p.category || "Apparel",
-            model3dUrl: p.model_path || p.model3dUrl
           };
         });
         setProducts(mapped);
@@ -93,7 +82,7 @@ export default function FavoritesPage() {
     return bagItems.some((item) => String(item.id) === String(productId));
   };
 
-  const addItemToBag = (product: AddToCartProduct, size = "M") => {
+  const addItemToBag = (product: StorefrontProduct, size = "M") => {
     const priceNum = typeof product.price === 'string'
       ? parseFloat(String(product.price).replace(/[^0-9.-]+/g, "")) || 0
       : Number(product.price) || 0;
@@ -138,14 +127,11 @@ export default function FavoritesPage() {
       {/* Header */}
       <header className="h-16 md:h-20 flex items-center justify-between relative px-3 sm:px-6 md:px-12 sticky top-2 md:top-4 bg-surface dark:bg-[#1a1a1a] z-50 rounded-[1.5rem] sm:rounded-[2rem] shadow-md border border-border dark:border-white/10 mx-2 md:mx-4 mt-2 md:mt-4">
         <div className="flex items-center gap-2 sm:gap-6 z-10">
-          <StorefrontMobileControls />
-          <nav className="hidden 2xl:flex items-center gap-8">
-            <Link href="/storefront/collections?sort=newest" className="text-lg font-medium hover:text-[#e07a3f] transition-colors">New Arrivals</Link>
-            <Link href="/storefront/collections?gender=Women" className="text-lg font-medium hover:text-[#e07a3f] transition-colors">Women</Link>
-            <Link href="/storefront/collections?gender=Men" className="text-lg font-medium hover:text-[#e07a3f] transition-colors">Men</Link>
-            <Link href="/storefront/collections?gender=Kids" className="text-lg font-medium hover:text-[#e07a3f] transition-colors">Kids</Link>
-            <Link href="/storefront/collections" className="text-lg font-medium hover:text-[#e07a3f] transition-colors">Collections</Link>
+          <nav aria-label="Store navigation" className="flex items-center gap-2 sm:gap-4 2xl:gap-8">
+            <Link href="/storefront/home" className="text-xs sm:text-sm 2xl:text-lg font-medium hover:text-[#e07a3f] transition-colors">Home</Link>
+            <Link href="/storefront/collections?gender=Women" className="text-xs sm:text-sm 2xl:text-lg font-medium hover:text-[#e07a3f] transition-colors">Collections</Link>
           </nav>
+          <StorefrontMobileControls showMenu={false} inlineSearch />
         </div>
 
         <div className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center pointer-events-none z-0">
@@ -162,16 +148,6 @@ export default function FavoritesPage() {
           <Link href="/storefront/favorites" className="relative p-1 text-[#e07a3f] transition-colors">
             <Heart className="w-5 h-5 fill-[#e07a3f]" />
           </Link>
-          <div className="hidden 2xl:flex items-center gap-2 px-3 py-1.5 bg-surface dark:bg-[#222] border border-border dark:border-white/10 rounded-full transition-all text-sm w-48 lg:w-64 focus-within:border-[#e07a3f] focus-within:ring-1 focus-within:ring-[#e07a3f]">
-            <Search className="w-4 h-4 text-muted-foreground" />
-            <input
-              type="text"
-              placeholder="Search"
-              className="flex-1 bg-transparent border-none outline-none text-foreground dark:text-white placeholder:text-muted-foreground"
-            />
-          </div>
-
-
           <div className="relative">
             <button
               onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
@@ -231,13 +207,6 @@ export default function FavoritesPage() {
             )}
           </div>
 
-          <button
-            onClick={() => setIsStylistOpen(true)}
-            className="hidden md:flex items-center gap-2 px-4 py-2 rounded-full bg-[#e07a3f]/10 text-[#e07a3f] border border-[#e07a3f]/30 hover:bg-[#e07a3f] hover:text-white transition-all text-xs font-bold uppercase tracking-wider"
-          >
-            AI Stylist
-          </button>
-
           <button 
             onClick={() => setIsCartOpen(true)}
             aria-label="Open Shopping Bag"
@@ -278,7 +247,7 @@ export default function FavoritesPage() {
               Tap the heart icon on any product to save it here for later.
             </p>
             <Link
-              href="/storefront/collections"
+              href="/storefront/collections?gender=Women"
               className="px-8 py-3 bg-[#e07a3f] text-white rounded-full font-semibold hover:bg-[#d06a2f] transition-colors"
             >
               Browse Collections
@@ -288,7 +257,7 @@ export default function FavoritesPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 md:gap-8">
             {favoriteProducts.map((product) => (
               <div key={product.id} className="group relative flex flex-col h-full">
-                <div className="relative w-full aspect-[3/4] mb-4 flex items-center justify-center overflow-hidden cursor-pointer rounded-2xl bg-black/5 dark:bg-white/5">
+                <div className="relative w-full aspect-[3/4] mb-4 flex items-center justify-center overflow-hidden cursor-pointer rounded-2xl bg-[#f8f7f4]">
                   <div className="absolute top-4 right-4 z-20 flex flex-col gap-2">
                     <button
                       onClick={(e) => {
@@ -300,20 +269,13 @@ export default function FavoritesPage() {
                     >
                       <Heart className="w-4 h-4 fill-current" />
                     </button>
-                    <button
-                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); setSelected3DProduct(product); }}
-                      title="Interactive 3D Preview"
-                      className="w-8 h-8 rounded-full bg-background dark:bg-[#2a2a2a] flex items-center justify-center text-muted-foreground hover:text-[#38bdf8] transition-colors shadow-sm cursor-pointer group/3d"
-                    >
-                      <Box className="w-4 h-4 text-[#38bdf8] group-hover/3d:scale-110 transition-transform" />
-                    </button>
                   </div>
 
                   <Link href={`/storefront/product?id=${product.id}`} className="w-full h-full">
                     <Image width={1200} height={900} unoptimized
                       src={product.image}
                       alt={product.name}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out"
+                      className="w-full h-full object-contain p-2 transition-transform duration-300"
                     />
                   </Link>
                 </div>
@@ -325,7 +287,6 @@ export default function FavoritesPage() {
                     </Link>
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-lg font-bold">₹{product.price.toLocaleString()}</span>
-                      {product.originalPrice && <span className="text-xs text-muted-foreground line-through">₹{product.originalPrice.toLocaleString()}</span>}
                     </div>
                   </div>
 
@@ -352,20 +313,6 @@ export default function FavoritesPage() {
         initialMode={authMode}
       />
       <CartDrawer isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} />
-      <StylistDrawer isOpen={isStylistOpen} onClose={() => setIsStylistOpen(false)} />
-
-      {selected3DProduct && (
-        <Product3DModal
-          isOpen={!!selected3DProduct}
-          onClose={() => setSelected3DProduct(null)}
-          product={selected3DProduct}
-          onAddToBag={(prod) => {
-            addItemToBag(prod, "M");
-            setSelected3DProduct(null);
-          }}
-        />
-      )}
-
       {/* Size Selection Modal */}
       {selectedProductForSize && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setSelectedProductForSize(null)}>

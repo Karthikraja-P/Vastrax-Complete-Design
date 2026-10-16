@@ -8,16 +8,20 @@ logger = logging.getLogger("vastrax.shiprocket")
 API_BASE = "https://apiv2.shiprocket.in/v1/external"
 
 
-def _is_production() -> bool:
+def _mock_shipping_enabled() -> bool:
     try:
         from app.core.config import settings
-        return str(getattr(settings, "app_env", "")).lower() == "production"
+        return str(getattr(settings, "app_env", "")).strip().lower() not in {"production", "prod"}
     except Exception:
-        return os.getenv("APP_ENV", "development").lower() == "production"
+        return os.getenv("APP_ENV", "development").strip().lower() not in {"production", "prod"}
+
+
+def _is_production() -> bool:
+    return not _mock_shipping_enabled()
 
 
 def _failure(message: str, status: int = 503) -> dict:
-    return {"status": status, "error": message}
+    return {"status": status, "error": message, "message": message}
 
 
 def _pickup_location() -> str:
@@ -437,7 +441,7 @@ def assign_awb(shipment_id: str, courier_id: int | None = None) -> dict:
                 or "Shiprocket did not return an AWB after assignment"
             )
             return _failure(str(err_msg))
-        data.update({"status": resp.status_code, "awb_code": awb, "courier_name": courier})
+        data.update({"status": resp.status_code, "awb_code": awb, "courier_name": data.get("courier_name") or data.get("response", {}).get("data", {}).get("courier_name") or "Shiprocket courier"})
         return data
     except Exception as exc:
         logger.error("Shiprocket AWB assignment failed: %s", type(exc).__name__)

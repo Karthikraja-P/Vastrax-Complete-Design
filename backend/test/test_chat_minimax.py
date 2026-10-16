@@ -88,15 +88,15 @@ def test_minimax_default_model_and_url_when_env_blank(monkeypatch):
 def test_minimax_key_configured_selected_over_openai(monkeypatch):
     monkeypatch.setenv("MINIMAX_API_KEY", "mock-minimax-key")
     monkeypatch.setenv("OPENAI_API_KEY", "mock-openai-key")
-    
+
     called = []
-    
+
     def fake_call_minimax(messages, system_prompt, api_key, model, base_url, **kwargs):
         called.append((api_key, model, base_url))
         return "MiniMax M3 curated look [PRODUCT:vtx-frock-floral]", []
-        
+
     monkeypatch.setattr(chat_service, "_call_minimax", fake_call_minimax)
-    
+
     reply, tools = chat_service.chat(
         messages=[{"role": "user", "content": "Hello"}],
         profile={}
@@ -112,7 +112,7 @@ def test_minimax_successful_http_response(monkeypatch):
     class FakeResponse:
         status_code = 200
         text = '{"base_resp": {"status_code": 0, "status_msg": "success"}, "choices": [{"message": {"role": "assistant", "content": "Bespoke styling recommendation [PRODUCT:vtx-top-wrap]"}}]}'
-        
+
         def json(self):
             return {
                 "base_resp": {"status_code": 0, "status_msg": "success"},
@@ -137,7 +137,7 @@ def test_minimax_successful_http_response(monkeypatch):
             return FakeResponse()
 
     monkeypatch.setattr(httpx, "Client", FakeClient)
-    
+
     reply, executed = chat_service._call_minimax(
         messages=[{"role": "user", "content": "Hi"}],
         system_prompt="You are Vastra",
@@ -152,7 +152,7 @@ def test_minimax_provider_error_raises_bad_gateway(monkeypatch):
     class FakeErrorResponse:
         status_code = 401
         text = '{"base_resp": {"status_code": 1004, "status_msg": "Invalid API key"}}'
-        
+
         def json(self):
             return {"base_resp": {"status_code": 1004, "status_msg": "Invalid API key"}}
 
@@ -168,7 +168,7 @@ def test_minimax_provider_error_raises_bad_gateway(monkeypatch):
 
     monkeypatch.setattr(httpx, "Client", FakeClient)
     monkeypatch.setenv("MINIMAX_API_KEY", "invalid-key")
-    
+
     with pytest.raises(BadGatewayError) as exc_info:
         chat_service.chat(
             messages=[{"role": "user", "content": "Hello"}],
@@ -191,7 +191,7 @@ def test_minimax_timeout_raises_bad_gateway(monkeypatch):
 
     monkeypatch.setattr(httpx, "Client", FakeTimeoutClient)
     monkeypatch.setenv("MINIMAX_API_KEY", "mock-key")
-    
+
     with pytest.raises(BadGatewayError) as exc_info:
         chat_service.chat(
             messages=[{"role": "user", "content": "Hello"}],

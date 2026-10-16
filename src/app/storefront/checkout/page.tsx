@@ -3,8 +3,9 @@ import Image from "next/image";
 
 import React, { useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import Script from "next/script";
-import { ChevronLeft, ShieldCheck, Lock, CreditCard, CheckCircle2, Truck, Phone, Mail, ArrowRight, Loader2, Package, ShoppingBag } from "lucide-react";
+import { ChevronLeft, Lock, CreditCard, CheckCircle2, Phone, Mail, ArrowRight, Loader2, ShoppingBag } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useSession } from "next-auth/react";
 import { AuthModal } from "@/components/auth/AuthModal";
@@ -56,6 +57,22 @@ interface RazorpayInstance {
   open(): void;
 }
 
+interface CheckoutProfile {
+  full_name?: string | null;
+  email?: string | null;
+  phone_number?: string | null;
+}
+
+interface SavedAddress {
+  id: string;
+  label: string;
+  address_line1: string;
+  city: string;
+  state: string;
+  pincode: string;
+  is_default: boolean;
+}
+
 interface RazorpayOptions {
   key: string;
   amount: number;
@@ -76,6 +93,17 @@ declare global {
 }
 
 export default function CheckoutPage() {
+  return (
+    <React.Suspense fallback={<div className="min-h-screen bg-background" />}>
+      <CheckoutContent />
+    </React.Suspense>
+  );
+}
+
+function CheckoutContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const preferredAddressId = searchParams.get("newAddressId") || "";
   // Step State
   const [isProcessing, setIsProcessing] = useState(false);
   const [orderComplete, setOrderComplete] = useState(false);
@@ -97,41 +125,57 @@ export default function CheckoutPage() {
     }
   }, [status, localToken]);
 
-  // Form State
-  const [email, setEmail] = useState("alexandra.vance@example.com");
-  const [phone, setPhone] = useState("+1 (555) 382-9912");
-  const [firstName, setFirstName] = useState("Alexandra");
-  const [lastName, setLastName] = useState("Vance");
-  const [address, setAddress] = useState("742 Evergreen Terrace");
-  const [apartment, setApartment] = useState("Penthouse 4B");
-  const [city, setCity] = useState("New York");
-  const [postalCode, setPostalCode] = useState("");
+  // Checkout fields start empty and are filled from the signed-in account.
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
+  const [selectedAddressId, setSelectedAddressId] = useState("");
 
-  // Pre-fill customer details from active session
+  // Prefill contact and saved default shipping address from the account.
   React.useEffect(() => {
-    if (session?.user) {
-      void Promise.resolve().then(() => {
-        if (session.user.email) setEmail(session.user.email);
-        if (session.user.name) {
-          const parts = session.user.name.split(" ");
-          setFirstName(parts[0] || "");
-          setLastName(parts.slice(1).join(" ") || "");
-        }
-      });
-    }
-  }, [session]);
-  
-  // Delivery charges and courier choice come from Shiprocket serviceability for the entered pincode.
-  const [shippingQuote, setShippingQuote] = useState<{ courierId: number; courierName: string; rate: number; etd?: string } | null>(null);
-  const [shippingQuoteError, setShippingQuoteError] = useState("");
-  const [shippingQuoteLoading, setShippingQuoteLoading] = useState(false);
+    const token = session?.accessToken || localToken;
+    if (!token) return;
 
-  // Payment Method
-  const [paymentMethod, setPaymentMethod] = useState<"card" | "apple" | "cod">("card");
-  const [cardNumber, setCardNumber] = useState("•••• •••• •••• 4242");
-  const [cardExpiry, setCardExpiry] = useState("12/28");
-  const [cardCvc, setCardCvc] = useState("•••");
-  const [cardHolder, setCardHolder] = useState("ALEXANDRA VANCE");
+    let cancelled = false;
+    const headers = { Authorization: "Bearer " + token };
+    void Promise.all([
+      backendFetch(BACKEND_BASE + "/users/me", { method: "GET", headers }),
+      backendFetch(BACKEND_BASE + "/users/me/addresses", { method: "GET", headers }),
+    ]).then(async ([profileRes, addressesRes]) => {
+      if (cancelled) return;
+      const profile: CheckoutProfile = profileRes.ok ? await profileRes.json().catch(() => ({})) : {};
+      const addresses: SavedAddress[] = addressesRes.ok ? await addressesRes.json().catch(() => []) : [];
+      const fullName = (profile.full_name || session?.user?.name || "").trim();
+      const parts = fullName.split(/\s+/).filter(Boolean);
+      if (profile.email || session?.user?.email) setEmail(profile.email || session?.user?.email || "");
+      if (parts.length) {
+        setFirstName(parts[0]);
+        setLastName(parts.slice(1).join(" "));
+      }
+      if (profile.phone_number) setPhone(profile.phone_number);
+
+      setSavedAddresses(addresses);
+      const savedAddress = addresses.find((entry) => entry.id === preferredAddressId)
+        || addresses.find((entry) => entry.is_default)
+        || addresses[0];
+      setSelectedAddressId(savedAddress?.id || "");
+      if (profileRes.ok && (!fullName || !profile.phone_number?.trim())) {
+        router.push("/storefront/account?tab=profile&returnTo=%2Fstorefront%2Fcheckout");
+      }
+    }).catch(() => {
+      if (!cancelled && session?.user) {
+        if (session.user.email) setEmail(session.user.email);
+        const parts = (session.user.name || "").trim().split(/\s+/).filter(Boolean);
+        if (parts.length) {
+          setFirstName(parts[0]);
+          setLastName(parts.slice(1).join(" "));
+        }
+      }
+    });
+    return () => { cancelled = true; };
+  }, [session, localToken, router, preferredAddressId]);
 
   // Razorpay simulation fallback (used when no live Razorpay credentials are configured)
   const [simPayment, setSimPayment] = useState<{ txnId: string; orderId: string } | null>(null);
@@ -149,50 +193,8 @@ export default function CheckoutPage() {
   })), [cartItems]);
 
   const subtotal = items.reduce((acc, item) => acc + item.price * item.quantity, 0);
-  const shippingCost = shippingQuote?.rate ?? 0;
   const tax = subtotal * 0.08;
-  const total = subtotal + shippingCost + tax;
-
-  React.useEffect(() => {
-    const pincode = postalCode.trim();
-    if (!/^\d{6}$/.test(pincode) || items.length === 0) {
-      const invalidTimer = window.setTimeout(() => {
-        setShippingQuote(null);
-        setShippingQuoteLoading(false);
-        setShippingQuoteError(pincode ? "Enter a valid 6-digit pincode to check delivery." : "Enter your delivery pincode to check shipping.");
-      }, 0);
-      return () => window.clearTimeout(invalidTimer);
-    }
-    const controller = new AbortController();
-    const timer = window.setTimeout(async () => {
-      setShippingQuoteLoading(true);
-      setShippingQuoteError("");
-      try {
-        const weight = Math.max(0.5, items.reduce((sum, item) => sum + item.quantity * 0.5, 0));
-        const ratesUrl = BACKEND_BASE + "/shipping/rates?pincode=" + encodeURIComponent(pincode) + "&weight=" + weight + "&cod=" + (paymentMethod === "cod" ? "true" : "false");
-        const response = await backendFetch(ratesUrl, { method: "GET", signal: controller.signal });
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok || data.error) throw new Error(data.detail || data.error || "Shiprocket could not quote delivery for this pincode.");
-        const couriers = data?.data?.available_courier_companies || data?.available_courier_companies || [];
-        const options = couriers.map((courier: Record<string, unknown>) => ({
-          courierId: Number(courier.courier_company_id || courier.id),
-          courierName: String(courier.courier_name || "Shiprocket courier"),
-          rate: Number(courier.rate ?? courier.freight_charge),
-          etd: String(courier.etd || courier.estimated_delivery_days || ""),
-        })).filter((courier: { courierId: number; rate: number }) => Number.isFinite(courier.courierId) && Number.isFinite(courier.rate) && courier.rate >= 0);
-        if (!options.length) throw new Error("No Shiprocket courier is available for this pincode.");
-        options.sort((a: { rate: number }, b: { rate: number }) => a.rate - b.rate);
-        setShippingQuote(options[0]);
-      } catch (error) {
-        if (error instanceof DOMException && error.name === "AbortError") return;
-        setShippingQuote(null);
-        setShippingQuoteError(error instanceof Error ? error.message : "Could not fetch Shiprocket rates.");
-      } finally {
-        setShippingQuoteLoading(false);
-      }
-    }, 350);
-    return () => { window.clearTimeout(timer); controller.abort(); };
-  }, [postalCode, items, paymentMethod]);
+  const total = subtotal + tax;
 
   const getEffectiveToken = () => {
     return session?.accessToken || localToken || (typeof window !== "undefined" ? localStorage.getItem("vastrax_token") : null);
@@ -331,54 +333,39 @@ export default function CheckoutPage() {
       });
       return;
     }
-
-    if (!shippingQuote || shippingQuoteLoading) {
-      showToast({ title: "Delivery rate required", description: shippingQuoteError || "Wait for Shiprocket to confirm the delivery rate for your pincode.", type: "error" });
+    if (!selectedAddressId) {
+      showToast({
+        title: "Delivery Address Required",
+        description: "Add a delivery address to your account before placing this order.",
+        type: "info",
+      });
+      router.push("/storefront/account?tab=profile&showAddressForm=1&returnTo=%2Fstorefront%2Fcheckout");
       return;
     }
 
     setIsProcessing(true);
 
     try {
-      if (paymentMethod !== "cod") {
-        const readinessRes = await backendFetch(`${BACKEND_BASE}/payments/readiness`, {
-          method: "GET",
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const readiness = await readinessRes.json().catch(() => ({}));
-        const productionBuild = process.env.NODE_ENV === "production";
-        if (!readinessRes.ok || !readiness.checkout_available ||
-            (productionBuild && !readiness.razorpay_available)) {
-          throw new Error("Online payments are not ready yet. Please choose Cash on Delivery or contact support.");
-        }
-      }
-
-      // 1. Create Address
-      const addressRes = await backendFetch(`${BACKEND_BASE}/users/me/addresses`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          label: "Home",
-          address_line1: apartment ? `${address}, ${apartment}` : address,
-          city: city,
-          state: "Tamil Nadu",
-          pincode: postalCode,
-          is_default: true
-        })
+      const readinessRes = await backendFetch(`${BACKEND_BASE}/payments/readiness`, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${token}` },
       });
-      const addressData = await addressRes.json().catch(() => ({}));
-      if (!addressRes.ok) throw new Error(addressData.detail || addressData.message || "Failed to save delivery address");
+      const readiness = await readinessRes.json().catch(() => ({}));
+      const productionBuild = process.env.NODE_ENV === "production";
+      if (!readinessRes.ok || !readiness.checkout_available ||
+          (productionBuild && !readiness.razorpay_available)) {
+        throw new Error("Razorpay payments are not configured yet. Please try again later.");
+      }
 
       // 2. Create Order
       const orderRes = await backendFetch(`${BACKEND_BASE}/orders`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
-          address_id: addressData.id,
-          payment_method: paymentMethod === "cod" ? "COD" : paymentMethod.toUpperCase(),
+          address_id: selectedAddressId,
+          payment_method: "UPI",
           total_amount: total,
-          delivery_method: "shiprocket",
-          shipping_courier_id: shippingQuote.courierId,
+          delivery_method: "standard",
           items: items.map(item => ({
             product_id: String(item.id),
             size: item.size || "M",
@@ -392,20 +379,14 @@ export default function CheckoutPage() {
       const orderData = await orderRes.json().catch(() => ({}));
       if (!orderRes.ok) throw new Error(orderData.detail || orderData.message || "Failed to place order");
 
-      // Cash on Delivery is confirmed server-side immediately — no payment gateway involved.
-      if (paymentMethod === "cod") {
-        completeOrder(orderData.id);
-        return;
-      }
-
-      // 3. Initiate payment (card / Apple Pay both go through Razorpay's own checkout modal)
+      // Payment methods are selected securely inside Razorpay Checkout.
       const initiateRes = await backendFetch(`${BACKEND_BASE}/payments/initiate`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           order_id: orderData.id,
-          amount: Number(orderData.total_amount) || total,
-          payment_method: paymentMethod.toUpperCase(),
+          amount: total,
+          payment_method: "UPI",
         })
       });
       const initiateData = await initiateRes.json().catch(() => ({}));
@@ -418,7 +399,7 @@ export default function CheckoutPage() {
         setIsProcessing(false);
         setSimPayment({ txnId: initiateData.txn_id, orderId: orderData.id });
       } else {
-        throw new Error("Online payments are unavailable. Please choose Cash on Delivery or contact support.");
+        throw new Error("Razorpay payments are unavailable right now. Please try again later.");
       }
 
     } catch (err: unknown) {
@@ -494,10 +475,6 @@ export default function CheckoutPage() {
 
         <div className="flex items-center gap-4">
           <ThemeToggle />
-          <div className="hidden sm:flex items-center gap-1.5 text-xs text-muted-foreground bg-surface border border-border px-3 py-1.5 rounded-full">
-            <Lock className="w-3.5 h-3.5 text-accent" />
-            <span>256-Bit SSL Encrypted</span>
-          </div>
         </div>
       </header>
 
@@ -527,7 +504,7 @@ export default function CheckoutPage() {
               <div className="flex justify-between items-center text-xs pb-3 border-b border-border">
                 <span className="text-muted-foreground">Estimated Delivery</span>
                 <span className="font-medium text-foreground">
-                  {shippingQuote?.etd || "Confirmed after courier pickup"}
+                  Delivery updates will be shared after your order is confirmed
                 </span>
               </div>
               <div className="flex justify-between items-center text-xs">
@@ -628,13 +605,13 @@ export default function CheckoutPage() {
                     <div className="w-8 h-8 rounded-full bg-accent text-white flex items-center justify-center text-xs font-bold">1</div>
                     <h2 className="text-lg font-bold">Contact & Shipping Details</h2>
                   </div>
-                  <span className="text-xs text-muted-foreground">Express Guest</span>
                 </div>
 
                 <div className="space-y-4 text-xs">
+                  <p className="text-muted-foreground">Fields marked <span className="text-accent">*</span> are required.</p>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-1.5">
-                      <label className="font-medium text-foreground">Email Address</label>
+                      <label className="font-medium text-foreground">Email Address <span className="text-accent">*</span></label>
                       <div className="relative">
                         <input 
                           type="email" 
@@ -647,7 +624,7 @@ export default function CheckoutPage() {
                       </div>
                     </div>
                     <div className="space-y-1.5">
-                      <label className="font-medium text-foreground">Phone Number</label>
+                      <label className="font-medium text-foreground">Phone Number <span className="text-accent">*</span></label>
                       <div className="relative">
                         <input 
                           type="tel" 
@@ -663,7 +640,7 @@ export default function CheckoutPage() {
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-1.5">
-                      <label className="font-medium text-foreground">First Name</label>
+                      <label className="font-medium text-foreground">First Name <span className="text-accent">*</span></label>
                       <input 
                         type="text" 
                         required
@@ -673,7 +650,7 @@ export default function CheckoutPage() {
                       />
                     </div>
                     <div className="space-y-1.5">
-                      <label className="font-medium text-foreground">Last Name</label>
+                      <label className="font-medium text-foreground">Last Name <span className="text-accent">*</span></label>
                       <input 
                         type="text" 
                         required
@@ -684,195 +661,67 @@ export default function CheckoutPage() {
                     </div>
                   </div>
 
-                  <div className="space-y-1.5">
-                    <label className="font-medium text-foreground">Street Address</label>
-                    <input 
-                      type="text" 
-                      required
-                      value={address}
-                      onChange={(e) => setAddress(e.target.value)}
-                      placeholder="123 Luxury Blvd"
-                      className="w-full px-3.5 py-2.5 bg-background border border-border rounded-lg focus:outline-none focus:border-accent text-foreground transition-all"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="space-y-1.5">
-                      <label className="font-medium text-foreground">Apt / Suite (Optional)</label>
-                      <input 
-                        type="text" 
-                        value={apartment}
-                        onChange={(e) => setApartment(e.target.value)}
-                        className="w-full px-3.5 py-2.5 bg-background border border-border rounded-lg focus:outline-none focus:border-accent text-foreground transition-all"
-                      />
+                  <div className="space-y-3 border-t border-border pt-5">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <h3 className="font-semibold text-foreground">Delivery Address <span className="text-accent">*</span></h3>
+                      <Link
+                        href="/storefront/account?tab=profile&showAddressForm=1&returnTo=%2Fstorefront%2Fcheckout"
+                        className="text-sm font-semibold text-accent underline underline-offset-4 hover:text-accent/80"
+                      >
+                        Add delivery address
+                      </Link>
                     </div>
-                    <div className="space-y-1.5">
-                      <label className="font-medium text-foreground">City</label>
-                      <input 
-                        type="text" 
-                        required
-                        value={city}
-                        onChange={(e) => setCity(e.target.value)}
-                        className="w-full px-3.5 py-2.5 bg-background border border-border rounded-lg focus:outline-none focus:border-accent text-foreground transition-all"
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="font-medium text-foreground">Postal Code</label>
-                      <input 
-                        type="text" 
-                        required
-                        inputMode="numeric"
-                        pattern="[0-9]{6}"
-                        maxLength={6}
-                        value={postalCode}
-                        onChange={(e) => setPostalCode(e.target.value)}
-                        className="w-full px-3.5 py-2.5 bg-background border border-border rounded-lg focus:outline-none focus:border-accent text-foreground transition-all"
-                      />
-                    </div>
+                    {savedAddresses.length === 0 ? (
+                      <p className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
+                        No saved delivery addresses. Add one to continue.
+                      </p>
+                    ) : (
+                      <fieldset className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <legend className="sr-only">Choose a delivery address</legend>
+                        {savedAddresses.map((entry) => (
+                          <label key={entry.id} className={"flex cursor-pointer items-start gap-3 rounded-xl border p-4 transition-colors " + (selectedAddressId === entry.id ? "border-accent bg-accent/5" : "border-border bg-background")}>
+                            <input
+                              type="radio"
+                              name="checkout-delivery-address"
+                              value={entry.id}
+                              checked={selectedAddressId === entry.id}
+                              onChange={() => setSelectedAddressId(entry.id)}
+                              className="mt-1 accent-accent"
+                            />
+                            <span className="text-sm">
+                              <span className="block font-semibold text-foreground">{entry.label}{entry.is_default ? " · Default" : ""}</span>
+                              <span className="mt-1 block text-muted-foreground">{entry.address_line1}</span>
+                              <span className="block text-muted-foreground">{entry.city}, {entry.state} {entry.pincode}</span>
+                            </span>
+                          </label>
+                        ))}
+                      </fieldset>
+                    )}
                   </div>
                 </div>
               </div>
 
-              {/* Shiprocket live delivery quote */}
-              <div className="bg-surface border border-border rounded-2xl p-6 md:p-8 space-y-3">
-                <div className="flex items-center gap-3 pb-3 border-b border-border">
-                  <div className="w-8 h-8 rounded-full bg-accent text-white flex items-center justify-center text-xs font-bold">2</div>
-                  <h2 className="text-lg font-bold">Shipping</h2>
-                </div>
-                {shippingQuoteLoading ? (
-                  <p className="text-sm text-muted-foreground">Checking live Shiprocket availability and price…</p>
-                ) : shippingQuote ? (
-                  <div className="flex items-start justify-between gap-4 text-sm">
-                    <div><p className="font-semibold text-foreground">{shippingQuote.courierName}</p><p className="text-xs text-muted-foreground">Estimated delivery: {shippingQuote.etd || "provided after pickup"}</p></div>
-                    <p className="font-bold text-foreground">₹{shippingQuote.rate.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-                  </div>
-                ) : <p className="text-sm text-red-500">{shippingQuoteError || "Enter a 6-digit pincode to get a Shiprocket quote."}</p>}
-              </div>
-
-              {/* Step 3: Payment Method */}
+              {/* Payment */}
               <div className="bg-surface border border-border rounded-2xl p-6 md:p-8 space-y-5">
                 <div className="flex items-center gap-3 pb-4 border-b border-border">
-                  <div className="w-8 h-8 rounded-full bg-accent text-white flex items-center justify-center text-xs font-bold">3</div>
+                  <div className="w-8 h-8 rounded-full bg-accent text-white flex items-center justify-center text-xs font-bold">2</div>
                   <h2 className="text-lg font-bold">Payment Method</h2>
                 </div>
-
-                {/* Tabs */}
-                <div className="grid grid-cols-3 gap-3">
-                  <button 
-                    type="button"
-                    onClick={() => setPaymentMethod("card")}
-                    className={`py-3 px-2 rounded-xl text-xs font-semibold flex flex-col items-center gap-1.5 border transition-all ${
-                      paymentMethod === "card" 
-                        ? "border-accent bg-accent/10 text-accent" 
-                        : "border-border bg-background text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    <CreditCard className="w-4 h-4" />
-                    Credit Card
-                  </button>
-
-                  <button 
-                    type="button"
-                    onClick={() => setPaymentMethod("apple")}
-                    className={`py-3 px-2 rounded-xl text-xs font-semibold flex flex-col items-center gap-1.5 border transition-all ${
-                      paymentMethod === "apple" 
-                        ? "border-accent bg-accent/10 text-accent" 
-                        : "border-border bg-background text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    <span className="font-bold text-sm leading-4"> Pay</span>
-                    Apple Pay
-                  </button>
-
-                  <button 
-                    type="button"
-                    onClick={() => setPaymentMethod("cod")}
-                    className={`py-3 px-2 rounded-xl text-xs font-semibold flex flex-col items-center gap-1.5 border transition-all ${
-                      paymentMethod === "cod" 
-                        ? "border-accent bg-accent/10 text-accent" 
-                        : "border-border bg-background text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    <Truck className="w-4 h-4" />
-                    Cash / POS
-                  </button>
+                <div className="flex items-start gap-4 rounded-xl border border-accent bg-accent/5 p-5">
+                  <CreditCard className="mt-0.5 h-5 w-5 shrink-0 text-accent" />
+                  <div className="space-y-1.5">
+                    <p className="text-sm font-semibold text-foreground">Pay securely with Razorpay</p>
+                    <p className="text-xs leading-relaxed text-muted-foreground">
+                      UPI, cards, net banking and wallets will be available in Razorpay Checkout when payment credentials are configured. Your payment details are entered securely with Razorpay.
+                    </p>
+                  </div>
                 </div>
-
-                {paymentMethod === "card" && (
-                  <div className="space-y-4 pt-2 text-xs animate-in fade-in duration-300">
-                    <div className="space-y-1.5">
-                      <label className="font-medium text-foreground">Cardholder Name</label>
-                      <input 
-                        type="text" 
-                        required
-                        value={cardHolder}
-                        onChange={(e) => setCardHolder(e.target.value)}
-                        className="w-full px-3.5 py-2.5 bg-background border border-border rounded-lg focus:outline-none focus:border-accent text-foreground uppercase transition-all"
-                      />
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <label className="font-medium text-foreground">Card Number</label>
-                      <div className="relative">
-                        <input 
-                          type="text" 
-                          required
-                          value={cardNumber}
-                          onChange={(e) => setCardNumber(e.target.value)}
-                          placeholder="4242 •••• •••• ••••"
-                          className="w-full px-3.5 py-2.5 bg-background border border-border rounded-lg focus:outline-none focus:border-accent text-foreground font-mono transition-all pr-12"
-                        />
-                        <CreditCard className="w-4 h-4 text-muted-foreground absolute right-3.5 top-1/2 -translate-y-1/2" />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-1.5">
-                        <label className="font-medium text-foreground">Expiry (MM/YY)</label>
-                        <input 
-                          type="text" 
-                          required
-                          value={cardExpiry}
-                          onChange={(e) => setCardExpiry(e.target.value)}
-                          placeholder="MM/YY"
-                          className="w-full px-3.5 py-2.5 bg-background border border-border rounded-lg focus:outline-none focus:border-accent text-foreground font-mono transition-all"
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className="font-medium text-foreground">CVV / CVC</label>
-                        <input 
-                          type="password" 
-                          maxLength={4}
-                          required
-                          value={cardCvc}
-                          onChange={(e) => setCardCvc(e.target.value)}
-                          placeholder="•••"
-                          className="w-full px-3.5 py-2.5 bg-background border border-border rounded-lg focus:outline-none focus:border-accent text-foreground font-mono transition-all"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {paymentMethod === "apple" && (
-                  <div className="p-6 bg-background rounded-xl border border-border text-center space-y-2">
-                    <p className="text-xs font-medium text-foreground">Fast 1-touch checkout with Apple Pay biometric token.</p>
-                    <p className="text-[11px] text-muted-foreground">You will be prompted to authenticate with Face ID or Touch ID upon clicking Place Order.</p>
-                  </div>
-                )}
-
-                {paymentMethod === "cod" && (
-                  <div className="p-6 bg-background rounded-xl border border-border text-center space-y-2">
-                    <p className="text-xs font-medium text-foreground">Pay via contactless POS or Cash directly to the courier.</p>
-                    <p className="text-[11px] text-muted-foreground">Available for all local metropolitan areas.</p>
-                  </div>
-                )}
               </div>
 
               {/* Submit Button */}
               <button 
                 type="submit"
-                disabled={isProcessing || !shippingQuote || shippingQuoteLoading}
+                disabled={isProcessing}
                 className="w-full py-4 bg-accent hover:bg-accent/90 text-white rounded-full font-bold text-sm tracking-widest uppercase flex items-center justify-center gap-2 transition-all shadow-[0_0_25px_rgba(224,122,63,0.4)] disabled:opacity-75"
               >
                 {isProcessing ? (
@@ -882,7 +731,7 @@ export default function CheckoutPage() {
                   </>
                 ) : (
                   <>
-                    Place Order · ₹{(shippingQuote ? total : 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    Place Order · ₹{total.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     <ArrowRight className="w-5 h-5" />
                   </>
                 )}
@@ -902,7 +751,7 @@ export default function CheckoutPage() {
                   {items.map((item) => (
                     <div key={item.id} className="flex gap-4 items-center">
                       <div className="w-16 h-20 rounded-lg bg-background overflow-hidden shrink-0 border border-border relative">
-                        <Image width={1200} height={900} unoptimized src={item.image || "/placeholder.svg"} alt={item.name} className="w-full h-full object-cover" />
+                        <Image width={1200} height={900} unoptimized src={item.image || "/placeholder.svg"} alt={item.name} className="w-full h-full object-contain bg-[#f8f7f4] p-1" />
                         <span className="absolute -top-1 -right-1 bg-accent text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
                           {item.quantity}
                         </span>
@@ -923,8 +772,8 @@ export default function CheckoutPage() {
                     <span className="text-foreground font-medium">₹{subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                   </div>
                   <div className="flex justify-between text-muted-foreground">
-                    <span>Shipping ({shippingQuote?.courierName || "Shiprocket"})</span>
-                    <span className="text-foreground font-medium">{shippingQuote ? "₹" + shippingCost.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "Enter pincode"}</span>
+                    <span>Shipping</span>
+                    <span className="text-foreground font-medium">Quote pending</span>
                   </div>
                   <div className="flex justify-between text-muted-foreground">
                     <span>Estimated Sales Tax (8%)</span>
@@ -936,17 +785,6 @@ export default function CheckoutPage() {
                   </div>
                 </div>
 
-                {/* Trust Badges */}
-                <div className="pt-2 border-t border-border space-y-2 text-[11px] text-muted-foreground">
-                  <div className="flex items-center gap-2">
-                    <ShieldCheck className="w-4 h-4 text-accent shrink-0" />
-                    <span>Complimentary 30-Day Returns & Exchanges</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Package className="w-4 h-4 text-accent shrink-0" />
-                    <span>Insured Signature Courier Dispatch</span>
-                  </div>
-                </div>
               </div>
             </div>
 

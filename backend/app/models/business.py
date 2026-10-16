@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from sqlalchemy import CheckConstraint, Date, DateTime, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy import CheckConstraint, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -23,6 +23,7 @@ class CRMLead(Base):
     source: Mapped[str | None] = mapped_column(String(100), nullable=True)
     stage: Mapped[str] = mapped_column(String(30), nullable=False, default="new", index=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    converted_customer_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now)
@@ -43,6 +44,7 @@ class CRMActivity(Base):
     due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+    assigned_to: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
 
 
@@ -85,6 +87,48 @@ class PurchaseOrderLine(Base):
     unit_cost: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
 
 
+
+class SupplierPayment(Base):
+    __tablename__ = "erp_supplier_payments"
+    __table_args__ = (
+        CheckConstraint("amount > 0", name="ck_supplier_payment_positive_amount"),
+        UniqueConstraint("supplier_id", "reference", name="uq_supplier_payment_reference"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    purchase_order_id: Mapped[str] = mapped_column(ForeignKey("erp_purchase_orders.id"), nullable=False, index=True)
+    supplier_id: Mapped[str] = mapped_column(ForeignKey("erp_suppliers.id"), nullable=False, index=True)
+    payable_account_id: Mapped[str] = mapped_column(ForeignKey("erp_ledger_accounts.id"), nullable=False)
+    payment_account_id: Mapped[str] = mapped_column(ForeignKey("erp_ledger_accounts.id"), nullable=False)
+    journal_entry_id: Mapped[str] = mapped_column(ForeignKey("erp_journal_entries.id"), nullable=False, unique=True)
+    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    payment_date: Mapped[datetime] = mapped_column(Date, nullable=False)
+    reference: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
+
+
+
+class SupplierExpensePayment(Base):
+    __tablename__ = "erp_supplier_expense_payments"
+    __table_args__ = (
+        CheckConstraint("amount > 0", name="ck_supplier_expense_payment_positive_amount"),
+        UniqueConstraint("supplier_id", "reference", name="uq_supplier_expense_payment_reference"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    expense_id: Mapped[str] = mapped_column(ForeignKey("erp_operating_expenses.id"), nullable=False, index=True)
+    supplier_id: Mapped[str] = mapped_column(ForeignKey("erp_suppliers.id"), nullable=False, index=True)
+    payable_account_id: Mapped[str] = mapped_column(ForeignKey("erp_ledger_accounts.id"), nullable=False)
+    payment_account_id: Mapped[str] = mapped_column(ForeignKey("erp_ledger_accounts.id"), nullable=False)
+    journal_entry_id: Mapped[str] = mapped_column(ForeignKey("erp_journal_entries.id"), nullable=False, unique=True)
+    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    payment_date: Mapped[datetime] = mapped_column(Date, nullable=False)
+    reference: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
+
+
 class StockMovement(Base):
     __tablename__ = "erp_stock_movements"
 
@@ -101,6 +145,121 @@ class StockMovement(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
 
 
+class ERPPurchaseOrderRequest(Base):
+    """Idempotency record for purchase-order creation requests."""
+    __tablename__ = "erp_purchase_order_requests"
+    __table_args__ = (UniqueConstraint("idempotency_key", name="uq_erp_purchase_order_request_key"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    idempotency_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    request_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    purchase_order_id: Mapped[str] = mapped_column(ForeignKey("erp_purchase_orders.id"), nullable=False, unique=True)
+    created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
+
+
+class ERPInventoryReceipt(Base):
+    """Idempotency record for a posted purchase-order stock receipt."""
+    __tablename__ = "erp_inventory_receipts"
+    __table_args__ = (UniqueConstraint("idempotency_key", name="uq_erp_inventory_receipt_key"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    idempotency_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    request_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    purchase_order_id: Mapped[str] = mapped_column(ForeignKey("erp_purchase_orders.id"), nullable=False, index=True)
+    result_status: Mapped[str] = mapped_column(String(30), nullable=False)
+    journal_entry_id: Mapped[str | None] = mapped_column(ForeignKey("erp_journal_entries.id"), nullable=True)
+    created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
+
+
+class ERPInventoryCostingConfig(Base):
+    """Owner-approved inventory costing method and ledger mappings."""
+    __tablename__ = "erp_inventory_costing_config"
+
+    id: Mapped[str] = mapped_column(String(20), primary_key=True, default="default")
+    cost_method: Mapped[str] = mapped_column(String(30), nullable=False)
+    inventory_account_id: Mapped[str] = mapped_column(ForeignKey("erp_ledger_accounts.id"), nullable=False)
+    cogs_account_id: Mapped[str] = mapped_column(ForeignKey("erp_ledger_accounts.id"), nullable=False)
+    opening_equity_account_id: Mapped[str] = mapped_column(ForeignKey("erp_ledger_accounts.id"), nullable=False)
+    cogs_active_from: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    updated_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now)
+
+
+class ERPInventoryCostLayer(Base):
+    """Remaining inventory quantity and unit cost for FIFO or moving-average valuation."""
+    __tablename__ = "erp_inventory_cost_layers"
+    __table_args__ = (
+        CheckConstraint("original_quantity > 0", name="ck_erp_cost_layer_original_quantity_positive"),
+        CheckConstraint("remaining_quantity >= 0 AND remaining_quantity <= original_quantity", name="ck_erp_cost_layer_remaining_quantity_range"),
+        CheckConstraint("unit_cost >= 0", name="ck_erp_cost_layer_unit_cost_nonnegative"),
+        UniqueConstraint("source_type", "source_key", "variant_id", name="uq_erp_cost_layer_source_variant"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    variant_id: Mapped[str] = mapped_column(ForeignKey("product_variants.id"), nullable=False, index=True)
+    original_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    remaining_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    unit_cost: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False)
+    source_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    source_key: Mapped[str] = mapped_column(String(120), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
+
+
+class ERPInventoryCostConsumption(Base):
+    """Append-only unit-cost allocation for an ecommerce order item."""
+    __tablename__ = "erp_inventory_cost_consumptions"
+    __table_args__ = (
+        CheckConstraint("quantity > 0", name="ck_erp_cost_consumption_quantity_positive"),
+        CheckConstraint("unit_cost >= 0 AND total_cost >= 0", name="ck_erp_cost_consumption_cost_nonnegative"),
+        UniqueConstraint("order_item_id", "cost_layer_id", name="uq_erp_cost_consumption_order_layer"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    order_item_id: Mapped[str] = mapped_column(ForeignKey("order_items.id", ondelete="CASCADE"), nullable=False, index=True)
+    cost_layer_id: Mapped[str] = mapped_column(ForeignKey("erp_inventory_cost_layers.id"), nullable=False, index=True)
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    unit_cost: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False)
+    total_cost: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    journal_entry_id: Mapped[str | None] = mapped_column(ForeignKey("erp_journal_entries.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
+
+
+class ERPInventoryCostOpeningRequest(Base):
+    """Idempotency record for verified opening-stock valuation."""
+    __tablename__ = "erp_inventory_cost_opening_requests"
+    __table_args__ = (UniqueConstraint("idempotency_key", name="uq_erp_cost_opening_request_key"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    idempotency_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    request_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    journal_entry_id: Mapped[str] = mapped_column(ForeignKey("erp_journal_entries.id"), nullable=False)
+    created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
+
+
+class ERPInventoryCostReturnRestoration(Base):
+    """Cost-layer and journal reversal for inventory restocked from a customer return."""
+    __tablename__ = "erp_inventory_cost_return_restorations"
+    __table_args__ = (
+        CheckConstraint("quantity > 0", name="ck_erp_cost_return_quantity_positive"),
+        CheckConstraint("unit_cost > 0 AND total_cost > 0", name="ck_erp_cost_return_cost_positive"),
+        UniqueConstraint("source_key", name="uq_erp_cost_return_source_key"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    return_line_id: Mapped[str] = mapped_column(ForeignKey("erp_sales_return_lines.id", ondelete="CASCADE"), nullable=False, index=True)
+    cost_consumption_id: Mapped[str] = mapped_column(ForeignKey("erp_inventory_cost_consumptions.id"), nullable=False, index=True)
+    restored_layer_id: Mapped[str] = mapped_column(ForeignKey("erp_inventory_cost_layers.id"), nullable=False, index=True)
+    source_key: Mapped[str] = mapped_column(String(160), nullable=False)
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    unit_cost: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False)
+    total_cost: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    journal_entry_id: Mapped[str] = mapped_column(ForeignKey("erp_journal_entries.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
+
+
 class OperatingExpense(Base):
     __tablename__ = "erp_operating_expenses"
 
@@ -111,6 +270,7 @@ class OperatingExpense(Base):
     tax_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=Decimal("0"))
     supplier_id: Mapped[str | None] = mapped_column(ForeignKey("erp_suppliers.id"), nullable=True)
     reference: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    journal_entry_id: Mapped[str | None] = mapped_column(ForeignKey("erp_journal_entries.id"), nullable=True, index=True)
     expense_date: Mapped[datetime] = mapped_column(Date, nullable=False)
     created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)

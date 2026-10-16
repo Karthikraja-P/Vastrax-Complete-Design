@@ -298,7 +298,7 @@ def test_refund_real_success_marks_refunded(db, real_cfg, monkeypatch):
     class Resp:
         status_code = 200
         def json(self):
-            return {"id": "rfnd_1"}
+            return {"id": "rfnd_1", "payment_id": "pay_1", "amount": 10000, "status": "processed"}
 
     def fake_post(url, **k):
         seen["url"], seen["json"] = url, k["json"]
@@ -306,8 +306,8 @@ def test_refund_real_success_marks_refunded(db, real_cfg, monkeypatch):
 
     monkeypatch.setattr(ps.requests, "post", fake_post)
     out = ps.PaymentService(db).process_refund("TXN-1", Decimal("100.00"))
-    assert out["refund_id"] == "rfnd_1" and seen["url"].endswith("/payments/pay_1/refund")
-    assert seen["json"] == {"amount": 10000}
+    assert out["gateway_refund_id"] == "rfnd_1" and seen["url"].endswith("/payments/pay_1/refund")
+    assert seen["json"]["amount"] == 10000 and "vastrax_refund_id" in seen["json"]["notes"]
     assert _state(db) == ("refunded", "refunded")
 
 
@@ -406,20 +406,24 @@ def test_refund_non_success_blocked_in_dev_mock(db, monkeypatch):
 
 
 @pytest.mark.parametrize("mode", ["real", "dev_mock"])
-def test_partial_refund_rejected_before_provider_call(db, real_cfg, monkeypatch, mode):
+def test_partial_refund_updates_cumulative_refund_state(db, real_cfg, monkeypatch, mode):
     if mode == "real":
         monkeypatch.setattr(ps.settings, "app_env", "production")
         _paid(db)
+        class Resp:
+            status_code = 200
+            def json(self):
+                return {"id": "rfnd_partial", "payment_id": "pay_1", "amount": 4000, "status": "processed"}
+        monkeypatch.setattr(ps.requests, "post", lambda *a, **k: Resp())
     else:
         monkeypatch.setattr(ps.settings, "app_env", "development")
         monkeypatch.setattr(ps.settings, "razorpay_key_id", "rzp_test_MOCK")
         monkeypatch.setattr(ps.settings, "razorpay_key_secret", "MOCK_SECRET")
         _paid(db, provider_id=None)
-    monkeypatch.setattr(ps.requests, "post", lambda *a, **k: pytest.fail("no provider call expected"))
-    with pytest.raises(BadRequestError):
-        ps.PaymentService(db).process_refund("TXN-1", Decimal("40.00"))
-    assert _state(db) == ("success", "paid")
-
+        monkeypatch.setattr(ps.requests, "post", lambda *a, **k: pytest.fail("no provider call expected"))
+    out = ps.PaymentService(db).process_refund("TXN-1", Decimal("40.00"))
+    assert out["status"] == ("processed" if mode == "real" else "partially_refunded")
+    assert _state(db) == ("partially_refunded", "partially_refunded")
 
 def test_production_readiness_requires_live_razorpay_credentials(monkeypatch):
     monkeypatch.setattr(ps.settings, "app_env", "production")

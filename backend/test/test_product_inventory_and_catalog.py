@@ -6,7 +6,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 import app.main  # noqa: F401
-from app.core.exceptions import BadRequestError
+from app.core.exceptions import BadRequestError, ForbiddenError
 from app.db.base import Base
 from app.models.address import Address
 from app.models.category import Category
@@ -90,6 +90,35 @@ def test_catalog_rating_is_calculated_from_real_reviews(db):
     response = ProductService(db)._to_response(db.get(Product, product.id))
     assert response.rating_count == 2
     assert response.rating_average == Decimal("4.00")
+
+
+def test_only_delivered_buyers_can_review_product_once(db):
+    product = _product(db)
+    user = User(email="buyer@example.test", hashed_password="test", role="customer")
+    db.add(user)
+    db.flush()
+    address = Address(user_id=user.id, label="Home", address_line1="1 Test Road", city="Mumbai", state="MH", pincode="400001")
+    variant = ProductVariant(id="size-s-review", product_id=product.id, sku="shirt-s-review", size="S", stock_qty=1)
+    db.add_all([address, variant])
+    db.flush()
+    order = Order(id="order-review", user_id=user.id, address_id=address.id, total_amount=Decimal("90"), status="shipped")
+    db.add(order)
+    db.flush()
+    db.add(OrderItem(order_id=order.id, product_id=product.id, variant_id=variant.id, quantity=1, unit_price=Decimal("90")))
+    db.commit()
+
+    service = ProductService(db)
+    with pytest.raises(ForbiddenError):
+        service.add_review(product.id, user, 5, "Great fit")
+    assert service.review_eligibility(product.id, user) == {"eligible": False, "already_reviewed": False}
+
+    order.status = "delivered"
+    db.commit()
+    assert service.review_eligibility(product.id, user) == {"eligible": True, "already_reviewed": False}
+    service.add_review(product.id, user, 5, "Great fit")
+    assert service.review_eligibility(product.id, user) == {"eligible": False, "already_reviewed": True}
+    with pytest.raises(BadRequestError):
+        service.add_review(product.id, user, 4, "Second review")
 
 
 def test_invalid_category_does_not_create_a_placeholder(db):

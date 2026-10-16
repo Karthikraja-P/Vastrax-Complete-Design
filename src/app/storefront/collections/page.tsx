@@ -3,22 +3,27 @@ import Image from "next/image";
 
 import { Suspense, useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
-import { Search, Heart, Star, ShoppingBag, User, ChevronRight, SlidersHorizontal, Box, Bell } from "lucide-react";
+import { Heart, Star, ShoppingBag, User, ChevronRight, SlidersHorizontal, Bell } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { AuthModal } from "@/components/auth/AuthModal";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { CartDrawer } from "@/components/layout/CartDrawer";
 import { StylistDrawer } from "@/components/stylist/StylistDrawer";
-import { Product3DModal } from "@/components/3d/Product3DModal";
 import type { AddToCartProduct } from "@/components/3d/Product3DModal";
-import { productsApi, categoriesApi, ProductItem, CategoryItem, ProductVariant, StorefrontProduct } from "@/lib/api";
+import { productsApi, categoriesApi, fetchApi, ProductItem, CategoryItem, ProductVariant, StorefrontProduct } from "@/lib/api";
 import { reportBackendReachable, reportBackendUnreachable } from "@/lib/backendStatus";
 import { addToCart as addCartItem } from "@/lib/cart";
 import { useCartItems } from "@/hooks/useCartItems";
 import { showToast } from "@/lib/toast";
 import { performSignOut } from "@/lib/auth-utils";
 import StorefrontMobileControls from "@/components/layout/StorefrontMobileControls";
+
+const collectionImageOverrides: Record<string, string> = {
+  "vtx-8db7233b": "/storefront/product-cutouts/beige-coord-cutout.png",
+  "vtx-6b1eeb36": "/storefront/product-cutouts/pink-coord-cutout.png",
+  "vtx-f2b3a9a5": "/storefront/product-cutouts/skirt-and-top-cutout.png",
+};
 
 function CollectionsPageContent() {
   const searchParams = useSearchParams();
@@ -27,7 +32,11 @@ function CollectionsPageContent() {
 
   const [favorites, setFavorites] = useState<Array<string | number>>([]);
   const [selectedProductForSize, setSelectedProductForSize] = useState<StorefrontProduct | null>(null);
-  const [selected3DProduct, setSelected3DProduct] = useState<StorefrontProduct | null>(null);
+  const [notifyProduct, setNotifyProduct] = useState<StorefrontProduct | null>(null);
+  const [notifyEmail, setNotifyEmail] = useState("");
+  const [accountEmail, setAccountEmail] = useState("");
+  const [notifySize, setNotifySize] = useState("");
+  const [notifySuccess, setNotifySuccess] = useState(false);
 
   const { data: session } = useSession();
   const [isLoggedIn, setIsLoggedIn] = useState(Boolean(session?.user?.name));
@@ -38,22 +47,32 @@ function CollectionsPageContent() {
     { name: "All Categories", icon: "❖" }
   ]);
   const [selectedCategory, setSelectedCategory] = useState("All Categories");
-  const [selectedDepartment, setSelectedDepartment] = useState<string>("All");
-  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedColour, setSelectedColour] = useState("All Colors");
+  const [selectedDepartment, setSelectedDepartment] = useState<string>("Women");
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
   const [sortBy, setSortBy] = useState("Recommended");
+  const [pagination, setPagination] = useState({ filterKey: "", page: 1 });
+  const productsPerPage = 12;
+
+  useEffect(() => {
+    let active = true;
+    fetchApi<{ email?: string }>("/users/me").then((profile) => {
+      if (!active || !profile.email) return;
+      setAccountEmail(profile.email);
+      setNotifyEmail((current) => current || profile.email || "");
+    }).catch(() => { if (active) setAccountEmail(""); });
+    return () => { active = false; };
+  }, [session]);
 
   // Keep filters synchronized with links, including query-only navigation.
   useEffect(() => {
-    const gender = searchParams.get("gender");
     const category = searchParams.get("category");
-    const search = searchParams.get("search");
     const sort = searchParams.get("sort");
     const timer = window.setTimeout(() => {
-      setSelectedDepartment(gender ? gender.charAt(0).toUpperCase() + gender.slice(1).toLowerCase() : "All");
+      // The public storefront is currently women-only, including legacy links.
+      setSelectedDepartment("Women");
       setSelectedCategory(category || "All Categories");
-      setSearchQuery(search || "");
       setSortBy(sort === "newest" ? "Newest Arrivals" : "Recommended");
     }, 0);
     return () => window.clearTimeout(timer);
@@ -67,12 +86,24 @@ function CollectionsPageContent() {
           categoriesApi.list()
         ]);
 
+        const womenData = data.filter((p: ProductItem) => String(p.gender || "").trim().toLowerCase() === "women");
         const catMap = new Map((cats || []).map((c: CategoryItem) => [String(c.id), c.name]));
+        const womenCategoryKeys = new Set<string>();
+        for (const product of womenData) {
+          const categoryId = String(product.categoryId || product.category_id || "").toLowerCase();
+          const categoryName = String(product.category_name || product.category || "").toLowerCase();
+          if (categoryId) womenCategoryKeys.add(categoryId);
+          if (categoryName) womenCategoryKeys.add(categoryName);
+        }
 
         if (cats && Array.isArray(cats)) {
           setCategoriesList([
             { name: "All Categories", icon: "❖" },
-            ...cats.filter((c) => c.is_active !== false && Number(c.count || c.product_count || 0) > 0).map((c) => ({
+            ...cats.filter((c) =>
+              c.is_active !== false &&
+              Number(c.count || c.product_count || 0) > 0 &&
+              [c.id, c.name, c.slug].some((key) => womenCategoryKeys.has(String(key || "").toLowerCase()))
+            ).map((c) => ({
               id: String(c.id),
               name: c.name,
               icon: /frock|dress|gown/i.test(c.name) ? "👗" : /shirt|top/i.test(c.name) ? "👔" : /pant|trouser|denim|jean/i.test(c.name) ? "👖" : "❖",
@@ -81,7 +112,7 @@ function CollectionsPageContent() {
           ]);
         }
 
-        const mapped = data.map((p: ProductItem): StorefrontProduct => {
+        const mapped = womenData.map((p: ProductItem): StorefrontProduct => {
           const fallbackImg = "/product-placeholder.svg";
           const firstImage = p.images?.[0];
           let img = p.image || (typeof firstImage === "string" ? firstImage : firstImage?.s3_url || "");
@@ -90,20 +121,25 @@ function CollectionsPageContent() {
           const rawCatId = String(p.categoryId || p.category_id || "");
           const resolvedCatName = catMap.get(rawCatId) || p.category_name || p.category || "Apparel";
 
+          const sellingPrice = Number(p.price || p.price_selling || 0);
+          const listedPrice = Number(p.originalPrice || p.price_mrp || p.compareAtPrice || 0);
+          const originalPrice = listedPrice > sellingPrice ? listedPrice : undefined;
+
           return {
             id: p.id,
             name: p.name || p.title || "Unnamed Piece",
-            price: Number(p.price || p.price_selling || 0),
-            originalPrice: p.originalPrice || p.price_mrp || p.compareAtPrice ? Number(p.originalPrice || p.price_mrp || p.compareAtPrice) : undefined,
+            price: sellingPrice,
+            originalPrice,
             rating: Number(p.rating_average || p.rating || 0),
             ratingCount: Number(p.rating_count || 0),
-            image: img,
+            image: collectionImageOverrides[String(p.id)] || img,
             gender: p.gender || "",
             isNew: Boolean(p.isNew || p.is_featured),
             categoryId: rawCatId,
             stock: p.stock ?? p.inventoryCount,
-            isSale: Boolean(p.isSale),
+            isSale: Boolean(p.isSale) && Boolean(originalPrice),
             categoryName: resolvedCatName,
+            colour: [...new Set([p.colour, ...(p.variants || []).map((variant) => variant.colour || variant.color)].map((value) => String(value || "").trim()).filter(Boolean))].join(" | "),
             model3dUrl: p.model_path || p.model3dUrl,
             variants: p.variants || [],
             created_at: p.created_at
@@ -199,7 +235,8 @@ function CollectionsPageContent() {
   const [isStylistOpen, setIsStylistOpen] = useState(false);
   const [isMobileFiltersOpen, setIsMobileFiltersOpen] = useState(false);
   const [isSortOpen, setIsSortOpen] = useState(false);
-  const sortOptions = ["Recommended", "Newest Arrivals", "Price: Low to High", "Price: High to Low", "Top Rated"];
+  const sortOptions = ["Recommended", "Newest Arrivals", "Price: Low to High", "Price: High to Low"];
+  const availableColours = [...new Set(products.flatMap((product) => String(product.colour || "").split("|").map((colour) => colour.trim()).filter(Boolean)))].sort((a, b) => a.localeCompare(b));
 
   useEffect(() => {
     const handleOpenStylist = () => setIsStylistOpen(true);
@@ -250,6 +287,12 @@ function CollectionsPageContent() {
       addItemToBag(product, "One Size");
     }
   };
+  const submitNotify = async (event: React.FormEvent) => {
+    event.preventDefault(); if (!notifyProduct) return;
+    try { await productsApi.subscribeStockNotification(notifyProduct.id, notifyEmail, notifySize || undefined); setNotifySuccess(true); }
+    catch (error) { showToast({ title: "Could not join waitlist", description: error instanceof Error ? error.message : "Please try again.", type: "error" }); }
+  };
+
   // Compute filtered & sorted products
   const filteredProducts = products.filter((p) => {
     // 1. Category Filter
@@ -292,18 +335,9 @@ function CollectionsPageContent() {
     }
 
     // 2. Department Filter
-    if (selectedDepartment !== "All") {
-      const pG = (p.gender || "").toLowerCase();
-      const sG = selectedDepartment.toLowerCase();
-      if (pG !== sG && pG !== "unisex") return false;
-    }
+    if (String(p.gender || "").trim().toLowerCase() !== "women") return false;
 
-    // 3. Search Query
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      const matchSearch = p.name.toLowerCase().includes(q) || (p.categoryName && p.categoryName.toLowerCase().includes(q));
-      if (!matchSearch) return false;
-    }
+    if (selectedColour !== "All Colors" && !String(p.colour || "").split("|").some((colour) => colour.trim().toLowerCase() === selectedColour.toLowerCase())) return false;
 
     // 4. Price Filter
     if (minPrice && p.price < Number(minPrice)) return false;
@@ -313,10 +347,20 @@ function CollectionsPageContent() {
   }).sort((a, b) => {
     if (sortBy === "Price: Low to High") return a.price - b.price;
     if (sortBy === "Price: High to Low") return b.price - a.price;
-    if (sortBy === "Top Rated") return (b.rating || 0) - (a.rating || 0);
     if (sortBy === "Newest Arrivals") return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
     return 0;
   });
+
+  const pageFilterKey = JSON.stringify([selectedCategory, selectedDepartment, selectedColour, minPrice, maxPrice, sortBy]);
+  const totalPages = Math.ceil(filteredProducts.length / productsPerPage);
+  const currentPage = Math.min(
+    pagination.filterKey === pageFilterKey ? pagination.page : 1,
+    Math.max(totalPages, 1),
+  );
+  const changePage = (page: number) => {
+    setPagination({ filterKey: pageFilterKey, page: Math.max(1, Math.min(page, Math.max(totalPages, 1))) });
+  };
+  const paginatedProducts = filteredProducts.slice((currentPage - 1) * productsPerPage, currentPage * productsPerPage);
 
   return (
     <div className="min-h-screen bg-surface dark:bg-[#111111] text-foreground dark:text-white font-sans flex flex-col">
@@ -324,14 +368,11 @@ function CollectionsPageContent() {
       <header className="h-16 md:h-20 flex items-center justify-between relative px-3 sm:px-6 md:px-12 sticky top-2 md:top-4 bg-surface dark:bg-[#1a1a1a] z-50 rounded-[1.5rem] sm:rounded-[2rem] shadow-md border border-border dark:border-white/10 mx-2 md:mx-4 mt-2 md:mt-4">
         {/* Left Side: Navigation */}
         <div className="flex items-center gap-2 sm:gap-6 z-10">
-          <StorefrontMobileControls />
-          <nav className="hidden 2xl:flex items-center gap-8">
-            <Link href="/storefront/collections?sort=newest" className="text-lg font-medium hover:text-[#e07a3f] transition-colors">New Arrivals</Link>
-            <Link href="/storefront/collections?gender=Women" onClick={() => setSelectedDepartment("Women")} className={`text-lg font-medium hover:text-[#e07a3f] transition-colors ${selectedDepartment === "Women" ? "text-[#e07a3f] font-bold" : ""}`}>Women</Link>
-            <Link href="/storefront/collections?gender=Men" onClick={() => setSelectedDepartment("Men")} className={`text-lg font-medium hover:text-[#e07a3f] transition-colors ${selectedDepartment === "Men" ? "text-[#e07a3f] font-bold" : ""}`}>Men</Link>
-            <Link href="/storefront/collections?gender=Kids" onClick={() => setSelectedDepartment("Kids")} className={`text-lg font-medium hover:text-[#e07a3f] transition-colors ${selectedDepartment === "Kids" ? "text-[#e07a3f] font-bold" : ""}`}>Kids</Link>
-            <Link href="/storefront/collections" onClick={() => setSelectedDepartment("All")} className={`text-lg font-medium hover:text-[#e07a3f] transition-colors ${selectedDepartment === "All" ? "text-[#e07a3f] font-bold" : ""}`}>Collections</Link>
+          <nav aria-label="Store navigation" className="flex items-center gap-2 sm:gap-4 2xl:gap-8">
+            <Link href="/storefront/home" className="text-xs sm:text-sm 2xl:text-lg font-medium hover:text-[#e07a3f] transition-colors">Home</Link>
+            <Link href="/storefront/collections?gender=Women" onClick={() => setSelectedDepartment("Women")} className="text-xs sm:text-sm 2xl:text-lg font-medium hover:text-[#e07a3f] transition-colors">Collections</Link>
           </nav>
+          <StorefrontMobileControls showMenu={false} inlineSearch />
         </div>
 
         {/* Center: Logo */}
@@ -350,16 +391,6 @@ function CollectionsPageContent() {
           <a href="/storefront/favorites" className="relative p-1 text-muted-foreground hover:text-[#e07a3f] transition-colors">
             <Heart className="w-5 h-5" />
           </a>
-          <div className="hidden 2xl:flex items-center gap-2 px-3 py-1.5 bg-surface dark:bg-[#222] border border-border dark:border-white/10 rounded-full transition-all text-sm w-48 lg:w-64 focus-within:border-[#e07a3f] focus-within:ring-1 focus-within:ring-[#e07a3f]">
-            <Search className="w-4 h-4 text-muted-foreground" />
-            <input
-              type="text"
-              placeholder="Search"
-              className="flex-1 bg-transparent border-none outline-none text-foreground dark:text-white placeholder:text-muted-foreground"
-            />
-          </div>
-
-
           <div className="relative">
             <button
               onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
@@ -446,20 +477,11 @@ function CollectionsPageContent() {
 
           <div className="max-w-[1400px] mx-auto p-4 md:p-10">
 
-            <div className="mb-8 rounded-3xl border border-border/50 bg-gradient-to-br from-surface to-accent/10 p-6 md:p-10">
-              <p className="text-xs font-bold uppercase tracking-[0.2em] text-accent">VastraX Collection</p>
-              <h1 className="mt-2 text-3xl font-semibold text-foreground">
-                {selectedDepartment === "All" ? "Browse products" : selectedDepartment + " collection"}
-              </h1>
-              <p className="mt-2 text-sm text-muted-foreground">{filteredProducts.length} products available</p>
-            </div>
-
             {/* Layout Grid: Sidebar + Products */}
             <div className="flex flex-col lg:flex-row gap-8 lg:gap-10">
 
               {/* Mobile Filter Toggle */}
               <div className="lg:hidden flex items-center justify-between">
-                <h1 className="text-2xl font-bold">Best Sellers <span className="text-sm font-normal text-muted-foreground ml-2">{filteredProducts.length} products</span></h1>
                 <button
                   onClick={() => setIsMobileFiltersOpen(!isMobileFiltersOpen)}
                   className="bg-surface dark:bg-[#1a1a1a] border border-border/50 dark:border-white/5 text-sm px-4 py-2 rounded-xl flex items-center gap-2 hover:bg-white/5 transition-colors"
@@ -474,43 +496,25 @@ function CollectionsPageContent() {
                   <div className="flex items-center justify-between mb-6">
                     <h3 className="font-bold text-lg">Filters</h3>
                     <button
-                      onClick={() => { setSelectedCategory("All Categories"); setSelectedDepartment("All"); setSearchQuery(""); setMinPrice(""); setMaxPrice(""); }}
+                      onClick={() => { setSelectedCategory("All Categories"); setSelectedDepartment("Women"); setSelectedColour("All Colors"); setMinPrice(""); setMaxPrice(""); }}
                       className="text-[#e07a3f] text-xs font-bold tracking-wider uppercase flex items-center gap-1 hover:underline">
                       Reset Filters
                     </button>
                   </div>
 
-                  {/* Search */}
-                  <div className="relative mb-6">
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                    <input
-                      type="text"
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      placeholder="Search products..."
-                      className="w-full bg-surface dark:bg-[#111111] border border-border dark:border-white/10 rounded-full py-3 pl-11 pr-4 text-sm text-foreground dark:text-white placeholder:text-muted-foreground focus:outline-none focus:border-[#e07a3f] transition-colors"
-                    />
-                  </div>
-
-                  {/* Department */}
                   <div className="mb-8">
-                    <h4 className="text-[10px] font-bold text-muted-foreground tracking-[0.2em] uppercase mb-3">Department</h4>
-                    <div className="flex flex-wrap gap-2">
-                      {["All", "Women", "Men", "Kids", "Unisex"].map((dept) => (
-                        <button
-                          key={dept}
-                          type="button"
-                          onClick={() => setSelectedDepartment(dept)}
-                          className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all ${
-                            selectedDepartment === dept
-                              ? "bg-[#e07a3f] text-white shadow-md shadow-[#e07a3f]/20"
-                              : "bg-surface dark:bg-[#111] border border-border dark:border-white/10 text-muted-foreground hover:text-foreground"
-                          }`}
-                        >
-                          {dept}
-                        </button>
+                    <label htmlFor="collection-color-filter" className="block text-[10px] font-bold text-muted-foreground tracking-[0.2em] uppercase mb-4">Color</label>
+                    <select
+                      id="collection-color-filter"
+                      value={selectedColour}
+                      onChange={(event) => setSelectedColour(event.target.value)}
+                      className="w-full bg-surface dark:bg-[#111111] border border-border dark:border-white/10 rounded-xl px-3 py-3 text-sm text-foreground dark:text-white focus:outline-none focus:border-[#e07a3f]"
+                    >
+                      <option value="All Colors">All Colors</option>
+                      {availableColours.map((colour) => (
+                        <option key={colour} value={colour}>{colour.replace(/\b\w/g, (letter) => letter.toUpperCase())}</option>
                       ))}
-                    </div>
+                    </select>
                   </div>
 
                   {/* Category */}
@@ -552,12 +556,6 @@ function CollectionsPageContent() {
               {/* 3. Product Grid Area */}
               <div className="flex-1">
                 <div className="hidden lg:flex items-end justify-between mb-8">
-                  <div>
-                    <h1 className="text-3xl font-bold">
-                      {selectedDepartment !== "All" ? `${selectedDepartment}'s ${selectedCategory === "All Categories" ? "Collection" : selectedCategory}` : selectedCategory} 
-                      <span className="text-sm font-normal text-muted-foreground ml-2">{filteredProducts.length} products</span>
-                    </h1>
-                  </div>
                   <div className="relative">
                     <button
                       onClick={() => setIsSortOpen(!isSortOpen)}
@@ -589,42 +587,37 @@ function CollectionsPageContent() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6">
-                  {filteredProducts.map((product) => {
+                <div id="product-grid" className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6">
+                  {paginatedProducts.map((product) => {
                     const isOutOfStock = !product.variants?.length || product.variants.every((variant: ProductVariant) => Number(variant.stock_qty ?? 0) <= 0);
 
                     return (
-                      <div key={product.id} className="bg-surface dark:bg-[#1c1c1c] rounded-3xl p-5 group relative border border-border/50 dark:border-white/5 hover:border-border dark:border-white/10 transition-colors flex flex-col h-[340px]">
+                      <div key={product.id} className="rounded-3xl border border-[#dedbd4] bg-[linear-gradient(135deg,#f5f3ee_0%,#e9e6df_100%)] p-5 group relative transition-shadow hover:shadow-md flex flex-col h-[340px]">
                         {/* Top icons */}
                         <div className="flex items-start justify-between z-10 relative mb-4 shrink-0">
-                          <div className="flex items-center gap-1.5">
-                            <button
-                              onClick={(e) => toggleFavorite(product, e)}
-                              className="w-8 h-8 rounded-full bg-background dark:bg-[#2a2a2a] flex items-center justify-center text-muted-foreground hover:text-[#e07a3f] transition-colors"
-                            >
-                              <Heart className={`w-4 h-4 ${favorites.includes(product.id) ? 'fill-[#e07a3f] text-[#e07a3f]' : ''}`} />
-                            </button>
-                            <button
-                              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setSelected3DProduct(product); }}
-                              title="Interactive 3D Preview"
-                              className="w-8 h-8 rounded-full bg-background dark:bg-[#2a2a2a] flex items-center justify-center text-muted-foreground hover:text-[#38bdf8] transition-colors shadow-sm cursor-pointer group/3d"
-                            >
-                              <Box className="w-4 h-4 text-[#38bdf8] group-hover/3d:scale-110 transition-transform" />
-                            </button>
-                          </div>
-                          <div className="bg-background dark:bg-[#2a2a2a] px-2.5 py-1 rounded-full flex items-center gap-1.5">
-                            <Star className="w-3 h-3 fill-[#e07a3f] text-[#e07a3f]" />
-                            <span className="text-[10px] font-bold text-foreground dark:text-white">{product.rating}</span>
-                            <span className="text-[9px] text-muted-foreground">({product.ratingCount || 15})</span>
-                          </div>
+                          {(product.ratingCount ?? 0) > 0 && (
+                            <div className="bg-white/80 px-2.5 py-1 rounded-full flex items-center gap-1.5" aria-label={`${product.rating} out of 5 from ${product.ratingCount} reviews`}>
+                              <Star className="w-3 h-3 fill-[#e07a3f] text-[#e07a3f]" />
+                              <span className="text-[10px] font-bold text-foreground dark:text-white">{product.rating}</span>
+                              <span className="text-[9px] text-muted-foreground">({product.ratingCount})</span>
+                            </div>
+                          )}
+                          <button
+                            type="button"
+                            onClick={(e) => toggleFavorite(product, e)}
+                            aria-label={favorites.includes(product.id) ? `Remove ${product.name} from favorites` : `Add ${product.name} to favorites`}
+                            className="ml-auto w-10 h-10 rounded-full bg-white/90 flex items-center justify-center text-[#6f6257] hover:text-[#b95625] transition-colors shadow-sm"
+                          >
+                            <Heart className={`w-4 h-4 ${favorites.includes(product.id) ? 'fill-[#e07a3f] text-[#e07a3f]' : ''}`} />
+                          </button>
                         </div>
 
                         {/* Image */}
-                        <a href={`/storefront/product?id=${product.id}`} className="relative w-full flex-1 mb-4 flex items-center justify-center overflow-hidden cursor-pointer rounded-2xl bg-black/5">
+                        <a href={`/storefront/product?id=${product.id}`} className="relative w-full flex-1 mb-4 flex items-center justify-center overflow-hidden cursor-pointer rounded-2xl bg-[linear-gradient(135deg,#f5f3ee_0%,#e9e6df_100%)]">
                           <Image width={1200} height={900} unoptimized
                             src={product.image}
                             alt={product.name}
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out"
+                            className="w-full h-full scale-110 object-contain p-0 transition-transform duration-300"
                           />
                           {isOutOfStock && (
                             <span className="absolute bottom-2 left-2 z-10 bg-red-600/90 text-white text-[9px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider backdrop-blur-sm shadow-sm">
@@ -637,35 +630,29 @@ function CollectionsPageContent() {
                         <div className="flex items-end justify-between relative z-10 shrink-0">
                           <div className="flex-1 pr-4">
                             <a href={`/storefront/product?id=${product.id}`} className="hover:text-[#e07a3f] transition-colors">
-                              <h3 className="text-sm font-medium text-foreground/90 mb-1.5 line-clamp-1">{product.name}</h3>
+                              <h3 className="text-sm font-medium text-[#29231f] mb-1.5 line-clamp-1">{product.name}</h3>
                             </a>
                             <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-lg font-bold">₹{product.price.toLocaleString()}</span>
-                              {product.originalPrice && <span className="text-xs text-muted-foreground line-through">₹{product.originalPrice.toLocaleString()}</span>}
-                              {product.isSale && <span className="text-[9px] bg-[#e07a3f]/20 text-[#e07a3f] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">SALE</span>}
-                              {product.isNew && <span className="text-[9px] bg-white/10 text-foreground dark:text-white px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">NEW</span>}
+                              <span className="text-lg font-bold text-[#29231f]">₹{product.price.toLocaleString()}</span>
+                              {product.originalPrice && <span className="text-xs text-[#6f6257] line-through">₹{product.originalPrice.toLocaleString()}</span>}
+                              {product.isSale && <span className="text-[9px] bg-[#e07a3f]/15 text-[#9b4a23] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">SALE</span>}
+                              {product.isNew && <span className="text-[9px] bg-white/70 text-[#5c5148] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">NEW</span>}
                             </div>
                           </div>
 
                           {/* Action Button: Notify if out of stock, else Add to Bag */}
                           {isOutOfStock ? (
-                            <Link
-                              href={`/storefront/product?id=${product.id}`}
-                              title="Sold Out - Notify Me When Available"
-                              className="w-11 h-11 rounded-full bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-500 hover:bg-red-500 hover:text-white transition-colors shrink-0 shadow-sm"
-                            >
-                              <Bell className="w-4 h-4" />
-                            </Link>
+                            <button type="button" onClick={() => { const v=(product.variants||[]).find(x=>Number(x.stock_qty??0)<=0); setNotifySize(v?.size||product.variants?.[0]?.size||""); setNotifyEmail(accountEmail); setNotifySuccess(false); setNotifyProduct(product); }} aria-label="Notify me when back in stock" title="Notify Me When Available" className="w-11 h-11 rounded-full bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-500 hover:bg-red-500 hover:text-white transition-colors shrink-0 shadow-sm"><Bell className="w-4 h-4" /></button>
                           ) : (
                             <button
                               onClick={(e) => handleAddToBagClick(product, e)}
-                              className="w-11 h-11 rounded-full bg-background dark:bg-[#2a2a2a] flex items-center justify-center text-foreground dark:text-white relative overflow-hidden group/btn shrink-0 shadow-sm"
+                              className="w-11 h-11 rounded-full bg-white/85 flex items-center justify-center text-[#29231f] relative overflow-hidden group/btn shrink-0 shadow-sm"
                             >
                               {/* Semi-circle hover effect */}
                               <div className={`absolute inset-x-0 bottom-0 bg-[#e07a3f] transition-all duration-300 ease-out ${isItemInBag(product.id) ? 'h-full' : 'h-0 group-hover/btn:h-1/2 rounded-t-full'}`} />
 
                               {/* Icon */}
-                              <ShoppingBag className={`w-4 h-4 relative z-10 transition-transform duration-300 ${isItemInBag(product.id) ? 'scale-110 text-white' : 'group-hover/btn:-translate-y-0.5'}`} />
+                              <ShoppingBag className={`w-4 h-4 relative z-10 transition-transform duration-300 ${isItemInBag(product.id) ? 'scale-110 text-white' : 'text-[#29231f] group-hover/btn:-translate-y-0.5'}`} />
                             </button>
                           )}
                         </div>
@@ -674,14 +661,41 @@ function CollectionsPageContent() {
                   })}
                 </div>
 
-                {/* Pagination */}
-                <div className="flex items-center justify-center gap-2 mt-12">
-                  <button className="px-5 py-2.5 rounded-xl bg-surface dark:bg-[#1a1a1a] border border-border/50 dark:border-white/5 text-sm font-medium text-muted-foreground hover:text-foreground dark:text-white hover:bg-white/5 transition-colors">Previous</button>
-                  <button className="w-10 h-10 rounded-full bg-[#e07a3f] text-white text-sm font-bold flex items-center justify-center">1</button>
-                  <button className="w-10 h-10 rounded-full hover:bg-white/5 text-muted-foreground hover:text-foreground dark:text-white text-sm font-medium flex items-center justify-center transition-colors">2</button>
-                  <button className="w-10 h-10 rounded-full hover:bg-white/5 text-muted-foreground hover:text-foreground dark:text-white text-sm font-medium flex items-center justify-center transition-colors">3</button>
-                  <button className="px-5 py-2.5 rounded-xl bg-surface dark:bg-[#1a1a1a] border border-border/50 dark:border-white/5 text-sm font-medium text-muted-foreground hover:text-foreground dark:text-white hover:bg-white/5 transition-colors">Next</button>
-                </div>
+                {totalPages > 1 && (
+                  <nav aria-label="Collection pages" className="mt-12 flex flex-wrap items-center justify-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        changePage(currentPage - 1);
+                        document.getElementById("product-grid")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                      }}
+                      disabled={currentPage === 1}
+                      className="rounded-xl border border-border/50 bg-surface px-4 py-2.5 text-sm font-medium transition-colors hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/5 dark:bg-[#1a1a1a]"
+                    >Previous</button>
+                    {Array.from({ length: totalPages }, (_, index) => index + 1).map((page) => (
+                      <button
+                        key={page}
+                        type="button"
+                        aria-label={`Page ${page}`}
+                        aria-current={currentPage === page ? "page" : undefined}
+                        onClick={() => {
+                          changePage(page);
+                          document.getElementById("product-grid")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                        }}
+                        className={`flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold transition-colors ${currentPage === page ? "bg-[#e07a3f] text-white" : "text-muted-foreground hover:bg-white/5 hover:text-foreground dark:text-white"}`}
+                      >{page}</button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        changePage(currentPage + 1);
+                        document.getElementById("product-grid")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                      }}
+                      disabled={currentPage === totalPages}
+                      className="rounded-xl border border-border/50 bg-surface px-4 py-2.5 text-sm font-medium transition-colors hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/5 dark:bg-[#1a1a1a]"
+                    >Next</button>
+                  </nav>
+                )}
 
               </div>
             </div>
@@ -692,15 +706,7 @@ function CollectionsPageContent() {
       <AuthModal isOpen={isAuthOpen} onClose={() => setIsAuthOpen(false)} />
       <CartDrawer isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} />
       <StylistDrawer isOpen={isStylistOpen} onClose={() => setIsStylistOpen(false)} />
-      <Product3DModal
-        isOpen={!!selected3DProduct}
-        onClose={() => setSelected3DProduct(null)}
-        product={selected3DProduct}
-        onAddToBag={(prod) => {
-          addItemToBag(prod, "M");
-          setSelected3DProduct(null);
-        }}
-      />
+      {notifyProduct && <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/55 p-4" onClick={() => setNotifyProduct(null)}><section role="dialog" aria-modal="true" aria-labelledby="notify-title" className="w-full max-w-md rounded-2xl border border-border bg-surface p-6 shadow-2xl" onClick={e=>e.stopPropagation()}><button type="button" onClick={()=>setNotifyProduct(null)} className="float-right">×</button><h2 id="notify-title" className="mb-2 text-xl font-semibold">Notify Me When Available</h2><p className="mb-5 text-sm text-muted-foreground">{notifyProduct.name} is out of stock. Leave your email to receive an alert when restocked.</p>{notifySuccess ? <p role="status" className="rounded-xl bg-emerald-500/10 p-4">You&apos;re on the waitlist! We will email you the moment {notifySize ? "size "+notifySize : "this item"} arrives.</p> : <form onSubmit={submitNotify} className="space-y-4">{notifyProduct.variants?.length ? <label className="block text-sm">Size<select value={notifySize} onChange={e=>setNotifySize(e.target.value)} className="mt-1 w-full rounded-lg border bg-background p-2">{notifyProduct.variants.map(v=><option key={v.id||v.size} value={v.size||""}>{v.size||"One size"}</option>)}</select></label> : null}<label className="block text-sm">Email<input required type="email" value={notifyEmail} onChange={e=>setNotifyEmail(e.target.value)} className="mt-1 w-full rounded-lg border bg-background p-2" /></label><button className="w-full rounded-lg bg-accent p-3 text-white">Notify Me</button></form>}</section></div>}
 
       {/* Size Selection Modal */}
       {selectedProductForSize && (

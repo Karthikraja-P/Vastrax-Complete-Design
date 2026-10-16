@@ -513,7 +513,7 @@ export function StylistDrawer({ isOpen: externalIsOpen, onClose: externalOnClose
                                     }}
                                     title="View Details"
                                   >
-                                    <Image width={1200} height={900} unoptimized src={p.image} alt={p.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                                    <Image width={1200} height={900} unoptimized src={p.image} alt={p.name} className="w-full h-full object-contain bg-[#f8f7f4] p-1" />
                                   </div>
                                   <h5 
                                     className="text-xs font-semibold text-foreground truncate cursor-pointer hover:text-accent transition-colors"

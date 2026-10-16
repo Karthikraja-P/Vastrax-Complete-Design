@@ -32,8 +32,8 @@ export function SizeChartEditor({ value, onChange }: SizeChartEditorProps) {
     <section className="space-y-4 rounded-xl border border-border p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h3 className="text-sm font-semibold text-foreground">Product size chart</h3>
-          <p className="text-xs text-muted-foreground">Enter the actual sizes and measurements shown to shoppers.</p>
+          <h3 className="text-sm font-semibold text-foreground">Product sizes and size chart <span className="text-red-600">*</span></h3>
+          <p className="text-xs text-muted-foreground">At least one product size is required. Add each size and its measurements before saving.</p>
         </div>
         <label className="flex items-center gap-2 text-xs text-muted-foreground">
           Unit
@@ -69,7 +69,8 @@ export function SizeChartEditor({ value, onChange }: SizeChartEditorProps) {
               <tr key={rowIndex} className="border-b border-border/50">
                 <td className="p-2">
                   <input
-                    aria-label={"Size " + (rowIndex + 1)}
+                    aria-label={"Required product size " + (rowIndex + 1)}
+                    aria-required="true"
                     value={row.size}
                     onChange={(event) => updateCell(rowIndex, "size", event.target.value)}
                     className="w-full rounded border border-border bg-background px-2 py-1 text-foreground"

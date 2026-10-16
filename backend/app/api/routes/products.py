@@ -7,6 +7,7 @@ from app.db.database import get_db
 from app.middleware.auth import require_admin, get_optional_user, get_current_user
 from app.core.exceptions import ForbiddenError, NotFoundError
 from app.models.user import User
+from app.models.stock_notification import StockNotification
 from app.schemas.products import ImageUploadIn, ModelUploadIn, ProductCreate, ProductUpdate, StockUpdateIn
 from app.schemas.reviews import ReviewCreate, ReviewResponse
 from app.schemas.stock_notifications import StockNotificationCreate, StockNotificationResponse
@@ -47,6 +48,12 @@ def search_products(
     db: Session = Depends(get_db),
 ):
     return ProductService(db).search_products(q, skip, limit)
+
+
+@router.get("/stock-notifications")
+def list_stock_notifications(_: User = Depends(require_admin), db: Session = Depends(get_db)):
+    rows = db.query(StockNotification).order_by(StockNotification.created_at.desc()).limit(500).all()
+    return [{"id": r.id, "product_id": r.product_id, "product_name": r.product.name if r.product else "Deleted product", "email": r.email, "size": r.size, "is_notified": r.is_notified, "created_at": r.created_at, "notified_at": r.notified_at} for r in rows]
 
 
 @router.get("/{product_id}")
@@ -160,6 +167,15 @@ def reconstruct_model(
 @router.get("/{product_id}/reviews")
 def get_product_reviews(product_id: str, db: Session = Depends(get_db)):
     return ProductService(db).list_reviews(product_id)
+
+
+@router.get("/{product_id}/reviews/eligibility")
+def get_product_review_eligibility(
+    product_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return ProductService(db).review_eligibility(product_id, current_user)
 
 
 @router.post("/{product_id}/reviews", status_code=status.HTTP_201_CREATED)

@@ -120,9 +120,9 @@ export default function VirtualTryOnPage() {
 
   if (!product) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0A192F]">
-        <div className="flex flex-col items-center gap-4 text-white">
-          <RefreshCw className="w-8 h-8 animate-spin text-[#D4AF37]" />
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-4 text-foreground">
+          <RefreshCw className="w-8 h-8 animate-spin text-[#e07a3f]" />
           <p>Loading Garment Data...</p>
         </div>
       </div>
@@ -160,7 +160,7 @@ export default function VirtualTryOnPage() {
     setIsProcessing(true);
     setTryOnComplete(false);
     setStatusType("processing");
-    setStatusText(isCombo ? "Running 2-pass outfit drape on GPU... (~30 seconds)" : "Sending to neural pipeline... (~14 seconds)");
+    setStatusText(isCombo ? "The virtual fitting room is processing both garments on the GPU. This can take a few minutes when the GPU is busy." : "The virtual fitting room is processing your photo on the GPU. This can take a few minutes when the GPU is busy.");
 
     try {
       let res;
@@ -234,18 +234,18 @@ export default function VirtualTryOnPage() {
   const productImgUrl = getGarmentImage(product);
 
   return (
-    <div className="min-h-screen bg-[#0A192F] text-slate-100 pb-20">
+    <div className="min-h-screen bg-background text-foreground pb-20">
       {/* Header */}
-      <header className="px-6 py-6 border-b border-slate-800">
+      <header className="px-6 py-6 border-b border-border">
         <div className="max-w-[1200px] mx-auto flex items-center justify-between">
           <button
             onClick={() => router.back()}
-            className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-400 hover:text-[#D4AF37] transition-colors"
+            className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground hover:text-[#e07a3f] transition-colors"
           >
             ← Back to Product
           </button>
-          <div className="text-xl font-serif font-bold text-white tracking-wider flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-[#D4AF37]" />
+          <div className="text-xl font-serif font-bold text-foreground tracking-wider flex items-center gap-2">
+            <Sparkles className="w-5 h-5 text-[#e07a3f]" />
             AI FITTING ROOM
           </div>
         </div>
@@ -258,14 +258,14 @@ export default function VirtualTryOnPage() {
         <div className="flex flex-col gap-6">
 
           {/* Step 1 */}
-          <div className="bg-slate-900/50 border border-slate-800 p-6 rounded-2xl">
-            <h3 className="text-[10px] font-bold uppercase tracking-widest text-[#D4AF37] mb-4">Step 1 — Your Photo</h3>
+          <div className="bg-surface border border-border p-6 rounded-2xl">
+            <h3 className="text-[10px] font-bold uppercase tracking-widest text-[#e07a3f] mb-4">Step 1 — Your Photo</h3>
             <div
               onClick={previewUrl ? triggerFileInput : () => setShowTipsModal(true)}
               onDragOver={onDragOver}
               onDrop={onDrop}
               className={`w-full min-h-[200px] border-2 border-dashed rounded-xl flex flex-col items-center justify-center p-4 cursor-pointer transition-all ${
-                previewUrl ? "border-[#D4AF37]/50 bg-black/40" : "border-slate-700 hover:border-[#D4AF37] bg-black/20"
+                previewUrl ? "border-[#e07a3f]/50 bg-background/40" : "border-border hover:border-[#e07a3f] bg-background/30"
               }`}
             >
               <input type="file" ref={fileInputRef} onChange={onFileChange} accept="image/*" className="hidden" />
@@ -273,31 +273,31 @@ export default function VirtualTryOnPage() {
                 <Image width={1200} height={900} unoptimized src={previewUrl} alt="Portrait" className="max-h-[220px] object-contain rounded-lg" />
               ) : (
                 <div className="flex flex-col items-center text-center">
-                  <div className="w-12 h-12 rounded-full bg-[#D4AF37]/20 flex items-center justify-center mb-3">
-                    <Camera className="w-5 h-5 text-[#D4AF37]" />
+                  <div className="w-12 h-12 rounded-full bg-[#e07a3f]/20 flex items-center justify-center mb-3">
+                    <Camera className="w-5 h-5 text-[#e07a3f]" />
                   </div>
-                  <strong className="text-sm text-slate-200">Upload your photo</strong>
-                  <p className="text-xs text-slate-400 mt-1">Drag & drop or click to choose</p>
-                  <p className="text-[10px] text-slate-500 mt-1">JPG, PNG — up to 10 MB</p>
+                  <strong className="text-sm text-foreground">Upload your photo</strong>
+                  <p className="text-xs text-muted-foreground mt-1">Drag & drop or click to choose</p>
+                  <p className="text-[10px] text-muted-foreground/80 mt-1">JPG, PNG — up to 10 MB</p>
                 </div>
               )}
             </div>
           </div>
 
           {/* Step 2 */}
-          <div className="bg-slate-900/50 border border-slate-800 p-6 rounded-2xl relative">
+          <div className="bg-surface border border-border p-6 rounded-2xl relative">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-[10px] font-bold uppercase tracking-widest text-[#D4AF37]">Step 2 — Garment Selected</h3>
+              <h3 className="text-[10px] font-bold uppercase tracking-widest text-[#e07a3f]">Step 2 — Garment Selected</h3>
               <button
                 onClick={() => setShowGarmentList(!showGarmentList)}
-                className="text-[10px] font-bold uppercase text-slate-400 hover:text-white"
+                className="text-[10px] font-bold uppercase text-muted-foreground hover:text-foreground"
               >
                 {showGarmentList ? "Hide List ▴" : "Change Garment ▾"}
               </button>
             </div>
 
             {showGarmentList && (
-              <div className="absolute top-14 right-6 w-[280px] max-h-[300px] overflow-y-auto bg-[#0f2341] border border-[#D4AF37]/30 rounded-xl shadow-2xl z-20 p-2 flex flex-col gap-2">
+              <div className="absolute top-14 right-6 w-[280px] max-h-[300px] overflow-y-auto bg-surface border border-[#e07a3f]/30 rounded-xl shadow-2xl z-20 p-2 flex flex-col gap-2">
                 {products.map(p => {
                   const pImg = getGarmentImage(p);
                   const isSelected = p.id === product.id;
@@ -312,13 +312,13 @@ export default function VirtualTryOnPage() {
                         setShowGarmentList(false);
                       }}
                       className={`flex items-center gap-3 p-2 rounded-lg transition-colors text-left ${
-                        isSelected ? "bg-[#D4AF37]/20 border border-[#D4AF37]" : "hover:bg-white/5 border border-transparent"
+                        isSelected ? "bg-[#e07a3f]/20 border border-[#e07a3f]" : "hover:bg-white/5 border border-transparent"
                       }`}
                     >
-                      <Image width={1200} height={900} unoptimized src={String(pImg || "/placeholder.svg")} alt={String(p.name || "Product")} className="w-10 h-12 object-cover rounded bg-white" />
+              <Image width={1200} height={900} unoptimized src={String(pImg || "/placeholder.svg")} alt={String(p.name || "Product")} className="w-10 h-12 object-contain rounded bg-[#f8f7f4] p-0.5" />
                       <div>
-                        <p className="text-xs font-semibold text-white truncate max-w-[180px]">{p.name}</p>
-                        <p className="text-[10px] text-slate-400">₹{(p.price_selling || p.price)?.toLocaleString()}</p>
+                        <p className="text-xs font-semibold text-foreground truncate max-w-[180px]">{p.name}</p>
+                        <p className="text-[10px] text-muted-foreground">₹{(p.price_selling || p.price)?.toLocaleString()}</p>
                       </div>
                     </button>
                   );
@@ -327,24 +327,24 @@ export default function VirtualTryOnPage() {
             )}
 
             <div className="flex gap-4 items-center">
-              <Image width={1200} height={900} unoptimized src={String(productImgUrl || "/placeholder.svg")} alt={String(product.name || "Product")} className="w-20 h-24 object-cover rounded-lg border border-slate-700 bg-white" />
+              <Image width={1200} height={900} unoptimized src={String(productImgUrl || "/placeholder.svg")} alt={String(product.name || "Product")} className="w-20 h-24 object-contain rounded-lg border border-border bg-[#f8f7f4] p-1" />
               <div>
-                <h4 className="text-sm font-semibold text-white">{product.name}</h4>
-                <span className="text-[9px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 mt-1 inline-block">
+                <h4 className="text-sm font-semibold text-foreground">{product.name}</h4>
+                <span className="text-[9px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-800 text-muted-foreground mt-1 inline-block">
                   {fashnType}
                 </span>
-                <p className="text-sm font-bold text-[#D4AF37] mt-1">₹{(product.price_selling || product.price)?.toLocaleString()}</p>
+                <p className="text-sm font-bold text-[#e07a3f] mt-1">₹{(product.price_selling || product.price)?.toLocaleString()}</p>
               </div>
             </div>
           </div>
 
           {/* Step 3 (Combos for bottoms) */}
           {isBottoms && (
-            <div className={`bg-slate-900/50 border ${selectedTop ? 'border-[#D4AF37]' : 'border-slate-800'} p-6 rounded-2xl`}>
+            <div className={`bg-surface border ${selectedTop ? 'border-[#e07a3f]' : 'border-border'} p-6 rounded-2xl`}>
               <div className="flex justify-between items-center mb-3">
-                <h3 className="text-[10px] font-bold uppercase tracking-widest text-[#D4AF37]">Step 3 — Replace Top Too? (Optional)</h3>
+                <h3 className="text-[10px] font-bold uppercase tracking-widest text-[#e07a3f]">Step 3 — Replace Top Too? (Optional)</h3>
                 {selectedTop && (
-                  <button onClick={() => setSelectedTop(null)} className="text-[10px] text-slate-400 hover:text-white flex items-center gap-1">
+                  <button onClick={() => setSelectedTop(null)} className="text-[10px] text-muted-foreground hover:text-foreground flex items-center gap-1">
                     <X className="w-3 h-3" /> Clear
                   </button>
                 )}
@@ -352,15 +352,15 @@ export default function VirtualTryOnPage() {
 
               {selectedTop ? (
                 <div className="flex items-center gap-4">
-                  <Image width={1200} height={900} unoptimized src={getGarmentImage(selectedTop)} alt={selectedTop.name || "Selected garment"} className="w-16 h-20 object-cover rounded-lg border border-[#D4AF37] bg-white" />
+                  <Image width={1200} height={900} unoptimized src={getGarmentImage(selectedTop)} alt={selectedTop.name || "Selected garment"} className="w-16 h-20 object-contain rounded-lg border border-[#e07a3f] bg-[#f8f7f4] p-1" />
                   <div>
-                    <p className="text-xs font-semibold text-white">{selectedTop.name}</p>
-                    <p className="text-[10px] text-slate-400 mt-1">Will be draped in pass 1, then your pants in pass 2.</p>
+                    <p className="text-xs font-semibold text-foreground">{selectedTop.name}</p>
+                    <p className="text-[10px] text-muted-foreground mt-1">Will be draped in pass 1, then your pants in pass 2.</p>
                   </div>
                 </div>
               ) : (
                 <>
-                  <p className="text-[10px] text-slate-400 mb-3">
+                  <p className="text-[10px] text-muted-foreground mb-3">
                     Wearing a kurti in your photo? Select a top below — the AI will replace it first, then drape the pants. Skip if already wearing a short top.
                   </p>
                   <div className="flex gap-3 overflow-x-auto pb-2 custom-scrollbar">
@@ -368,10 +368,10 @@ export default function VirtualTryOnPage() {
                       <button
                         key={top.id}
                         onClick={() => setSelectedTop(top)}
-                        className="flex-shrink-0 flex flex-col items-center gap-1 p-1 border border-slate-700 rounded-lg hover:border-[#D4AF37] transition-colors"
+                        className="flex-shrink-0 flex flex-col items-center gap-1 p-1 border border-border rounded-lg hover:border-[#e07a3f] transition-colors"
                       >
-                        <Image width={1200} height={900} unoptimized src={getGarmentImage(top)} alt={top.name || "Garment"} className="w-14 h-16 object-cover rounded bg-white" />
-                        <span className="text-[8px] text-slate-400 w-14 truncate text-center">{top.name}</span>
+                        <Image width={1200} height={900} unoptimized src={getGarmentImage(top)} alt={top.name || "Garment"} className="w-14 h-16 object-contain rounded bg-[#f8f7f4] p-0.5" />
+                        <span className="text-[8px] text-muted-foreground w-14 truncate text-center">{top.name}</span>
                       </button>
                     ))}
                   </div>
@@ -384,7 +384,7 @@ export default function VirtualTryOnPage() {
           <button
             onClick={startTryOnPipeline}
             disabled={isProcessing || !personFile}
-            className="w-full py-4 bg-gradient-to-r from-[#D4AF37] to-[#c49f2e] hover:from-[#c49f2e] hover:to-[#b08e28] text-[#0A192F] font-bold text-xs uppercase tracking-wider rounded-xl flex items-center justify-center gap-2 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+            className="w-full py-4 bg-gradient-to-r from-[#e07a3f] to-[#b95625] hover:from-[#b95625] hover:to-[#9b4a23] text-white font-bold text-xs uppercase tracking-wider rounded-xl flex items-center justify-center gap-2 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all"
           >
             {isBottoms && selectedTop ? <Layers className="w-4 h-4" /> : <Sparkles className="w-4 h-4" />}
             {isBottoms && selectedTop ? "Generate Full Outfit Try-On" : "Generate Virtual Try-On"}
@@ -393,7 +393,7 @@ export default function VirtualTryOnPage() {
           {/* Status Banner */}
           {statusType && (
             <div className={`p-4 rounded-xl flex items-center gap-3 border ${
-              statusType === 'processing' ? 'bg-[#D4AF37]/10 border-[#D4AF37]/30 text-[#D4AF37]' :
+              statusType === 'processing' ? 'bg-[#e07a3f]/10 border-[#e07a3f]/30 text-[#e07a3f]' :
               statusType === 'success' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' :
               'bg-red-500/10 border-red-500/30 text-red-400'
             }`}>
@@ -411,17 +411,17 @@ export default function VirtualTryOnPage() {
 
           {/* Post Result Actions */}
           {tryOnComplete && (
-            <div className="bg-slate-900/50 border border-slate-800 p-6 rounded-2xl flex flex-col gap-4">
+            <div className="bg-surface border border-border p-6 rounded-2xl flex flex-col gap-4">
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Select Size</p>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-3">Select Size</p>
                 <div className="flex flex-wrap gap-2">
                   {["S", "M", "L", "XL", "XXL"].map(sz => (
                     <button
                       key={sz}
                       onClick={() => { setSelectedSize(sz); setSizeError(false); }}
                       className={`w-10 h-10 rounded-full border text-xs font-bold transition-colors ${
-                        selectedSize === sz ? 'bg-[#D4AF37] border-[#D4AF37] text-[#0A192F]' :
-                        sizeError ? 'border-red-500/50 text-red-400' : 'border-slate-700 text-slate-300 hover:border-slate-500'
+                        selectedSize === sz ? 'bg-[#e07a3f] border-[#e07a3f] text-white' :
+                        sizeError ? 'border-red-500/50 text-red-400' : 'border-border text-muted-foreground hover:border-border'
                       }`}
                     >
                       {sz}
@@ -438,7 +438,7 @@ export default function VirtualTryOnPage() {
               </button>
               <button
                 onClick={resetAll}
-                className="w-full py-2.5 border border-slate-700 text-slate-300 font-bold text-xs uppercase tracking-wider rounded-lg hover:bg-slate-800 transition-colors"
+                className="w-full py-2.5 border border-border text-muted-foreground font-bold text-xs uppercase tracking-wider rounded-lg hover:bg-background transition-colors"
               >
                 Try Another Photo
               </button>
@@ -454,10 +454,10 @@ export default function VirtualTryOnPage() {
 
         {/* Right Preview Viewport */}
         <div className="flex flex-col gap-3">
-          <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 text-center">
+          <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground text-center">
             {tryOnComplete ? "Your New Look" : "Preview Canvas"}
           </span>
-          <div className="w-full aspect-[3/4] max-w-[500px] mx-auto rounded-3xl overflow-hidden border border-slate-700 bg-black relative flex items-center justify-center shadow-2xl">
+          <div className="w-full aspect-[3/4] max-w-[500px] mx-auto rounded-3xl overflow-hidden border border-border bg-background relative flex items-center justify-center shadow-2xl">
             {tryOnComplete && tryOnResultUrl ? (
               <Image width={1200} height={900} unoptimized
                 src={tryOnResultUrl}
@@ -469,7 +469,7 @@ export default function VirtualTryOnPage() {
                     img.dataset.retried = "true";
                     img.src = tryOnResultUrl.startsWith("http")
                       ? tryOnResultUrl
-                      : `http://localhost:8090${tryOnResultUrl.startsWith("/") ? "" : "/"}${tryOnResultUrl}`;
+                      : window.location.origin + (tryOnResultUrl.startsWith("/") ? "" : "/") + tryOnResultUrl;
                   }
                 }}
               />
@@ -477,8 +477,8 @@ export default function VirtualTryOnPage() {
               <>
                 <Image width={1200} height={900} unoptimized src={String(productImgUrl || "/placeholder.svg")} alt={String(product.name || "Product")} className="w-full h-full object-cover opacity-20 blur-sm" />
                 <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6">
-                  <RefreshCw className="w-10 h-10 text-[#D4AF37] animate-spin mb-4" />
-                  <p className="text-sm font-bold text-[#D4AF37]">
+                  <RefreshCw className="w-10 h-10 text-[#e07a3f] animate-spin mb-4" />
+                  <p className="text-sm font-bold text-[#e07a3f]">
                     {isBottoms && selectedTop ? 'Draping outfit on GPU (2 passes)...' : 'Draping on GPU...'}
                   </p>
                 </div>
@@ -486,20 +486,20 @@ export default function VirtualTryOnPage() {
             ) : previewUrl ? (
               <>
                 <Image width={1200} height={900} unoptimized src={String(previewUrl || "/placeholder.svg")} alt="Portrait Preview" className="w-full h-full object-contain opacity-60" />
-                <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6 bg-black/40">
-                  <Sparkles className="w-8 h-8 text-[#D4AF37] mb-3" />
-                  <p className="text-sm font-bold text-white tracking-wide">Click Generate to try on</p>
+                <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6 bg-background/40">
+                  <Sparkles className="w-8 h-8 text-[#e07a3f] mb-3" />
+                  <p className="text-sm font-bold text-foreground tracking-wide">Click Generate to try on</p>
                 </div>
               </>
             ) : (
-              <div className="w-full h-full flex flex-col items-center justify-center bg-slate-900/40 p-6">
+              <div className="w-full h-full flex flex-col items-center justify-center bg-surface/40 p-6">
                 <Image width={1200} height={900} unoptimized src={String(productImgUrl || "/placeholder.svg")} alt={String(product.name || "Product")} className="max-h-[60%] w-auto object-contain opacity-50 drop-shadow-xl mb-6 rounded-lg" />
-                <p className="text-xs text-slate-400 uppercase tracking-wider">Upload your photo to begin</p>
+                <p className="text-xs text-muted-foreground uppercase tracking-wider">Upload your photo to begin</p>
               </div>
             )}
           </div>
           {tryOnComplete && (
-            <p className="text-[9px] text-slate-500 text-center uppercase tracking-wider">
+            <p className="text-[9px] text-muted-foreground/80 text-center uppercase tracking-wider">
               Generated by FASHN VTON 1.5 • Portrait deleted securely
             </p>
           )}
@@ -510,24 +510,24 @@ export default function VirtualTryOnPage() {
       {/* Guidelines Modal */}
       {showTipsModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-[#0A192F] border border-[#D4AF37]/30 rounded-2xl max-w-md w-full shadow-2xl overflow-hidden">
-            <div className="p-6 border-b border-slate-800 relative">
-              <button onClick={() => setShowTipsModal(false)} className="absolute top-6 right-6 text-slate-400 hover:text-white">
+          <div className="bg-background border border-[#e07a3f]/30 rounded-2xl max-w-md w-full shadow-2xl overflow-hidden">
+            <div className="p-6 border-b border-border relative">
+              <button onClick={() => setShowTipsModal(false)} className="absolute top-6 right-6 text-muted-foreground hover:text-foreground">
                 <X className="w-5 h-5" />
               </button>
-              <span className="text-[9px] font-bold uppercase tracking-widest text-[#D4AF37] mb-1 block">AI Photo Guidelines</span>
-              <h2 className="text-xl font-serif text-white">{TIP_LABEL[fashnType as keyof typeof TIP_LABEL]}</h2>
+              <span className="text-[9px] font-bold uppercase tracking-widest text-[#e07a3f] mb-1 block">AI Photo Guidelines</span>
+              <h2 className="text-xl font-serif text-foreground">{TIP_LABEL[fashnType as keyof typeof TIP_LABEL]}</h2>
             </div>
-            <div className="p-6 bg-slate-900/50">
+            <div className="p-6 bg-surface">
               <div className="flex gap-3 items-start mb-6">
-                <Sparkles className="w-5 h-5 text-[#D4AF37] shrink-0 mt-0.5" />
-                <p className="text-sm text-slate-300 leading-relaxed">{tips}</p>
+                <Sparkles className="w-5 h-5 text-[#e07a3f] shrink-0 mt-0.5" />
+                <p className="text-sm text-muted-foreground leading-relaxed">{tips}</p>
               </div>
               <div className="flex gap-3">
-                <button onClick={() => setShowTipsModal(false)} className="flex-1 py-3 border border-slate-700 text-white text-xs font-bold uppercase rounded-lg hover:bg-slate-800 transition-colors">
+                <button onClick={() => setShowTipsModal(false)} className="flex-1 py-3 border border-border text-foreground text-xs font-bold uppercase rounded-lg hover:bg-background transition-colors">
                   Cancel
                 </button>
-                <button onClick={triggerFileInput} className="flex-[2] py-3 bg-[#D4AF37] hover:bg-[#c49f2e] text-[#0A192F] text-xs font-bold uppercase rounded-lg flex items-center justify-center gap-2 transition-colors">
+                <button onClick={triggerFileInput} className="flex-[2] py-3 bg-[#e07a3f] hover:bg-[#b95625] text-white text-xs font-bold uppercase rounded-lg flex items-center justify-center gap-2 transition-colors">
                   Choose Photo <Upload className="w-4 h-4" />
                 </button>
               </div>

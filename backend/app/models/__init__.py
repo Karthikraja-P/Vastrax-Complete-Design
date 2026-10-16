@@ -36,9 +36,16 @@ __all__ = [
 ]
 
 
-from .business import CRMLead, CRMActivity, Supplier, PurchaseOrder, PurchaseOrderLine, StockMovement, OperatingExpense
+from .business import CRMLead, CRMActivity, Supplier, PurchaseOrder, PurchaseOrderLine, StockMovement, OperatingExpense, SupplierPayment, SupplierExpensePayment, ERPInventoryReceipt, ERPPurchaseOrderRequest, ERPInventoryCostingConfig, ERPInventoryCostLayer, ERPInventoryCostConsumption, ERPInventoryCostOpeningRequest, ERPInventoryCostReturnRestoration
 
 from .returns import SalesReturn, SalesReturnLine
 
-from .ledger import LedgerAccount, JournalEntry, JournalLine
+from .ledger import LedgerAccount, JournalEntry, JournalLine, BankStatementLine, BankStatementMatchEvent
 from .business_team import BusinessTeamPermission
+from .marketing_consent import CRMMarketingConsentEvent
+
+from .payment_refund import PaymentRefund
+
+from .erp_posting_config import ERPPostingConfig
+
+from .marketing_campaign import CRMCampaign, CRMCampaignDelivery, CRMMarketingUnsubscribeToken

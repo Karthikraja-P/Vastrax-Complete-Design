@@ -52,13 +52,89 @@ def test_expense_register_posts_balanced_journal_atomically():
             "input_tax_account_id": data["tax"]}
     response = client.post("/api/v1/erp/expenses", headers=headers, json=body)
     assert response.status_code == 201, response.text
-    posted = client.get("/api/v1/erp/journals", headers=headers).json()[0]
-    assert posted["id"] == response.json()["journal_entry_id"]
+    journals = client.get("/api/v1/erp/journals", headers=headers).json()
+    posted = next(entry for entry in journals if entry["id"] == response.json()["journal_entry_id"])
     assert sum(float(line["debit"]) for line in posted["lines"]) == 118
     assert sum(float(line["credit"]) for line in posted["lines"]) == 118
     assert len(posted["lines"]) == 3
     missing_tax = client.post("/api/v1/erp/expenses", headers=headers, json={**body, "description": "Must not persist", "input_tax_account_id": None})
     assert missing_tax.status_code == 422
-    expenses = client.get("/api/v1/erp/expenses", headers=headers).json()
+    expenses = client.get("/api/v1/erp/expenses", headers=headers).json()["items"]
     assert len([item for item in expenses if item["description"] == "Shipping supplies"]) == 1
     assert not any(item["description"] == "Must not persist" for item in expenses)
+
+
+
+def test_profit_and_loss_and_balance_sheet_use_posted_journals():
+    suffix = uuid.uuid4().hex[:10]
+    db = SessionLocal()
+    admin = User(id=f"reports-admin-{suffix}", email=f"reports-{suffix}@example.test", hashed_password="test", role="admin", is_active=True)
+    cash = LedgerAccount(code=f"RPT-CASH-{suffix}", name="Report cash", account_type="asset")
+    sales = LedgerAccount(code=f"RPT-REV-{suffix}", name="Report sales", account_type="revenue")
+    expenses = LedgerAccount(code=f"RPT-EXP-{suffix}", name="Report expenses", account_type="expense")
+    db.add_all([admin, cash, sales, expenses]); db.commit()
+    token = create_access_token({"sub": admin.id})
+    account_ids = {"cash": cash.id, "sales": sales.id, "expenses": expenses.id}
+    db.close()
+    client = TestClient(app)
+    headers = {"Authorization": f"Bearer {token}"}
+    assert client.get("/api/v1/erp/profit-and-loss", params={"start_date": "2026-10-01", "end_date": "2026-10-02"}).status_code == 401
+    entries = [
+        ("2026-09-30", "Prior period sale", account_ids["cash"], account_ids["sales"], "50.00"),
+        ("2026-10-01", "Current period sale", account_ids["cash"], account_ids["sales"], "100.00"),
+        ("2026-10-02", "Current period expense", account_ids["expenses"], account_ids["cash"], "25.00"),
+    ]
+    for day, description, debit_account, credit_account, amount in entries:
+        response = client.post("/api/v1/erp/journals", headers=headers, json={
+            "posting_date": day, "description": description,
+            "lines": [{"account_id": debit_account, "debit": amount}, {"account_id": credit_account, "credit": amount}],
+        })
+        assert response.status_code == 201, response.text
+
+    report = client.get("/api/v1/erp/profit-and-loss", headers=headers, params={"start_date": "2026-10-01", "end_date": "2026-10-02"})
+    assert report.status_code == 200, report.text
+    assert next(row for row in report.json()["revenue"] if row["code"] == f"RPT-REV-{suffix}")["amount"] == "100.00"
+    assert next(row for row in report.json()["expenses"] if row["code"] == f"RPT-EXP-{suffix}")["amount"] == "25.00"
+    invalid = client.get("/api/v1/erp/profit-and-loss", headers=headers, params={"start_date": "2026-10-03", "end_date": "2026-10-02"})
+    assert invalid.status_code == 422
+
+    balance = client.get("/api/v1/erp/balance-sheet", headers=headers, params={"as_of": "2026-10-02"})
+    assert balance.status_code == 200, balance.text
+    assert next(row for row in balance.json()["assets"] if row["code"] == f"RPT-CASH-{suffix}")["amount"] == "125.00"
+    assert balance.json()["balanced"] is True
+
+
+def test_starter_chart_is_optional_guarded_and_does_not_configure_posting():
+    suffix = uuid.uuid4().hex[:10]
+    db = SessionLocal()
+    admin = User(id=f"coa-admin-{suffix}", email=f"coa-{suffix}@example.test", hashed_password="test", role="admin", is_active=True)
+    conflict = LedgerAccount(code="1000", name="Existing differently named account", account_type="asset")
+    db.add_all([admin, conflict])
+    db.commit()
+    token = create_access_token({"sub": admin.id})
+    db.close()
+
+    client = TestClient(app)
+    path = "/api/v1/erp/accounts/starter-chart"
+    assert client.post(path).status_code == 401
+    headers = {"Authorization": f"Bearer {token}"}
+    blocked = client.post(path, headers=headers)
+    assert blocked.status_code == 409
+    db = SessionLocal()
+    assert db.query(LedgerAccount).filter(LedgerAccount.code == "1010").first() is None
+    db.query(LedgerAccount).filter(LedgerAccount.code == "1000").update({"name": "Cash on hand"})
+    db.commit()
+    db.close()
+
+    seeded = client.post(path, headers=headers)
+    assert seeded.status_code == 201, seeded.text
+    assert seeded.json()["created_count"] == 21
+    assert len(seeded.json()["accounts"]) == 22
+    assert seeded.json()["review_required"] is True
+    assert seeded.json()["posting_configured"] is False
+    assert client.get("/api/v1/erp/posting-settings", headers=headers).json()["settings"] is None
+    repeated = client.post(path, headers=headers)
+    assert repeated.status_code == 201 and repeated.json()["created_count"] == 0
+    db = SessionLocal()
+    assert db.query(LedgerAccount).filter(LedgerAccount.code.in_(["1000", "1010", "1020", "5000"])).count() == 4
+    db.close()
