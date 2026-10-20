@@ -1,14 +1,153 @@
+import asyncio
 import os
+import shutil
+import tempfile
 import uuid
+from io import BytesIO
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, File, Form, UploadFile
+from fastapi.responses import FileResponse
+from starlette.background import BackgroundTask
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db
-from app.middleware.auth import get_current_user, get_optional_user
+from app.middleware.auth import get_current_user, get_optional_user, require_admin
 from app.models.user import User
 from app.services.tryon_service import TryonService
 
 router = APIRouter(prefix="/try-on", tags=["tryon"])
+
+
+ADMIN_TRYON_MODELS = {
+    "aanya": {
+        "name": "Aanya",
+        "description": "Long waves · medium-brown complexion · average build",
+        "filename": "aanya-wavy.webp",
+    },
+    "meera": {
+        "name": "Meera",
+        "description": "Shoulder-length curls · deep complexion · tall, lean build",
+        "filename": "meera-curls.webp",
+    },
+    "kavya": {
+        "name": "Kavya",
+        "description": "Long braid · golden-brown complexion · curvy build",
+        "filename": "kavya-braid.webp",
+    },
+}
+
+
+def _admin_model_path(model_id: str) -> Path:
+    model = ADMIN_TRYON_MODELS.get(model_id)
+    if not model:
+        from app.core.exceptions import NotFoundError
+        raise NotFoundError("Choose a model from the available model list")
+    return Path(__file__).resolve().parents[2] / "assets" / "admin_tryon_models" / model["filename"]
+
+
+@router.get("/admin-models")
+def list_admin_tryon_models():
+    return [
+        {
+            "id": model_id,
+            "name": model["name"],
+            "description": model["description"],
+            "image_url": f"/api/v1/try-on/admin-models/{model_id}/image",
+        }
+        for model_id, model in ADMIN_TRYON_MODELS.items()
+    ]
+
+
+@router.get("/admin-models/{model_id}/image")
+def get_admin_tryon_model_image(model_id: str):
+    path = _admin_model_path(model_id)
+    if not path.is_file():
+        from app.core.exceptions import NotFoundError
+        raise NotFoundError("Model image is unavailable")
+    return FileResponse(
+        path,
+        media_type="image/webp",
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
+
+
+@router.post("/admin-preview")
+async def generate_admin_tryon_preview(
+    model_id: str = Form(...),
+    garment_type: str = Form("tops"),
+    garment_image: UploadFile = File(...),
+    _: User = Depends(require_admin),
+):
+    """Generate a try-on preview from a catalog garment and a curated admin model."""
+    from app.core.config import settings
+    from app.core.exceptions import BadRequestError, InternalError
+
+    model_path = _admin_model_path(model_id)
+    if not model_path.is_file():
+        from app.core.exceptions import ServiceUnavailableError
+        raise ServiceUnavailableError("The selected model image is unavailable")
+    if garment_type not in {"tops", "bottoms", "one-pieces"}:
+        raise BadRequestError("Choose a supported garment type")
+    accepted_types = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
+    extension = accepted_types.get(garment_image.content_type or "")
+    if not extension:
+        raise BadRequestError("Upload a JPG, PNG, or WEBP product image")
+
+    content = await garment_image.read(10 * 1024 * 1024 + 1)
+    if not content or len(content) > 10 * 1024 * 1024:
+        raise BadRequestError("Product images must be under 10 MB")
+    try:
+        from PIL import Image
+        with Image.open(BytesIO(content)) as image:
+            image.verify()
+    except Exception as exc:
+        raise BadRequestError("The selected product image is not a valid image") from exc
+
+    os.makedirs(settings.upload_dir, exist_ok=True)
+    os.makedirs(settings.results_dir, exist_ok=True)
+    preview_results_dir = tempfile.mkdtemp(prefix="admin-tryon-", dir=settings.results_dir)
+    handle = tempfile.NamedTemporaryFile(
+        prefix="admin-tryon-garment-",
+        suffix=extension,
+        dir=settings.upload_dir,
+        delete=False,
+    )
+    garment_path = handle.name
+    result_transferring = False
+    try:
+        with handle:
+            handle.write(content)
+        from app.core.gpu_queue import gpu_queue
+        from app.services.fashn_service import run_fashn
+        async with gpu_queue.acquire("tryon_admin_preview"):
+            result_path = await asyncio.to_thread(
+                run_fashn,
+                person_image_path=str(model_path),
+                garment_image_path=garment_path,
+                garment_type=garment_type,
+                results_dir=preview_results_dir,
+            )
+        if not result_path or not os.path.isfile(result_path):
+            raise InternalError("Virtual try-on did not produce a preview image")
+        result_transferring = True
+        return FileResponse(
+            result_path,
+            media_type="image/png",
+            filename="virtual-try-on.png",
+            background=BackgroundTask(shutil.rmtree, preview_results_dir, ignore_errors=True),
+        )
+    except (BadRequestError, InternalError):
+        raise
+    except Exception as exc:
+        raise InternalError("Virtual try-on could not create a preview. Please try again.") from exc
+    finally:
+        try:
+            os.unlink(garment_path)
+        except FileNotFoundError:
+            pass
+        if not result_transferring:
+            shutil.rmtree(preview_results_dir, ignore_errors=True)
 
 
 from app.schemas.tryon import TryonSubmitRequest

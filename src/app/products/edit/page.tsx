@@ -9,6 +9,7 @@ import { twMerge } from "tailwind-merge";
 import { productsApi, categoriesApi, CategoryItem } from "@/lib/api";
 import { isSizeChart } from "@/lib/sizeChart";
 import { SizeChartEditor } from "@/components/products/SizeChartEditor";
+import AdminTryOnImageGenerator from "@/components/products/AdminTryOnImageGenerator";
 import type { SizeChart } from "@/lib/sizeChart";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getSession } from "next-auth/react";
@@ -199,6 +200,17 @@ function EditProductContent() {
     }));
     setImages((prev) => [...prev, ...newImages]);
     if (imageInputRef.current) imageInputRef.current.value = "";
+  };
+
+  const handleGeneratedImage = (file: File, modelName: string) => {
+    const generated: UploadedImage = {
+      id: `tryon-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      file,
+      preview: URL.createObjectURL(file),
+      label: `AI try-on · ${modelName}`,
+    };
+    setImages((current) => [...current, generated]);
+    showToast(`Try-on image added for ${modelName}`);
   };
 
   const handleRemoveImage = (id: string) => {
@@ -782,6 +794,12 @@ function EditProductContent() {
                   Browse Files
                 </span>
               </div>
+
+              <AdminTryOnImageGenerator
+                images={images}
+                productName={name}
+                onAddImage={handleGeneratedImage}
+              />
 
               {/* Upload status bar */}
               {images.length > 0 && (
