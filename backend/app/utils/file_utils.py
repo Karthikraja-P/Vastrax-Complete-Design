@@ -131,7 +131,11 @@ def resolve_garment(garment_path: str) -> tuple[str, bool]:
 
     # Local catalog / upload-directory path only — reject anything that escapes those roots
     # (no direct-filesystem-path branch: that used to accept any existing absolute path verbatim)
-    candidate = garment_path.lstrip("/")
+    candidate = garment_path.replace("\\", "/").lstrip("/")
+    # Product image URLs include the static `/user_uploads` mount, while
+    # settings.upload_dir already points at that directory on disk.
+    if candidate.startswith("user_uploads/"):
+        candidate = candidate[len("user_uploads/"):]
 
     catalog_root = os.path.abspath(
         os.path.join(os.path.dirname(__file__), "..", "..", "..", "virtual-try-on", "frontend", "public")
