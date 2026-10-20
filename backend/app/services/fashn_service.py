@@ -51,7 +51,7 @@ def run_fashn(
 
     # 1. Check Remote GPU Server (e.g. http://192.168.1.3:8001)
     remote_url = getattr(settings, "fashn_tryon_url", "").rstrip("/")
-    if remote_url and os.path.exists(person_image_path):
+    if remote_url:
         try:
             has_garment_file = os.path.exists(garment_image_path)
             with open(person_image_path, "rb") as pf:
@@ -111,6 +111,7 @@ def run_fashn(
         except Exception as e:
             logger.error("Remote GPU inference connection to %s failed: %s", remote_url, e)
             raise RuntimeError(f"GPU virtual try-on inference failed: {e}")
+        raise RuntimeError("FASHN GPU inference service did not return a result.")
 
     # 2. Check local GPU inference environment
     if os.path.exists(settings.fashn_venv) and os.path.exists(settings.fashn_script):
@@ -133,11 +134,14 @@ def run_fashn(
             return settings.fashn_output
         else:
             err_msg = result.stderr[-400:] if result.stderr else f"Exit code {result.returncode}"
-            logger.warning("FASHN AI GPU execution failed: %s. Falling back to visual compositing.", err_msg)
+            logger.warning("FASHN AI GPU execution failed: %s", err_msg)
     else:
-        logger.info("FASHN AI GPU environment not found at %s. Utilizing visual compositing fallback.", settings.fashn_venv)
+        logger.info("FASHN AI GPU environment not found at %s.", settings.fashn_venv)
 
-    # 3. Fallback visual composition preview
+    if getattr(settings, "app_env", "").lower() == "production":
+        raise RuntimeError("FASHN virtual try-on is temporarily unavailable. Please try again later.")
+
+    # Keep the simple composition preview limited to development environments.
     return _render_fallback_composite(person_image_path, garment_image_path, results_dir)
 
 
