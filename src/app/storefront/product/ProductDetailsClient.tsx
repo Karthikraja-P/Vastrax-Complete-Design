@@ -1,9 +1,9 @@
 "use client";
 import Image from "next/image";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, Suspense, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { Heart, Star, Ruler, Minus, Plus, ShoppingBag, RefreshCw, Check, Box, Bell, Sparkles, X } from "lucide-react";
+import { Heart, Star, Ruler, Minus, Plus, ShoppingBag, RefreshCw, Check, Box, Bell, Sparkles, X, ChevronLeft, ChevronRight } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { AuthModal } from "@/components/auth/AuthModal";
 import { useSession } from "next-auth/react";
@@ -50,11 +50,11 @@ function ProductContent() {
   const [activeSize, setActiveSize] = useState('M');
   const [quantity, setQuantity] = useState(1);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const touchStart = useRef<{ x: number; y: number } | null>(null);
   const [isSizeChartOpen, setIsSizeChartOpen] = useState(false);
   const { favorites, toggleFavorite: toggleFavoriteStore } = useFavorites();
 
   const { data: session } = useSession();
-
   const [is3DMode, setIs3DMode] = useState(false);
   const [is3DModalOpen, setIs3DModalOpen] = useState(false);
 
@@ -91,6 +91,17 @@ function ProductContent() {
     rating: 0,
     reviewsCount: 0,
   });
+
+  const galleryImages = product.images?.length ? product.images : [product.image];
+  const showPreviousImage = () => {
+    setActiveImageIndex((index) => (index - 1 + galleryImages.length) % galleryImages.length);
+    setIs3DMode(false);
+  };
+  const showNextImage = () => {
+    setActiveImageIndex((index) => (index + 1) % galleryImages.length);
+    setIs3DMode(false);
+  };
+
 
 
   const getFallbackImage = () => "/product-placeholder.svg";
@@ -425,7 +436,25 @@ function ProductContent() {
 
               {/* Left: Image Gallery & 3D Interactive Viewer */}
               <div className="w-full lg:w-[55%]">
-                <div className="bg-[#f5f5f5] dark:bg-[#1a1a1a] rounded-[2.5rem] aspect-square relative flex items-center justify-center p-4 sm:p-8 transition-colors duration-300 overflow-hidden">
+                <div
+                  className="bg-[#f5f5f5] dark:bg-[#1a1a1a] rounded-[2.5rem] aspect-square relative flex items-center justify-center p-4 sm:p-8 transition-colors duration-300 overflow-hidden"
+                  onTouchStart={(event) => {
+                    const touch = event.touches[0];
+                    touchStart.current = touch ? { x: touch.clientX, y: touch.clientY } : null;
+                  }}
+                  onTouchEnd={(event) => {
+                    const start = touchStart.current;
+                    const touch = event.changedTouches[0];
+                    touchStart.current = null;
+                    if (!start || !touch || galleryImages.length < 2) return;
+                    const dx = touch.clientX - start.x;
+                    const dy = touch.clientY - start.y;
+                    if (Math.abs(dx) > 45 && Math.abs(dx) > Math.abs(dy)) {
+                      if (dx < 0) showNextImage();
+                      else showPreviousImage();
+                    }
+                  }}
+                >
                   {/* Top Right: Wishlist */}
                   <button
                     onClick={(e) => toggleFavorite(product, e)}
@@ -462,42 +491,39 @@ function ProductContent() {
                     className="w-full h-full object-contain rounded-2xl bg-[#f8f7f4] p-2 md:p-4 animate-fade-in"
                     />
                   )}
-                </div>
-
-                {/* Thumbnails Carousel */}
-                <div className="mt-4 flex items-center gap-3 overflow-x-auto pb-2 scrollbar-hide">
-                  {(product.images || [product.image]).map((img: string, idx: number) => (
-                    <button
-                      key={idx}
-                      onClick={() => {
-                        setActiveImageIndex(idx);
-                        setIs3DMode(false);
-                      }}
-                      aria-label={`View image ${idx + 1} of ${product.name}`}
-                      aria-pressed={!is3DMode && activeImageIndex === idx}
-                      className={`relative flex-shrink-0 w-20 h-24 rounded-xl overflow-hidden border-2 transition-all bg-[#f8f7f4] ${
-                        !is3DMode && activeImageIndex === idx ? 'border-[#e07a3f] shadow-md' : 'border-transparent opacity-70 hover:opacity-100'
-                      }`}
-                    >
-                      <Image width={1200} height={900} unoptimized src={img} alt={`${product.name} ${idx + 1}`} className="w-full h-full object-contain p-1" />
-                    </button>
-                  ))}
-
-                  {/* 3D Model Thumbnail */}
-                  {(product.model3dUrl || product.model_path) && (
-                    <button
-                      onClick={() => setIs3DMode(true)}
-                      aria-label={`3D VIEW of ${product.name}`}
-                      aria-pressed={is3DMode}
-                      className={`relative flex-shrink-0 w-20 h-24 rounded-xl overflow-hidden border-2 transition-all flex flex-col items-center justify-center bg-surface-hover ${
-                        is3DMode ? 'border-[#38bdf8] shadow-md' : 'border-transparent'
-                      }`}
-                    >
-                      <Box className="w-6 h-6 text-[#38bdf8] mb-1" />
-                      <span className="text-[9px] font-semibold text-[#574c45]">3D VIEW</span>
-                    </button>
+                  {!is3DMode && galleryImages.length > 1 && (
+                    <>
+                      <button type="button" onClick={showPreviousImage} aria-label="Previous product image" className="absolute left-4 top-1/2 z-20 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/95 text-[#29231f] shadow-md transition hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#a84d25]">
+                        <ChevronLeft aria-hidden="true" className="h-5 w-5" />
+                      </button>
+                      <button type="button" onClick={showNextImage} aria-label="Next product image" className="absolute right-4 top-1/2 z-20 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/95 text-[#29231f] shadow-md transition hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#a84d25]">
+                        <ChevronRight aria-hidden="true" className="h-5 w-5" />
+                      </button>
+                    </>
                   )}
                 </div>
+
+                {galleryImages.length > 1 && (
+                  <div className="mt-4 flex items-center justify-center gap-2" role="group" aria-label="Product image slides">
+                    {galleryImages.map((_, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => { setActiveImageIndex(idx); setIs3DMode(false); }}
+                        aria-label={`Show image ${idx + 1} of ${product.name}`}
+                        aria-pressed={!is3DMode && activeImageIndex === idx}
+                        className={`h-2.5 rounded-full transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#a84d25] ${!is3DMode && activeImageIndex === idx ? "w-6 bg-[#a84d25]" : "w-2.5 bg-[#b9afa6] hover:bg-[#8d4e2c]"}`}
+                      />
+                    ))}
+                  </div>
+                )}
+
+                {(product.model3dUrl || product.model_path) && (
+                  <button type="button" onClick={() => setIs3DMode((active) => !active)} aria-pressed={is3DMode} className="mx-auto mt-3 inline-flex min-h-10 items-center gap-2 rounded-full border border-border bg-surface px-4 text-sm font-medium text-foreground transition hover:border-accent">
+                    <Box aria-hidden="true" className="h-4 w-4" />
+                    {is3DMode ? "View product images" : "View 3D model"}
+                  </button>
+                )}
 
                 <div className="mt-6 px-1">
                   <h1 className="text-2xl md:text-3xl font-bold leading-tight text-foreground">{product.name}</h1>
