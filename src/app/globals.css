@@ -870,7 +870,7 @@
   object-position: center;
 }
 
-.vx-hero-wash {
+.dark .vx-hero-wash {
   background: linear-gradient(90deg, rgb(25 22 19 / 95%) 0%, rgb(25 22 19 / 84%) 34%, rgb(25 22 19 / 48%) 62%, rgb(25 22 19 / 8%) 100%);
 }
 

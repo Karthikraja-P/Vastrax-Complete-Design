@@ -311,7 +311,6 @@ export default function StorefrontHome() {
 
           <div className="vx-hero-copy relative z-10 mx-auto flex min-h-[min(76svh,760px)] max-w-[1400px] items-center px-6 py-20 md:px-12">
             <div className="max-w-2xl">
-              <p className="vx-kicker mb-5">THE VASTRAX EDIT</p>
               <h1 id="home-title" className="vx-hero-title mb-6">Two pieces.<br /><span>One complete look.</span></h1>
               <p className="vx-hero-description mb-9 max-w-xl">Explore coordinated two-piece looks available in the VastraX collection.</p>
               <Link href="/storefront/collections?gender=Women" className="vx-primary-cta inline-flex min-h-14 items-center gap-5 rounded-full px-7 py-4 font-semibold">
@@ -323,7 +322,6 @@ export default function StorefrontHome() {
 
         <section className="vx-category-strip mx-auto mt-5 w-full max-w-[1400px] px-5 py-12 md:px-12 md:py-16" aria-labelledby="category-title">
           <div className="vx-section-heading mb-7">
-            <p className="vx-kicker">BROWSE THE EDIT</p>
             <h2 id="category-title">Find your kind of set</h2>
           </div>
           <nav aria-label="Shop by category" className="vx-category-links">
