@@ -437,7 +437,7 @@ function ProductContent() {
               {/* Left: Image Gallery & 3D Interactive Viewer */}
               <div className="w-full lg:w-[55%]">
                 <div
-                  className="bg-[#f5f5f5] dark:bg-[#1a1a1a] rounded-[2.5rem] aspect-square relative flex items-center justify-center p-4 sm:p-8 transition-colors duration-300 overflow-hidden"
+                  className="bg-white dark:bg-white rounded-[2.5rem] aspect-square relative flex items-center justify-center p-4 sm:p-8 transition-colors duration-300 overflow-hidden"
                   onTouchStart={(event) => {
                     const touch = event.touches[0];
                     touchStart.current = touch ? { x: touch.clientX, y: touch.clientY } : null;
@@ -488,7 +488,7 @@ function ProductContent() {
                     <Image width={1200} height={900} unoptimized
                       src={product.images?.[activeImageIndex] || product.image}
                       alt={product.name}
-                    className="w-full h-full object-contain rounded-2xl bg-[#f8f7f4] p-2 md:p-4 animate-fade-in"
+                    className="w-full h-full object-contain rounded-2xl bg-white p-2 md:p-4 animate-fade-in"
                     />
                   )}
                   {!is3DMode && galleryImages.length > 1 && (

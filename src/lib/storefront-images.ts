@@ -5,5 +5,5 @@ const PRODUCT_CUTOUTS: Record<string, string> = {
 };
 
 export function storefrontProductImage(id: string | number, fallback?: string): string {
-  return PRODUCT_CUTOUTS[String(id)] || fallback || "/product-placeholder.svg";
+  return fallback || PRODUCT_CUTOUTS[String(id)] || "/product-placeholder.svg";
 }
