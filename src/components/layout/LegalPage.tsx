@@ -6,7 +6,7 @@ export type LegalSection = { title: string; body: (string | string[])[] };
 
 export default function LegalPage({ title, sections }: { title: string; sections: LegalSection[] }) {
   return (
-    <div className="min-h-screen bg-[#FAFAFA] dark:bg-background pt-24 pb-20 font-sans">
+    <main id="main-content" tabIndex={-1} className="min-h-screen bg-[#FAFAFA] dark:bg-background pt-24 pb-20 font-sans">
       <div className="max-w-4xl mx-auto px-4 md:px-8">
         <nav className="flex items-center gap-2 text-sm text-slate-500 dark:text-muted-foreground mb-8">
           <Link href="/storefront/home" aria-label="Home" className="hover:text-[#D4AF37]"><Home className="w-4 h-4" /></Link>
@@ -33,6 +33,6 @@ export default function LegalPage({ title, sections }: { title: string; sections
           </div>
         </article>
       </div>
-    </div>
+    </main>
   );
 }

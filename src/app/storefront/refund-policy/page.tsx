@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import LegalPage from "@/components/layout/LegalPage";
 
-export const metadata: Metadata = { title: "Returns & Refunds | VastraX", description: "Return, exchange, cancellation and refund terms for VastraX orders." };
+export const metadata: Metadata = { title: "Returns & Refunds", description: "Return, exchange, cancellation and refund terms for VastraX orders.", alternates: { canonical: "/storefront/refund-policy" }, robots: { index: true, follow: true } };
 
 export default function RefundPolicyPage() {
   return (

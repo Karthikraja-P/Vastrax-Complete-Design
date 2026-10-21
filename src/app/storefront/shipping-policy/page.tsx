@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import LegalPage from "@/components/layout/LegalPage";
 
-export const metadata: Metadata = { title: "Shipping Policy | VastraX", description: "Delivery areas, timelines and charges for VastraX orders." };
+export const metadata: Metadata = { title: "Shipping Policy", description: "Delivery areas, timelines and charges for VastraX orders.", alternates: { canonical: "/storefront/shipping-policy" }, robots: { index: true, follow: true } };
 
 export default function ShippingPolicyPage() {
   return (

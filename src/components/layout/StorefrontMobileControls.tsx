@@ -64,7 +64,7 @@ export default function StorefrontMobileControls({ showMenu = true, inlineSearch
           setSearchOpen((open) => !open);
           setMenuOpen(false);
         }}
-        className={`rounded-full p-2 text-foreground/80 transition-colors hover:bg-black/5 hover:text-accent dark:hover:bg-white/10 ${inlineSearch ? "sm:hidden" : ""}`}
+        className={`rounded-full p-2 text-foreground/80 transition-colors hover:bg-black/5 hover:text-accent dark:hover:bg-white/10 ${inlineSearch ? "vx-inline-search-toggle sm:hidden" : ""}`}
       >
         {searchOpen ? <X className="h-5 w-5" /> : <Search className="h-5 w-5" />}
       </button>
@@ -85,7 +85,7 @@ export default function StorefrontMobileControls({ showMenu = true, inlineSearch
       )}
 
       {searchOpen && (
-        <form onSubmit={submitSearch} role="search" className={`absolute left-0 top-full mt-3 flex w-[min(88vw,24rem)] items-center gap-2 rounded-2xl border border-border bg-background p-3 shadow-xl dark:bg-[#1a1a1a] ${inlineSearch ? "sm:hidden" : ""}`}>
+        <form onSubmit={submitSearch} role="search" className={`absolute left-0 top-full mt-3 flex w-[min(88vw,24rem)] items-center gap-2 rounded-2xl border border-border bg-background p-3 shadow-xl dark:bg-[#1a1a1a] ${inlineSearch ? "vx-inline-search-toggle sm:hidden" : ""}`}>
           <Search aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" />
           <input
             autoFocus

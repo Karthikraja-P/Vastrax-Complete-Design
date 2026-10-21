@@ -1,0 +1,353 @@
+"use client";
+import Image from "next/image";
+
+import { useState, useEffect } from "react";
+import { Heart, ShoppingBag, User } from "lucide-react";
+import { ThemeToggle } from "@/components/ThemeToggle";
+import { AuthModal } from "@/components/auth/AuthModal";
+import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { performSignOut } from "@/lib/auth-utils";
+import { CartDrawer } from "@/components/layout/CartDrawer";
+import { productsApi, StorefrontProduct } from "@/lib/api";
+import { useFavorites } from "@/hooks/useFavorites";
+import { addToCart as addCartItem } from "@/lib/cart";
+import { useCartItems } from "@/hooks/useCartItems";
+import { showToast } from "@/lib/toast";
+import StorefrontMobileControls from "@/components/layout/StorefrontMobileControls";
+
+export default function FavoritesPage() {
+  const { data: session, status } = useSession();
+  const router = useRouter();
+  const [isAuthOpen, setIsAuthOpen] = useState(false);
+  const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
+  const [isLoggedIn, setIsLoggedIn] = useState(Boolean(session?.user?.name));
+  const [userName, setUserName] = useState(session?.user?.name || "");
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+
+  // Auth guard — redirect unauthenticated users back to home with modal
+  useEffect(() => {
+    if (status === 'unauthenticated') {
+      router.replace('/storefront/home?requireAuth=1');
+    }
+  }, [status, router]);
+
+  const [products, setProducts] = useState<StorefrontProduct[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const { toggleFavorite, isFavorite } = useFavorites();
+
+  const [isCartOpen, setIsCartOpen] = useState(false);
+
+  const [selectedProductForSize, setSelectedProductForSize] = useState<StorefrontProduct | null>(null);
+
+  useEffect(() => {
+    async function fetchData() {
+      setLoading(true);
+      try {
+        const data = await productsApi.list();
+        const mapped = data
+          .filter((p) => String(p.gender || "").trim().toLowerCase() === "women")
+          .map((p): StorefrontProduct => {
+          const fallbackImg = "/product-placeholder.svg";
+          const firstImage = p.images?.[0];
+          let img = p.image || (typeof firstImage === "string" ? firstImage : firstImage?.s3_url || "");
+          if (!img) img = fallbackImg;
+
+          return {
+            id: p.id,
+            name: p.name || p.title || "Product",
+            price: Number(p.price || p.price_selling || 0),
+            rating: Number(p.rating || p.rating_average || 0),
+            image: img,
+            isNew: Boolean(p.isNew || p.is_featured),
+            categoryId: p.categoryId || p.category_id,
+            categoryName: p.category_name || p.category || "Apparel",
+          };
+        });
+        setProducts(mapped);
+      } catch (err) {
+        console.error("Failed to fetch products:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    void Promise.resolve().then(fetchData);
+  }, []);
+
+  const bagItems = useCartItems();
+
+  const isItemInBag = (productId: string | number) => {
+    return bagItems.some((item) => String(item.id) === String(productId));
+  };
+
+  const addItemToBag = (product: StorefrontProduct, size = "M") => {
+    const priceNum = typeof product.price === 'string'
+      ? parseFloat(String(product.price).replace(/[^0-9.-]+/g, "")) || 0
+      : Number(product.price) || 0;
+
+    addCartItem({
+      id: product.id,
+      name: product.name,
+      price: priceNum,
+      quantity: 1,
+      size: size,
+      color: product.colour || "Default",
+      image: product.image || ""
+    });
+
+    showToast({
+      title: "Added to Shopping Bag",
+      description: `${product.name} (Size: ${size})`,
+      type: "gold",
+      image: product.image,
+      duration: 3000
+    });
+
+    setSelectedProductForSize(null);
+  };
+
+  const handleAddToBagClick = (product: StorefrontProduct, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const isOneSize = /cap|hat|beanie/i.test(product.name || "");
+    if (!isOneSize) {
+      setSelectedProductForSize(product);
+    } else {
+      addItemToBag(product, "One Size");
+    }
+  };
+
+  const favoriteProducts = products.filter(p => isFavorite(p.id || p.name));
+
+  return (
+    <div className="min-h-screen bg-surface dark:bg-[#111111] text-foreground dark:text-white font-sans flex flex-col">
+      {/* Header */}
+      <header className="vx-header h-16 md:h-20 flex items-center justify-between relative px-3 sm:px-6 md:px-12 sticky top-2 md:top-4 bg-surface dark:bg-[#1a1a1a] z-50 rounded-[1.5rem] sm:rounded-[2rem] shadow-md border border-border dark:border-white/10 mx-2 md:mx-4 mt-2 md:mt-4">
+        <div className="vx-header-nav-search flex items-center gap-2 sm:gap-6 z-10">
+          <nav aria-label="Store navigation" className="flex items-center gap-2 sm:gap-4 2xl:gap-8">
+            <Link href="/storefront/home" className="text-xs sm:text-sm 2xl:text-lg font-medium hover:text-[#e07a3f] transition-colors">Home</Link>
+            <Link href="/storefront/collections?gender=Women" className="text-xs sm:text-sm 2xl:text-lg font-medium hover:text-[#e07a3f] transition-colors">Collections</Link>
+          </nav>
+          <StorefrontMobileControls showMenu={false} inlineSearch />
+        </div>
+
+        <div className="vx-header-brand absolute left-1/2 -translate-x-1/2 flex items-center justify-center pointer-events-none z-0">
+          <Link href="/storefront/home" className="text-base sm:text-2xl md:text-4xl font-bold tracking-[0.12em] sm:tracking-[0.25em] uppercase pointer-events-auto hover:text-accent transition-colors">
+            VASTRAX
+          </Link>
+        </div>
+
+        <div className="vx-header-actions flex items-center gap-1.5 sm:gap-4 md:gap-6 z-10">
+          {String(session?.user?.role || "").toLowerCase() === "admin" && (
+            <Link href="/" className="rounded-full border border-border px-3 py-2 text-xs font-semibold text-foreground hover:border-accent hover:text-accent">Admin</Link>
+          )}
+          <ThemeToggle />
+          <Link href="/storefront/favorites" aria-label="Favorites" className="relative p-1 text-[#e07a3f] transition-colors">
+            <Heart className="w-5 h-5 fill-[#e07a3f]" />
+          </Link>
+          <div className="relative">
+            <button
+              type="button"
+              aria-label={isLoggedIn ? "Open account menu" : "Open sign in menu"}
+              aria-expanded={isUserMenuOpen}
+              onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+              className="flex items-center gap-2 text-muted-foreground hover:text-[#e07a3f] transition-colors"
+            >
+              {isLoggedIn ? (
+                <>
+                  <div className="w-7 h-7 rounded-full bg-[#e07a3f]/20 border border-[#e07a3f]/40 flex items-center justify-center text-[#e07a3f] text-xs font-bold uppercase">
+                    {userName.charAt(0)}
+                  </div>
+                  <span className="text-sm font-medium hidden md:block text-foreground dark:text-white">{userName}</span>
+                </>
+              ) : (
+                <User className="w-5 h-5" />
+              )}
+            </button>
+
+            {isUserMenuOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setIsUserMenuOpen(false)} />
+                <div className="absolute right-0 mt-4 w-48 bg-background border border-border rounded-xl shadow-lg py-2 z-50 overflow-hidden">
+                  {isLoggedIn ? (
+                    <>
+                      <Link href="/storefront/account" className="block w-full text-left px-4 py-3 text-sm font-medium text-foreground hover:bg-surface transition-colors">
+                        My Account
+                      </Link>
+                      <button
+                        onClick={() => {
+                          setIsLoggedIn(false);
+                          setUserName("");
+                          setIsUserMenuOpen(false);
+                          performSignOut("/storefront/favorites");
+                        }}
+                        className="w-full text-left px-4 py-3 text-sm font-medium text-red-500 hover:bg-surface transition-colors"
+                      >
+                        Sign Out
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => { setAuthMode("signin"); setIsAuthOpen(true); setIsUserMenuOpen(false); }}
+                        className="w-full text-left px-4 py-3 text-sm font-medium text-foreground hover:bg-surface transition-colors"
+                      >
+                        Sign In
+                      </button>
+                      <button
+                        onClick={() => { setAuthMode("signup"); setIsAuthOpen(true); setIsUserMenuOpen(false); }}
+                        className="w-full text-left px-4 py-3 text-sm font-medium text-foreground hover:bg-surface transition-colors"
+                      >
+                        Create Account
+                      </button>
+                    </>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+
+          <button
+            onClick={() => setIsCartOpen(true)}
+            aria-label="Open Shopping Bag"
+            className="w-10 h-10 rounded-full bg-surface dark:bg-[#2a2a2a] flex items-center justify-center text-foreground dark:text-white hover:text-[#e07a3f] transition-colors relative"
+          >
+            <ShoppingBag className="w-5 h-5" />
+            {bagItems.length > 0 && (
+              <span className="absolute -top-1 -right-1 bg-[#e07a3f] text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center font-bold shadow-sm animate-in zoom-in">
+                {bagItems.reduce((acc, i) => acc + (i.quantity || 1), 0)}
+              </span>
+            )}
+          </button>
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <main id="main-content" tabIndex={-1} className="flex-1 flex flex-col pt-12 md:pt-20 px-4 md:px-8 max-w-[1400px] w-full mx-auto mb-20">
+        <div className="flex items-end justify-between mb-12">
+          <div>
+            <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-3">Your Favorites</h1>
+            <p className="text-muted-foreground text-lg">
+              {favoriteProducts.length} {favoriteProducts.length === 1 ? 'item' : 'items'} saved
+            </p>
+          </div>
+        </div>
+
+        {loading ? (
+          <div className="w-full h-64 flex items-center justify-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#e07a3f]"></div>
+          </div>
+        ) : favoriteProducts.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <div className="w-24 h-24 rounded-full bg-[#e07a3f]/10 flex items-center justify-center mb-6">
+              <Heart className="w-10 h-10 text-[#e07a3f]" />
+            </div>
+            <h2 className="text-2xl font-bold mb-3">Your wishlist is empty</h2>
+            <p className="text-muted-foreground mb-8 max-w-md">
+              Tap the heart icon on any coordinated set to save it here. Your favorites stay together in one place, so you can compare your saved looks and return to them whenever you are ready.
+            </p>
+            <Link
+              href="/storefront/collections?gender=Women"
+              className="px-8 py-3 bg-[#e07a3f] text-white rounded-full font-semibold hover:bg-[#d06a2f] transition-colors"
+            >
+              Browse Collections
+            </Link>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 md:gap-8">
+            {favoriteProducts.map((product) => (
+              <div key={product.id} className="group relative flex flex-col h-full">
+                <div className="relative w-full aspect-[3/4] mb-4 flex items-center justify-center overflow-hidden cursor-pointer rounded-2xl bg-[#f8f7f4]">
+                  <div className="absolute top-4 right-4 z-20 flex flex-col gap-2">
+                    <button
+                      type="button"
+                      aria-label={`Remove ${product.name} from favorites`}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        toggleFavorite(product.id || product.name);
+                      }}
+                      className="w-8 h-8 rounded-full bg-background dark:bg-[#2a2a2a] flex items-center justify-center text-[#e07a3f] hover:text-red-500 transition-colors shadow-sm"
+                    >
+                      <Heart className="w-4 h-4 fill-current" />
+                    </button>
+                  </div>
+
+                  <Link href={`/storefront/product?id=${product.id}`} className="w-full h-full">
+                    <Image width={1200} height={900} unoptimized
+                      src={product.image}
+                      alt={product.name}
+                      className="w-full h-full object-contain p-2 transition-transform duration-300"
+                    />
+                  </Link>
+                </div>
+
+                <div className="flex items-end justify-between relative z-10 shrink-0">
+                  <div className="flex-1 pr-4">
+                    <Link href={`/storefront/product?id=${product.id}`} className="hover:text-[#e07a3f] transition-colors">
+                      <h3 className="text-sm font-medium text-foreground/90 mb-1.5 line-clamp-1">{product.name}</h3>
+                    </Link>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-lg font-bold">₹{product.price.toLocaleString()}</span>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    aria-label={`Add ${product.name} to shopping bag`}
+                    onClick={(e) => handleAddToBagClick(product, e)}
+                    className={`w-10 h-10 rounded-full flex items-center justify-center transition-all shadow-md ${
+                      isItemInBag(product.id)
+                        ? 'bg-[#e07a3f] text-white shadow-[#e07a3f]/20 scale-105'
+                        : 'bg-black dark:bg-white text-white dark:text-black hover:bg-black/90 dark:hover:bg-white/90 shadow-black/10'
+                      }`}
+                  >
+                    <ShoppingBag aria-hidden="true" className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </main>
+
+      <AuthModal
+        isOpen={isAuthOpen}
+        onClose={() => setIsAuthOpen(false)}
+        initialMode={authMode}
+      />
+      <CartDrawer isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} />
+      {/* Size Selection Modal */}
+      {selectedProductForSize && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setSelectedProductForSize(null)}>
+          <div className="bg-surface border border-border/50 rounded-2xl p-6 max-w-sm w-full shadow-xl" onClick={e => e.stopPropagation()}>
+            <h3 className="text-xl font-bold mb-2 text-foreground">Select Size</h3>
+            <p className="text-sm text-muted-foreground mb-6 line-clamp-1">Choose a size for {selectedProductForSize.name}</p>
+            <div className="grid grid-cols-4 gap-2 mb-6">
+              {['S', 'M', 'L', 'XL'].map(size => (
+                <button
+                  key={size}
+                  onClick={() => {
+                    addItemToBag(selectedProductForSize, size);
+                  }}
+                  className="py-2.5 border border-border/50 rounded-xl text-foreground font-medium hover:bg-accent hover:text-white hover:border-accent transition-colors"
+                >
+                  {size}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => setSelectedProductForSize(null)}
+              className="w-full py-3 bg-background hover:bg-surface-hover text-foreground font-medium rounded-xl transition-colors border border-border/50"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

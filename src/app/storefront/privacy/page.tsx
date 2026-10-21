@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import LegalPage from "@/components/layout/LegalPage";
 
-export const metadata: Metadata = { title: "Privacy Policy | VastraX", description: "How VastraX collects, uses and protects your personal data." };
+export const metadata: Metadata = { title: "Privacy Policy", description: "How VastraX handles account, order, virtual try-on, and optional analytics data.", alternates: { canonical: "/storefront/privacy" }, robots: { index: true, follow: true } };
 
 export default function PrivacyPage() {
   return (
@@ -27,9 +27,10 @@ export default function PrivacyPage() {
         { title: "Retention", body: ["We keep account and order records for as long as your account is active and as required for tax and legal purposes. Verification codes expire within minutes and are purged regularly."] },
         { title: "Your rights", body: ["You may access, correct or delete your data, withdraw consent, and nominate someone to act for you. Delete your account from Settings, or email us and we will respond within 30 days."] },
         { title: "Security", body: ["Data is encrypted in transit (HTTPS). Passwords are hashed, access is role-restricted, and sign-in attempts are rate limited. No system is perfectly secure; we will notify you and the authorities of a breach as the law requires."] },
-        { title: "Cookies", body: ["We use essential cookies for sign-in and session security. We do not use advertising cookies."] },
+        { title: "Cookies and analytics", body: ["Essential cookies support sign-in and session security. Microsoft Clarity analytics is optional and loads only after you choose to allow analytics cookies. If you decline, this site does not load the Clarity script. You can change your choice at any time using Cookie preferences in the footer. We do not use advertising cookies."] },
+        { title: "Analytics provider", body: ["If you allow analytics, Microsoft Clarity receives website interaction and diagnostic data under its service terms. You can review Microsoft's cookie information and change your choice at any time from Cookie preferences."] },
         { title: "Children", body: ["The service is not intended for anyone under 18 without a parent or guardian's involvement, and we do not knowingly collect children's data."] },
-        { title: "Changes", body: ["We will update this page when our practices change and revise the date above."] },
+        { title: "Changes", body: ["We will update this page when our practices change and revise the date above. Last updated: October 21, 2026."] },
       ]}
     />
   );

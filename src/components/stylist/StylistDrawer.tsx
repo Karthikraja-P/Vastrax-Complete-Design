@@ -627,7 +627,7 @@ export function StylistDrawer({ isOpen: externalIsOpen, onClose: externalOnClose
             const ev = new CustomEvent("open-stylist");
             window.dispatchEvent(ev);
           }}
-          className="fixed bottom-6 right-6 z-40 px-4 py-3 rounded-full bg-gradient-to-r from-accent to-[#e2733d] text-accent-foreground font-medium text-xs uppercase tracking-wider flex items-center gap-2 shadow-[0_0_25px_rgba(224,122,63,0.5)] hover:scale-105 transition-all cursor-pointer"
+          className="vx-stylist-launch fixed bottom-6 right-6 z-40 px-4 py-3 rounded-full bg-gradient-to-r from-accent to-[#e2733d] text-accent-foreground font-medium text-xs uppercase tracking-wider flex items-center gap-2 shadow-[0_0_25px_rgba(224,122,63,0.5)] hover:scale-105 transition-all cursor-pointer"
         >
           <Sparkles className="w-4 h-4" />
           <span>AI Stylist</span>

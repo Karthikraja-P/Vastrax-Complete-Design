@@ -312,7 +312,7 @@ function CustomerAccountContent() {
     <div className="min-h-screen bg-background text-foreground">
       <Header onOpenCart={() => setIsCartOpen(true)} />
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+      <main id="main-content" tabIndex={-1} className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
         {/* Breadcrumb */}
         <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground mb-8">
           <Link href="/storefront/home" className="hover:text-foreground transition-colors">Home</Link>

@@ -28,7 +28,7 @@ export default function UnsubscribePage() {
     }
   };
 
-  return <main className="flex min-h-screen items-center justify-center bg-background p-5">
+  return <main id="main-content" tabIndex={-1} className="flex min-h-screen items-center justify-center bg-background p-5">
     <section className="w-full max-w-lg space-y-4 rounded-2xl border border-border bg-surface p-7 text-center">
       <p className="text-xs font-semibold uppercase tracking-[.2em] text-accent">Vastrax preferences</p>
       <h1 className="text-2xl font-bold text-foreground">Email marketing preferences</h1>

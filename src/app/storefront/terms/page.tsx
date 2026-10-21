@@ -1,17 +1,18 @@
-"use client";
-
-
 import { ChevronRight, Home, Shield, Sparkles } from "lucide-react";
 import Link from "next/link";
+import type { Metadata } from "next";
+import { SITE } from "@/lib/site";
+
+export const metadata: Metadata = { title: "Terms of Service", description: "Terms for shopping, accounts, payments, and digital product features on VastraX.", alternates: { canonical: "/storefront/terms" }, robots: { index: true, follow: true } };
 
 export default function TermsOfServicePage() {
   return (
-    <div className="min-h-screen bg-[#FAFAFA] dark:bg-background pt-24 pb-20 font-sans transition-colors">
+    <main id="main-content" tabIndex={-1} className="min-h-screen bg-[#FAFAFA] dark:bg-background pt-24 pb-20 font-sans transition-colors">
       <div className="max-w-4xl mx-auto px-4 md:px-8">
         
         {/* Breadcrumbs */}
         <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-muted-foreground mb-8">
-          <Link href="/storefront/home" className="hover:text-[#D4AF37] transition-colors flex items-center">
+          <Link href="/storefront/home" aria-label="Back to store home" className="hover:text-[#D4AF37] transition-colors flex items-center">
             <Home className="w-4 h-4" />
           </Link>
           <ChevronRight className="w-3 h-3" />
@@ -23,7 +24,7 @@ export default function TermsOfServicePage() {
             <Shield className="w-8 h-8 text-accent" />
             <h1 className="text-3xl md:text-4xl font-bold text-[#0A192F] dark:text-foreground tracking-tight">Terms of Service</h1>
           </div>
-          <p className="text-xs text-slate-500 dark:text-muted-foreground mb-10">Last Updated: September 15, 2026</p>
+          <p className="text-xs text-slate-500 dark:text-muted-foreground mb-10">Last Updated: October 21, 2026</p>
 
           <div className="space-y-8 text-slate-700 dark:text-muted-foreground leading-relaxed text-sm md:text-base">
             
@@ -65,7 +66,7 @@ export default function TermsOfServicePage() {
                 4. Purchases, Pricing & Promotional Offers
               </h2>
               <p>
-                We accept major credit cards, debit cards, net banking, and digital wallets via secure payment gateways (including Razorpay). Prices are listed in specified currencies and are subject to change. Promotional discount codes (e.g., VASTRAX10, VIP20) are subject to terms of use and validity periods.
+                We accept major credit cards, debit cards, net banking, and digital wallets via secure payment gateways (including Razorpay). Prices are listed in specified currencies and are subject to change. Promotional offers, when available, are subject to the terms shown with each offer.
               </p>
             </section>
 
@@ -101,7 +102,7 @@ export default function TermsOfServicePage() {
                 8. Contact Information
               </h2>
               <p>
-                If you have any questions or legal inquiries regarding these Terms of Service, please contact our legal team at <strong className="text-accent">legal@vastrax.com</strong>.
+                If you have any questions or legal inquiries regarding these Terms of Service, please contact our legal team at <a className="text-accent underline" href={`mailto:${SITE.email}`}>{SITE.email}</a>.
               </p>
             </section>
 
@@ -109,6 +110,6 @@ export default function TermsOfServicePage() {
         </div>
 
       </div>
-    </div>
+    </main>
   );
 }

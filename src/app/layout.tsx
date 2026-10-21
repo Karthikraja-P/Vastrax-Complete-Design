@@ -5,7 +5,7 @@ import { ThemeProvider } from "@/components/ThemeProvider";
 import { Providers } from "@/components/Providers";
 import { BackendStatusProvider } from "@/components/BackendStatusProvider";
 import { ToastContainer } from "@/components/ui/Toast";
-import Script from "next/script";
+import CookieConsent from "@/components/layout/CookieConsent";
 import "./globals.css";
 
 
@@ -16,11 +16,12 @@ const outfit = Outfit({
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "https://vastrax.ai"),
-  title: { default: "VastraX | AI Fashion, 3D Views & Virtual Try-On", template: "%s" },
-  description: "Shop premium fashion with an AI stylist, 3D garment views and virtual try-on.",
+  title: { default: "VastraX | Coordinated Sets for Women", template: "%s | VastraX" },
+  description: "Shop VastraX women's coordinated two-piece sets, check available sizes, and view product details online.",
   applicationName: "VastraX",
-  openGraph: { type: "website", siteName: "VastraX", title: "VastraX | AI Fashion", description: "Shop premium fashion with an AI stylist, 3D views and virtual try-on.", url: "/" },
-  twitter: { card: "summary_large_image", title: "VastraX | AI Fashion", description: "Shop premium fashion with an AI stylist, 3D views and virtual try-on." },
+  robots: { index: false, follow: false },
+  openGraph: { type: "website", siteName: "VastraX", title: "VastraX | Coordinated Sets for Women", description: "Shop coordinated two-piece sets from VastraX.", url: "/storefront/home", images: ["/opengraph-image"] },
+  twitter: { card: "summary_large_image", title: "VastraX | Coordinated Sets for Women", description: "Shop coordinated two-piece sets from VastraX.", images: ["/opengraph-image"] },
 };
 
 export default function RootLayout({
@@ -35,19 +36,11 @@ export default function RootLayout({
           <Providers>
             <BackendStatusProvider>
               <MainLayout>{children}</MainLayout>
+              <CookieConsent />
               <ToastContainer />
             </BackendStatusProvider>
           </Providers>
         </ThemeProvider>
-        <Script id="microsoft-clarity" strategy="afterInteractive">
-          {`
-            (function(c,l,a,r,i,t,y){
-                c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
-                t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
-                y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
-            })(window, document, "clarity", "script", "yey917sdqo");
-          `}
-        </Script>
       </body>
 
     </html>

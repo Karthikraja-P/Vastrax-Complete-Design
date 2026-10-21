@@ -489,7 +489,7 @@ function CheckoutContent() {
       </header>
 
       {/* Main Container */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 md:px-8 pt-8">
+      <main id="main-content" tabIndex={-1} className="flex-1 max-w-7xl w-full mx-auto px-4 md:px-8 pt-8">
         
         {orderComplete ? (
           /* Order Confirmation Screen */
