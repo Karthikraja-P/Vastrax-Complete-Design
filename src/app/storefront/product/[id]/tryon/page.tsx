@@ -5,7 +5,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   Sparkles, Upload, RefreshCw, Check, ShoppingBag,
-  AlertCircle, Layers, X, Camera
+  AlertCircle, X, Camera
 } from "lucide-react";
 import { tryonApi, productsApi, ProductItem } from "@/lib/api";
 import { useSession } from "next-auth/react";
@@ -29,12 +29,21 @@ interface TryOnGarment {
   name?: string;
   title?: string;
   category?: string;
+  category_name?: string;
   category_id?: string | number;
   price?: number | string;
   price_selling?: number;
   colour?: string;
   image?: string;
   images?: ProductItem["images"];
+}
+
+function isTwoPieceProduct(p: TryOnGarment): boolean {
+  const details = [p.name, p.title, p.category, p.category_name, p.category_id]
+    .filter((value) => value != null)
+    .join(" ")
+    .toLowerCase();
+  return /\bcoord(?:inate)?\b|\bco[- ]?ord\b|\btwo[- ]?piece\b|\b2[- ]?piece\b|\bset\b|skirt\s*(?:and|&)\s*top|top\s*(?:and|&)\s*skirt/.test(details);
 }
 
 export default function VirtualTryOnPage() {
@@ -58,6 +67,8 @@ export default function VirtualTryOnPage() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   const [selectedTop, setSelectedTop] = useState<ProductItem | null>(null);
+  const [selectedSetTopUrl, setSelectedSetTopUrl] = useState("");
+  const [selectedSetBottomUrl, setSelectedSetBottomUrl] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [statusType, setStatusType] = useState("");
   const [statusText, setStatusText] = useState("");
@@ -133,10 +144,27 @@ export default function VirtualTryOnPage() {
     if (!p) return "/product-placeholder.svg";
     if (p.image && !p.image.includes("photo-1515347619362")) return p.image;
     if (Array.isArray(p.images) && p.images.length > 0) {
-      const url = typeof p.images[0] === "string" ? p.images[0] : p.images[0]?.s3_url;
+      const url = typeof p.images[0] === "string" ? p.images[0] : p.images[0]?.s3_url || p.images[0]?.url;
       if (url && !url.includes("photo-1515347619362")) return url;
     }
     return "/product-placeholder.svg";
+  };
+
+  const getGarmentImageOptions = (p: TryOnGarment) => {
+    const sources = [
+      ...(Array.isArray(p.images) ? p.images : []),
+      ...(p.image ? [p.image] : []),
+    ];
+    const options: { url: string; label: string }[] = [];
+    for (const source of sources) {
+      const record = typeof source === "string" ? null : source;
+      const url = typeof source === "string" ? source : (record?.s3_url || record?.url);
+      if (!url || url.includes("photo-1515347619362") || options.some((option) => option.url === url)) continue;
+      const names = record ? [record.name, record.label, record.filename, record.alt].filter((value): value is string => typeof value === "string") : [];
+      const fileLabel = url.split(/[/?#]/).filter(Boolean).pop()?.replace(/[-_]+/g, " ");
+      options.push({ url, label: names[0] || fileLabel || "Product image " + (options.length + 1) });
+    }
+    return options;
   };
 
   const getFashnCategory = (cat: string, name: string = "") => {
@@ -146,17 +174,31 @@ export default function VirtualTryOnPage() {
     return "tops";
   };
 
+  const twoPieceSet = isTwoPieceProduct(product);
   const fashnType = getFashnCategory(
-    String(product.category || product.category_id || ""),
+    String(product.category_name || product.category || product.category_id || ""),
     product.name || product.title || ""
   );
-  const isBottoms = fashnType === "bottoms";
+  const isBottoms = !twoPieceSet && fashnType === "bottoms";
   const availableTops = products.filter(p => getFashnCategory(String(p.category_name || p.category || p.category_id || ""), p.name || "") === "tops" && String(p.id) !== String(product.id));
+  const setImageOptions = getGarmentImageOptions(product);
+  const isSkirtSet = /skirt/i.test([product.name, product.title, product.category_name, product.category].filter(Boolean).join(" "));
+  const defaultSetTop = setImageOptions.find((image) => /\b(top|blouse|shirt)\b/i.test(image.label)) || setImageOptions[0];
+  const defaultSetBottom = setImageOptions.find((image) => (
+    isSkirtSet ? /skirt/i.test(image.label) : /\b(bottom|skirt|pant|trouser|palazzo)\b/i.test(image.label)
+  )) || setImageOptions[1];
+  const setTopImage = setImageOptions.find((image) => image.url === selectedSetTopUrl) || defaultSetTop;
+  const setBottomImage = setImageOptions.find((image) => image.url === selectedSetBottomUrl) || defaultSetBottom;
+  const isCombo = twoPieceSet || (isBottoms && selectedTop !== null);
 
   const startTryOnPipeline = async () => {
     if (!personFile || !product) return;
 
-    const isCombo = isBottoms && selectedTop;
+    if (twoPieceSet && (!setTopImage || !setBottomImage || setTopImage.url === setBottomImage.url)) {
+      setStatusType("error");
+      setStatusText("This two-piece try-on needs separate top and matching skirt/bottom photos in the product gallery.");
+      return;
+    }
     setIsProcessing(true);
     setTryOnComplete(false);
     setStatusType("processing");
@@ -165,7 +207,9 @@ export default function VirtualTryOnPage() {
     try {
       let res;
       const targetGarmentImg = getGarmentImage(product);
-      if (isCombo) {
+      if (twoPieceSet) {
+        res = await tryonApi.submitCombo(personFile, setTopImage!.url, setBottomImage!.url, product.id);
+      } else if (isCombo) {
         const topImg = getGarmentImage(selectedTop);
         res = await tryonApi.submitCombo(personFile, topImg, targetGarmentImg, product.id);
       } else {
@@ -230,7 +274,10 @@ export default function VirtualTryOnPage() {
     setSizeError(false);
   };
 
-  const tips = PHOTO_TIPS[fashnType as keyof typeof PHOTO_TIPS] || PHOTO_TIPS.tops;
+  const tips = twoPieceSet
+    ? "Upload a full-body photo. We apply the product’s top and matching skirt/bottom as the two pieces of this set; no extra trouser garment is selected."
+    : PHOTO_TIPS[fashnType as keyof typeof PHOTO_TIPS] || PHOTO_TIPS.tops;
+  const tipLabel = twoPieceSet ? "Two-Piece Set Try-On Guide" : TIP_LABEL[fashnType as keyof typeof TIP_LABEL];
   const productImgUrl = getGarmentImage(product);
 
   return (
@@ -307,6 +354,8 @@ export default function VirtualTryOnPage() {
                       onClick={() => {
                         setProduct(p);
                         setSelectedTop(null);
+                        setSelectedSetTopUrl("");
+                        setSelectedSetBottomUrl("");
                         router.push(`/storefront/product/${p.id}/tryon`);
                         resetAll();
                         setShowGarmentList(false);
@@ -331,14 +380,42 @@ export default function VirtualTryOnPage() {
               <div>
                 <h4 className="text-sm font-semibold text-foreground">{product.name}</h4>
                 <span className="text-[9px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-800 text-muted-foreground mt-1 inline-block">
-                  {fashnType}
+                  {twoPieceSet ? "Two-piece set" : fashnType}
                 </span>
                 <p className="text-sm font-bold text-[#e07a3f] mt-1">₹{(product.price_selling || product.price)?.toLocaleString()}</p>
               </div>
             </div>
           </div>
 
-          {/* Step 3 (Combos for bottoms) */}
+          {/* Two-piece sets use both product photos from this same listing. */}
+          {twoPieceSet && (
+            <div className="bg-surface border border-border p-6 rounded-2xl">
+              <h3 className="text-[10px] font-bold uppercase tracking-widest text-[#e07a3f] mb-3">Step 3 — Confirm both set pieces</h3>
+              <p className="text-[10px] text-muted-foreground mb-4">
+                The model will wear this product’s top and matching {isSkirtSet ? "skirt" : "bottom"} together. No separate trouser is added.
+              </p>
+              {setImageOptions.length >= 2 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <label className="text-xs font-medium text-foreground">
+                    Top image
+                    <select value={setTopImage?.url || ""} onChange={(event) => setSelectedSetTopUrl(event.target.value)} disabled={isProcessing} className="mt-1.5 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm">
+                      {setImageOptions.map((image) => <option key={image.url} value={image.url}>{image.label}</option>)}
+                    </select>
+                  </label>
+                  <label className="text-xs font-medium text-foreground">
+                    Matching {isSkirtSet ? "skirt" : "bottom"} image
+                    <select value={setBottomImage?.url || ""} onChange={(event) => setSelectedSetBottomUrl(event.target.value)} disabled={isProcessing} className="mt-1.5 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm">
+                      {setImageOptions.map((image) => <option key={image.url} value={image.url}>{image.label}</option>)}
+                    </select>
+                  </label>
+                </div>
+              ) : (
+                <p className="text-xs text-amber-600">Add separate top and matching {isSkirtSet ? "skirt" : "bottom"} photos to this product before using two-piece try-on.</p>
+              )}
+            </div>
+          )}
+
+          {/* Optional top replacement for a standalone bottom garment. */}
           {isBottoms && (
             <div className={`bg-surface border ${selectedTop ? 'border-[#e07a3f]' : 'border-border'} p-6 rounded-2xl`}>
               <div className="flex justify-between items-center mb-3">
@@ -349,19 +426,18 @@ export default function VirtualTryOnPage() {
                   </button>
                 )}
               </div>
-
               {selectedTop ? (
                 <div className="flex items-center gap-4">
                   <Image width={1200} height={900} unoptimized src={getGarmentImage(selectedTop)} alt={selectedTop.name || "Selected garment"} className="w-16 h-20 object-contain rounded-lg border border-[#e07a3f] bg-[#f8f7f4] p-1" />
                   <div>
                     <p className="text-xs font-semibold text-foreground">{selectedTop.name}</p>
-                    <p className="text-[10px] text-muted-foreground mt-1">Will be draped in pass 1, then your pants in pass 2.</p>
+                    <p className="text-[10px] text-muted-foreground mt-1">Will be draped first, followed by the selected bottom.</p>
                   </div>
                 </div>
               ) : (
                 <>
                   <p className="text-[10px] text-muted-foreground mb-3">
-                    Wearing a kurti in your photo? Select a top below — the AI will replace it first, then drape the pants. Skip if already wearing a short top.
+                    Select a top to replace the one in your photo, then the selected bottom garment will be applied.
                   </p>
                   <div className="flex gap-3 overflow-x-auto pb-2 custom-scrollbar">
                     {availableTops.map(top => (
@@ -383,11 +459,10 @@ export default function VirtualTryOnPage() {
           {/* Action Button */}
           <button
             onClick={startTryOnPipeline}
-            disabled={isProcessing || !personFile}
+            disabled={isProcessing || !personFile || (twoPieceSet && (!setTopImage || !setBottomImage || setTopImage.url === setBottomImage.url))}
             className="w-full py-4 bg-gradient-to-r from-[#e07a3f] to-[#b95625] hover:from-[#b95625] hover:to-[#9b4a23] text-white font-bold text-xs uppercase tracking-wider rounded-xl flex items-center justify-center gap-2 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all"
           >
-            {isBottoms && selectedTop ? <Layers className="w-4 h-4" /> : <Sparkles className="w-4 h-4" />}
-            {isBottoms && selectedTop ? "Generate Full Outfit Try-On" : "Generate Virtual Try-On"}
+            {isCombo ? "Generate Two-Piece Outfit Try-On" : "Generate Virtual Try-On"}
           </button>
 
           {/* Status Banner */}
@@ -516,7 +591,7 @@ export default function VirtualTryOnPage() {
                 <X className="w-5 h-5" />
               </button>
               <span className="text-[9px] font-bold uppercase tracking-widest text-[#e07a3f] mb-1 block">AI Photo Guidelines</span>
-              <h2 className="text-xl font-serif text-foreground">{TIP_LABEL[fashnType as keyof typeof TIP_LABEL]}</h2>
+              <h2 className="text-xl font-serif text-foreground">{tipLabel}</h2>
             </div>
             <div className="p-6 bg-surface">
               <div className="flex gap-3 items-start mb-6">
