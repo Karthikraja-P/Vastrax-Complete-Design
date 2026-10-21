@@ -392,25 +392,25 @@ export default function VirtualTryOnPage() {
             <div className="bg-surface border border-border p-6 rounded-2xl">
               <h3 className="text-[10px] font-bold uppercase tracking-widest text-[#e07a3f] mb-3">Step 3 — Confirm both set pieces</h3>
               <p className="text-[10px] text-muted-foreground mb-4">
-                The model will wear this product’s top and matching {isSkirtSet ? "skirt" : "bottom"} together. No separate trouser is added.
+                The model will wear the top and matching {isSkirtSet ? "skirt" : "bottom"} from this product’s Product Images together. No other product or unrelated trouser is added.
               </p>
               {setImageOptions.length >= 2 ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <label className="text-xs font-medium text-foreground">
-                    Top image
+                    Top image from this set
                     <select value={setTopImage?.url || ""} onChange={(event) => setSelectedSetTopUrl(event.target.value)} disabled={isProcessing} className="mt-1.5 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm">
                       {setImageOptions.map((image) => <option key={image.url} value={image.url}>{image.label}</option>)}
                     </select>
                   </label>
                   <label className="text-xs font-medium text-foreground">
-                    Matching {isSkirtSet ? "skirt" : "bottom"} image
+                    Matching {isSkirtSet ? "skirt" : "bottom"} from this set
                     <select value={setBottomImage?.url || ""} onChange={(event) => setSelectedSetBottomUrl(event.target.value)} disabled={isProcessing} className="mt-1.5 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm">
                       {setImageOptions.map((image) => <option key={image.url} value={image.url}>{image.label}</option>)}
                     </select>
                   </label>
                 </div>
               ) : (
-                <p className="text-xs text-amber-600">Add separate top and matching {isSkirtSet ? "skirt" : "bottom"} photos to this product before using two-piece try-on.</p>
+                <p className="text-xs text-amber-600">Add top and matching {isSkirtSet ? "skirt" : "bottom"} photos to this same product’s Product Images before using two-piece try-on.</p>
               )}
             </div>
           )}

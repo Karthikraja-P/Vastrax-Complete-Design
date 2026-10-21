@@ -93,7 +93,7 @@ export default function AdminTryOnImageGenerator({ images, productName, onAddIma
       return;
     }
     if (effectivePreviewMode === "set" && (!selectedTop || !selectedBottom || selectedTop.id === selectedBottom.id)) {
-      setError("Choose two different product photos: one for the top and one for the bottom.");
+      setError("Choose two different images from this product's gallery: one for its top and one for its matching bottom.");
       return;
     }
 
@@ -183,13 +183,13 @@ export default function AdminTryOnImageGenerator({ images, productName, onAddIma
         {effectivePreviewMode === "set" ? (
           <>
             <label className="text-xs font-medium text-foreground">
-              Top image
+              Top image from this product
               <select value={availableImages.some((image) => image.id === topImageId) ? topImageId : (defaultTopImage?.id || "")} onChange={(event) => setTopImageId(event.target.value)} disabled={availableImages.length < 2 || generating} className="mt-1.5 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm">
                 {availableImages.map((image) => <option key={image.id} value={image.id}>{image.label}</option>)}
               </select>
             </label>
             <label className="text-xs font-medium text-foreground">
-              {twoPieceSet && /skirt/i.test(productName) ? "Matching skirt image" : "Matching bottom image"}
+              {twoPieceSet && /skirt/i.test(productName) ? "Matching skirt from this product" : "Matching bottom from this product"}
               <select value={availableImages.some((image) => image.id === bottomImageId) ? bottomImageId : (defaultBottomImage?.id || "")} onChange={(event) => setBottomImageId(event.target.value)} disabled={availableImages.length < 2 || generating} className="mt-1.5 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm">
                 {availableImages.map((image) => <option key={image.id} value={image.id}>{image.label}</option>)}
               </select>
@@ -217,7 +217,7 @@ export default function AdminTryOnImageGenerator({ images, productName, onAddIma
           {generating ? <><Loader2 className="h-4 w-4 animate-spin" />Generating…</> : <><Sparkles className="h-4 w-4" />Generate preview</>}
         </button>
       </div>
-      {effectivePreviewMode === "set" && <p className="text-[11px] text-muted-foreground">{twoPieceSet ? "This two-piece product is previewed with both matching pieces. For skirt sets, choose the skirt photo as the matching bottom; no separate trouser garment is added." : "The selected model wears both pieces in one generated preview. Select the correct top and matching bottom product photos."}</p>}
+      {effectivePreviewMode === "set" && <p className="text-[11px] text-muted-foreground">{twoPieceSet ? "Both references come from this product's Product Images. Choose its top and matching skirt/bottom; no separate product or unrelated trouser is added." : "The selected model wears both pieces in one generated preview. Select the correct top and matching bottom product photos."}</p>}
       {error && <p role="alert" className="text-xs text-red-600">{error}</p>}
       {generated && (
         <div className="flex flex-col gap-4 rounded-lg border border-accent/30 bg-accent/5 p-4 sm:flex-row sm:items-center">
