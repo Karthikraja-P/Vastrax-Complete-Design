@@ -15,9 +15,10 @@ interface PhotoUploadCardProps {
   inputRef: RefObject<HTMLInputElement | null>;
   onSelect: (event: ChangeEvent<HTMLInputElement>) => void;
   onClear: () => void;
+  showCameraIcon?: boolean;
 }
 
-export default function PhotoUploadCard({ label, photo, inputRef, onSelect, onClear }: PhotoUploadCardProps) {
+export default function PhotoUploadCard({ label, photo, inputRef, onSelect, onClear, showCameraIcon = true }: PhotoUploadCardProps) {
   return (
     <div className="flex flex-col items-center">
       <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={onSelect} />
@@ -30,7 +31,7 @@ export default function PhotoUploadCard({ label, photo, inputRef, onSelect, onCl
           <>
             <Image src={photo.preview} alt={label} fill unoptimized sizes="(max-width: 768px) 33vw, 240px" className="object-cover" />
             <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-              <Camera className="w-6 h-6 text-white" />
+              {showCameraIcon && <Camera className="w-6 h-6 text-white" />}
             </div>
             <button
               type="button"
@@ -42,10 +43,12 @@ export default function PhotoUploadCard({ label, photo, inputRef, onSelect, onCl
             </button>
           </>
         ) : (
-          <div className="flex flex-col items-center justify-center h-full gap-3 px-4">
-            <div className="w-12 h-12 rounded-full bg-surface border border-border flex items-center justify-center group-hover:scale-110 transition-transform">
-              <Camera className="w-5 h-5 text-muted-foreground group-hover:text-accent transition-colors" />
-            </div>
+          <div className="flex flex-col items-center justify-center h-full px-4">
+            {showCameraIcon && (
+              <div className="w-12 h-12 rounded-full bg-surface border border-border flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                <Camera className="w-5 h-5 text-muted-foreground group-hover:text-accent transition-colors" />
+              </div>
+            )}
             <span className="text-xs text-muted-foreground font-medium">Click to upload</span>
           </div>
         )}

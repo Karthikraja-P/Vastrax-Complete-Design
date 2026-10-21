@@ -2,7 +2,7 @@
 import Image from "next/image";
 
 import { useState, useRef, useEffect } from "react";
-import { ArrowLeft, Save, Sparkles, Plus, X as XIcon, Upload, Loader2, Check, RotateCw, Eye, ChevronLeft, ChevronRight, Star, GripVertical } from "lucide-react";
+import { ArrowLeft, Save, Plus, X as XIcon, Upload, Loader2, Check, RotateCw, Eye, ChevronLeft, ChevronRight, Star, GripVertical } from "lucide-react";
 import Link from "next/link";
 import { clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
@@ -737,9 +737,6 @@ export default function AddProductPage() {
                 onClick={() => imageInputRef.current?.click()}
                 className="border-2 border-dashed border-border hover:border-accent/50 bg-background/50 rounded-xl p-10 flex flex-col items-center justify-center text-center transition-all cursor-pointer group hover:bg-accent/5"
               >
-                <div className="w-14 h-14 bg-surface border border-border rounded-full flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                  <Upload className="w-6 h-6 text-muted-foreground group-hover:text-accent transition-colors" />
-                </div>
                 <h3 className="text-foreground font-medium mb-1">
                   Drag & Drop images here
                 </h3>
@@ -988,7 +985,6 @@ export default function AddProductPage() {
 
               {/* Info banner */}
               <div className="bg-accent/5 border border-accent/20 rounded-xl p-4 flex items-start gap-3">
-                <Sparkles className="w-5 h-5 text-accent flex-shrink-0 mt-0.5" />
                 <div className="text-xs text-muted-foreground leading-relaxed">
                   <span className="font-semibold text-foreground">
                     Current limitation:
@@ -1007,6 +1003,7 @@ export default function AddProductPage() {
                   inputRef={frontRef}
                   onSelect={(e) => handlePhotoSelect(e, setFrontPhoto)}
                   onClear={() => setFrontPhoto({ file: null, preview: null })}
+                  showCameraIcon={false}
                 />
                 <PhotoUploadCard
                   label="Side View"
@@ -1014,6 +1011,7 @@ export default function AddProductPage() {
                   inputRef={sideRef}
                   onSelect={(e) => handlePhotoSelect(e, setSidePhoto)}
                   onClear={() => setSidePhoto({ file: null, preview: null })}
+                  showCameraIcon={false}
                 />
                 <PhotoUploadCard
                   label="Back View"
@@ -1021,6 +1019,7 @@ export default function AddProductPage() {
                   inputRef={backRef}
                   onSelect={(e) => handlePhotoSelect(e, setBackPhoto)}
                   onClear={() => setBackPhoto({ file: null, preview: null })}
+                  showCameraIcon={false}
                 />
               </div>
 
