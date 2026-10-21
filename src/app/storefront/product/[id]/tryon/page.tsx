@@ -67,8 +67,6 @@ export default function VirtualTryOnPage() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   const [selectedTop, setSelectedTop] = useState<ProductItem | null>(null);
-  const [selectedSetTopUrl, setSelectedSetTopUrl] = useState("");
-  const [selectedSetBottomUrl, setSelectedSetBottomUrl] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [statusType, setStatusType] = useState("");
   const [statusText, setStatusText] = useState("");
@@ -187,8 +185,8 @@ export default function VirtualTryOnPage() {
   const defaultSetBottom = setImageOptions.find((image) => (
     isSkirtSet ? /skirt/i.test(image.label) : /\b(bottom|skirt|pant|trouser|palazzo)\b/i.test(image.label)
   )) || setImageOptions[1];
-  const setTopImage = setImageOptions.find((image) => image.url === selectedSetTopUrl) || defaultSetTop;
-  const setBottomImage = setImageOptions.find((image) => image.url === selectedSetBottomUrl) || defaultSetBottom;
+  const setTopImage = defaultSetTop;
+  const setBottomImage = defaultSetBottom;
   const isCombo = twoPieceSet || (isBottoms && selectedTop !== null);
 
   const startTryOnPipeline = async () => {
@@ -196,7 +194,7 @@ export default function VirtualTryOnPage() {
 
     if (twoPieceSet && (!setTopImage || !setBottomImage || setTopImage.url === setBottomImage.url)) {
       setStatusType("error");
-      setStatusText("This two-piece try-on needs separate top and matching skirt/bottom photos in the product gallery.");
+      setStatusText("This set is missing product images needed for try-on. Please contact the store team.");
       return;
     }
     setIsProcessing(true);
@@ -354,8 +352,6 @@ export default function VirtualTryOnPage() {
                       onClick={() => {
                         setProduct(p);
                         setSelectedTop(null);
-                        setSelectedSetTopUrl("");
-                        setSelectedSetBottomUrl("");
                         router.push(`/storefront/product/${p.id}/tryon`);
                         resetAll();
                         setShowGarmentList(false);
@@ -387,30 +383,14 @@ export default function VirtualTryOnPage() {
             </div>
           </div>
 
-          {/* Two-piece sets use both product photos from this same listing. */}
           {twoPieceSet && (
             <div className="bg-surface border border-border p-6 rounded-2xl">
-              <h3 className="text-[10px] font-bold uppercase tracking-widest text-[#e07a3f] mb-3">Step 3 — Confirm both set pieces</h3>
-              <p className="text-[10px] text-muted-foreground mb-4">
-                The model will wear the top and matching {isSkirtSet ? "skirt" : "bottom"} from this product’s Product Images together. No other product or unrelated trouser is added.
+              <h3 className="text-[10px] font-bold uppercase tracking-widest text-[#e07a3f] mb-3">Step 3 — Your set</h3>
+              <p className="text-xs text-muted-foreground">
+                This product is sold as one two-piece set. Virtual try-on applies the matching top and {isSkirtSet ? "skirt" : "bottom"} together automatically.
               </p>
-              {setImageOptions.length >= 2 ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <label className="text-xs font-medium text-foreground">
-                    Top image from this set
-                    <select value={setTopImage?.url || ""} onChange={(event) => setSelectedSetTopUrl(event.target.value)} disabled={isProcessing} className="mt-1.5 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm">
-                      {setImageOptions.map((image) => <option key={image.url} value={image.url}>{image.label}</option>)}
-                    </select>
-                  </label>
-                  <label className="text-xs font-medium text-foreground">
-                    Matching {isSkirtSet ? "skirt" : "bottom"} from this set
-                    <select value={setBottomImage?.url || ""} onChange={(event) => setSelectedSetBottomUrl(event.target.value)} disabled={isProcessing} className="mt-1.5 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm">
-                      {setImageOptions.map((image) => <option key={image.url} value={image.url}>{image.label}</option>)}
-                    </select>
-                  </label>
-                </div>
-              ) : (
-                <p className="text-xs text-amber-600">Add top and matching {isSkirtSet ? "skirt" : "bottom"} photos to this same product’s Product Images before using two-piece try-on.</p>
+              {setImageOptions.length < 2 && (
+                <p className="text-xs text-amber-600 mt-3">This product needs its top and matching {isSkirtSet ? "skirt" : "bottom"} images added in the product gallery before try-on is available.</p>
               )}
             </div>
           )}
