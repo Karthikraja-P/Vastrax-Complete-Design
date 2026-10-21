@@ -2,7 +2,7 @@
 import Image from "next/image";
 
 import { useState, useRef, useEffect } from "react";
-import { ArrowLeft, Save, Sparkles, Image as ImageIcon, Box, Plus, X as XIcon, Upload, Loader2, Check, RotateCw, Eye, ChevronLeft, ChevronRight, Star, GripVertical } from "lucide-react";
+import { ArrowLeft, Save, Sparkles, Plus, X as XIcon, Upload, Loader2, Check, RotateCw, Eye, ChevronLeft, ChevronRight, Star, GripVertical } from "lucide-react";
 import Link from "next/link";
 import { clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
@@ -718,9 +718,6 @@ export default function AddProductPage() {
                 <div className="flex items-center justify-between bg-background border border-border rounded-xl px-5 py-3 mt-4">
                   <div className="flex items-center gap-4">
                     <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center">
-                        <ImageIcon className="w-4 h-4 text-accent" />
-                      </div>
                       <div>
                         <p className="text-xs font-bold text-foreground">
                           {images.length} image{images.length !== 1 ? "s" : ""} uploaded
@@ -879,10 +876,7 @@ export default function AddProductPage() {
 
               {/* 3D Model Section */}
               <div className="mt-8 pt-8 border-t border-border">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-10 h-10 rounded-xl bg-accent/10 border border-accent/20 flex items-center justify-center">
-                    <Box className="w-5 h-5 text-accent" />
-                  </div>
+                <div className="mb-4">
                   <div>
                     <h2 className="text-sm font-bold text-foreground">
                       Interactive 3D Model
@@ -936,10 +930,7 @@ export default function AddProductPage() {
             <div className="space-y-8 animate-in fade-in">
               {/* Header */}
               <div>
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="w-10 h-10 rounded-xl bg-accent/10 border border-accent/20 flex items-center justify-center">
-                    <Box className="w-5 h-5 text-accent" />
-                  </div>
+                <div className="mb-2">
                   <div>
                     <h2 className="text-lg font-semibold text-foreground">
                       3D Model Reconstruction
