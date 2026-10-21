@@ -487,7 +487,6 @@ function CollectionsPageContent({ initialCategory, initialSort, initialSearch }:
           <div className="max-w-[1400px] mx-auto p-4 md:p-10">
 
             <header className="vx-collection-heading mb-8">
-              <p className="vx-kicker">VASTRAX / COORDINATED SETS</p>
               <h1>Women&apos;s collection</h1>
             </header>
 
@@ -541,7 +540,6 @@ function CollectionsPageContent({ initialCategory, initialSort, initialSearch }:
                           <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${selectedCategory === cat.name ? 'border-[#e07a3f] bg-[#e07a3f]' : 'border-border dark:border-white/20'}`}>
                             {selectedCategory === cat.name && <div className="w-1.5 h-1.5 bg-surface dark:bg-[#1a1a1a] rounded-full" />}
                           </div>
-                          <span className="text-lg w-6 text-center shrink-0">{cat.icon}</span>
                           <span className="text-sm font-medium flex-1 truncate">{cat.name}</span>
                         </label>
                       ))}
@@ -569,10 +567,6 @@ function CollectionsPageContent({ initialCategory, initialSort, initialSearch }:
 
               {/* 3. Product Grid Area */}
               <div className="flex-1">
-                <div className="vx-results-heading mb-5">
-                  <h2>Available pieces</h2>
-                  <p>{filteredProducts.length} {filteredProducts.length === 1 ? "look" : "looks"} in this edit</p>
-                </div>
                 <div className="hidden lg:flex items-end justify-between mb-8">
                   <div className="relative">
                     <button
