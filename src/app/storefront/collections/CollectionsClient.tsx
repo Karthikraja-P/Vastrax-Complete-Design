@@ -489,7 +489,6 @@ function CollectionsPageContent({ initialCategory, initialSort, initialSearch }:
             <header className="vx-collection-heading mb-8">
               <p className="vx-kicker">VASTRAX / COORDINATED SETS</p>
               <h1>Women&apos;s collection</h1>
-              <p>Browse coordinated looks, filter by category, color, and price, then check size availability before adding a set to your bag.</p>
             </header>
 
             {/* Layout Grid: Sidebar  Products */}

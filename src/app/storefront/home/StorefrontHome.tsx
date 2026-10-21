@@ -353,7 +353,6 @@ export default function StorefrontHome() {
               <Link key={String(look.productId || look.id)} href={look.productId ? `/storefront/product?id=${encodeURIComponent(look.productId)}` : "/storefront/collections?gender=Women"} className="vx-look-card group">
                 <div className="vx-look-stage">
                   <Image src={look.image} alt={look.title || look.name} width={1086} height={1449} sizes="(max-width: 640px) 48vw, (max-width: 1024px) 31vw, 28vw" unoptimized={look.image.startsWith("http")} loading={idx === 0 ? "eager" : "lazy"} className="vx-look-image" />
-                  <span className="vx-look-index">{String(idx + 1).padStart(2, "0")}</span>
                   <span className="vx-look-arrow" aria-hidden="true"><ArrowRight className="h-4 w-4" /></span>
                 </div>
                 <div className="vx-look-meta">
