@@ -77,9 +77,10 @@ async def generate_admin_tryon_preview(
     model_id: str = Form(...),
     garment_type: str = Form("tops"),
     garment_image: UploadFile = File(...),
+    bottom_image: UploadFile | None = File(None),
     _: User = Depends(require_admin),
 ):
-    """Generate a try-on preview from a catalog garment and a curated admin model."""
+    """Generate a preview with one garment, or layer a top and bottom on a curated model."""
     from app.core.config import settings
     from app.core.exceptions import BadRequestError, InternalError
 
@@ -89,45 +90,68 @@ async def generate_admin_tryon_preview(
         raise ServiceUnavailableError("The selected model image is unavailable")
     if garment_type not in {"tops", "bottoms", "one-pieces"}:
         raise BadRequestError("Choose a supported garment type")
-    accepted_types = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
-    extension = accepted_types.get(garment_image.content_type or "")
-    if not extension:
-        raise BadRequestError("Upload a JPG, PNG, or WEBP product image")
+    if bottom_image and garment_type != "tops":
+        raise BadRequestError("For a top + bottom preview, set the primary garment type to top")
 
-    content = await garment_image.read(10 * 1024 * 1024 + 1)
-    if not content or len(content) > 10 * 1024 * 1024:
-        raise BadRequestError("Product images must be under 10 MB")
-    try:
-        from PIL import Image
-        with Image.open(BytesIO(content)) as image:
-            image.verify()
-    except Exception as exc:
-        raise BadRequestError("The selected product image is not a valid image") from exc
+    accepted_types = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
+
+    async def read_image(upload: UploadFile, label: str) -> tuple[bytes, str]:
+        extension = accepted_types.get(upload.content_type or "")
+        if not extension:
+            raise BadRequestError(f"Upload the {label} as a JPG, PNG, or WEBP image")
+        content = await upload.read(10 * 1024 * 1024 + 1)
+        if not content or len(content) > 10 * 1024 * 1024:
+            raise BadRequestError(f"The {label} image must be under 10 MB")
+        try:
+            from PIL import Image
+            with Image.open(BytesIO(content)) as image:
+                image.verify()
+        except Exception as exc:
+            raise BadRequestError(f"The selected {label} image is not a valid image") from exc
+        return content, extension
+
+    top_content, top_extension = await read_image(garment_image, "top" if bottom_image else "product")
+    bottom_content: bytes | None = None
+    bottom_extension: str | None = None
+    if bottom_image:
+        bottom_content, bottom_extension = await read_image(bottom_image, "bottom")
 
     os.makedirs(settings.upload_dir, exist_ok=True)
     os.makedirs(settings.results_dir, exist_ok=True)
     preview_results_dir = tempfile.mkdtemp(prefix="admin-tryon-", dir=settings.results_dir)
-    handle = tempfile.NamedTemporaryFile(
-        prefix="admin-tryon-garment-",
-        suffix=extension,
-        dir=settings.upload_dir,
-        delete=False,
-    )
-    garment_path = handle.name
+    temp_paths: list[str] = []
     result_transferring = False
     try:
-        with handle:
-            handle.write(content)
+        def save_temp(content: bytes, extension: str, prefix: str) -> str:
+            handle = tempfile.NamedTemporaryFile(prefix=prefix, suffix=extension, dir=settings.upload_dir, delete=False)
+            with handle:
+                handle.write(content)
+            temp_paths.append(handle.name)
+            return handle.name
+
+        top_path = save_temp(top_content, top_extension, "admin-tryon-top-")
+        bottom_path = save_temp(bottom_content, bottom_extension, "admin-tryon-bottom-") if bottom_content and bottom_extension else None
         from app.core.gpu_queue import gpu_queue
         from app.services.fashn_service import run_fashn
+
         async with gpu_queue.acquire("tryon_admin_preview"):
             result_path = await asyncio.to_thread(
                 run_fashn,
                 person_image_path=str(model_path),
-                garment_image_path=garment_path,
-                garment_type=garment_type,
+                garment_image_path=top_path,
+                garment_type="tops" if bottom_path else garment_type,
                 results_dir=preview_results_dir,
             )
+            if bottom_path:
+                if not result_path or not os.path.isfile(result_path):
+                    raise InternalError("Virtual try-on did not produce the top preview")
+                result_path = await asyncio.to_thread(
+                    run_fashn,
+                    person_image_path=result_path,
+                    garment_image_path=bottom_path,
+                    garment_type="bottoms",
+                    results_dir=preview_results_dir,
+                )
         if not result_path or not os.path.isfile(result_path):
             raise InternalError("Virtual try-on did not produce a preview image")
         result_transferring = True
@@ -142,10 +166,11 @@ async def generate_admin_tryon_preview(
     except Exception as exc:
         raise InternalError("Virtual try-on could not create a preview. Please try again.") from exc
     finally:
-        try:
-            os.unlink(garment_path)
-        except FileNotFoundError:
-            pass
+        for path in temp_paths:
+            try:
+                os.unlink(path)
+            except FileNotFoundError:
+                pass
         if not result_transferring:
             shutil.rmtree(preview_results_dir, ignore_errors=True)
 

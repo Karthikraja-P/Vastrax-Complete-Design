@@ -38,6 +38,9 @@ function inferGarmentType(name: string): GarmentType {
 export default function AdminTryOnImageGenerator({ images, productName, onAddImage }: AdminTryOnImageGeneratorProps) {
   const [modelId, setModelId] = useState<string>(models[0].id);
   const [imageId, setImageId] = useState("");
+  const [previewMode, setPreviewMode] = useState<"single" | "set">("single");
+  const [topImageId, setTopImageId] = useState("");
+  const [bottomImageId, setBottomImageId] = useState("");
   const [garmentTypeOverride, setGarmentTypeOverride] = useState<GarmentType | null>(null);
   const garmentType = garmentTypeOverride || inferGarmentType(productName);
   const [generating, setGenerating] = useState(false);
@@ -60,26 +63,32 @@ export default function AdminTryOnImageGenerator({ images, productName, onAddIma
     label: image.label || image.file?.name || `Product image ${index + 1}`,
   })), [images]);
 
+  const getImageFile = async (image: ProductImageDraft, filename: string): Promise<File> => {
+    if (image.file && image.file.size > 0) return image.file;
+    const imageResponse = await fetch(image.preview);
+    if (!imageResponse.ok) throw new Error("Could not load " + filename.toLowerCase() + ". Upload a local product photo and try again.");
+    const blob = await imageResponse.blob();
+    const extension = blob.type.includes("png") ? "png" : blob.type.includes("webp") ? "webp" : "jpg";
+    return new File([blob], filename.toLowerCase().replace(/[^a-z0-9]+/g, "-") + "." + extension, { type: blob.type || "image/jpeg" });
+  };
+
   const generate = async () => {
     const selectedImage = availableImages.find((image) => image.id === imageId) || availableImages[0];
+    const selectedTop = availableImages.find((image) => image.id === topImageId) || availableImages[0];
+    const selectedBottom = availableImages.find((image) => image.id === bottomImageId) || availableImages[1];
     const selectedModel = models.find((model) => model.id === modelId);
-    if (!selectedImage || !selectedModel) {
+    if (!selectedModel || (previewMode === "single" && !selectedImage)) {
       setError("Add a product photo and choose a model first.");
+      return;
+    }
+    if (previewMode === "set" && (!selectedTop || !selectedBottom || selectedTop.id === selectedBottom.id)) {
+      setError("Choose two different product photos: one for the top and one for the bottom.");
       return;
     }
 
     setGenerating(true);
     setError(null);
     try {
-      let garmentFile = selectedImage.file;
-      if (!garmentFile || garmentFile.size === 0) {
-        const imageResponse = await fetch(selectedImage.preview);
-        if (!imageResponse.ok) throw new Error("Could not load that product image. Upload a local product photo and try again.");
-        const blob = await imageResponse.blob();
-        const extension = blob.type.includes("png") ? "png" : blob.type.includes("webp") ? "webp" : "jpg";
-        garmentFile = new File([blob], `product-image.${extension}`, { type: blob.type || "image/jpeg" });
-      }
-
       let token = localStorage.getItem("vastrax_token");
       if (!token || token === "null" || token === "undefined") {
         const session = await getSession();
@@ -87,11 +96,17 @@ export default function AdminTryOnImageGenerator({ images, productName, onAddIma
       }
       const formData = new FormData();
       formData.append("model_id", modelId);
-      formData.append("garment_type", garmentType);
-      formData.append("garment_image", garmentFile);
+      if (previewMode === "set") {
+        formData.append("garment_type", "tops");
+        formData.append("garment_image", await getImageFile(selectedTop!, "top"));
+        formData.append("bottom_image", await getImageFile(selectedBottom!, "bottom"));
+      } else {
+        formData.append("garment_type", garmentType);
+        formData.append("garment_image", await getImageFile(selectedImage!, "product"));
+      }
       const response = await fetch("/api/v1/try-on/admin-preview", {
         method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        headers: token ? { Authorization: "Bearer " + token } : {},
         body: formData,
       });
       if (!response.ok) {
@@ -100,13 +115,13 @@ export default function AdminTryOnImageGenerator({ images, productName, onAddIma
       }
       const resultBlob = await response.blob();
       if (!resultBlob.size) throw new Error("Try-on returned an empty preview image.");
-      const resultFile = new File([resultBlob], `try-on-${selectedModel.name.toLowerCase()}-${Date.now()}.png`, {
+      const resultFile = new File([resultBlob], "try-on-" + selectedModel.name.toLowerCase() + "-" + Date.now() + ".png", {
         type: resultBlob.type || "image/png",
       });
       if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
       const preview = URL.createObjectURL(resultFile);
       previewUrlRef.current = preview;
-      setGenerated({ file: resultFile, preview, modelName: selectedModel.name });
+      setGenerated({ file: resultFile, preview, modelName: previewMode === "set" ? selectedModel.name + " · top + bottom" : selectedModel.name });
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Try-on preview failed. Please try again.");
     } finally {
@@ -146,25 +161,52 @@ export default function AdminTryOnImageGenerator({ images, productName, onAddIma
         ))}
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-[1fr_180px_auto] gap-3 items-end">
+      <div className="grid grid-cols-1 sm:grid-cols-[180px_1fr_180px_auto] gap-3 items-end">
         <label className="text-xs font-medium text-foreground">
-          Product photo to try on
-          <select value={availableImages.some((image) => image.id === imageId) ? imageId : (availableImages[0]?.id || "")} onChange={(event) => setImageId(event.target.value)} disabled={!availableImages.length || generating} className="mt-1.5 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm">
-            {availableImages.length ? availableImages.map((image) => <option key={image.id} value={image.id}>{image.label}</option>) : <option value="">Upload a product photo first</option>}
+          Preview type
+          <select value={previewMode} onChange={(event) => setPreviewMode(event.target.value as "single" | "set")} disabled={generating} className="mt-1.5 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm">
+            <option value="single">Single garment</option>
+            <option value="set" disabled={availableImages.length < 2}>Top + bottom set</option>
           </select>
         </label>
-        <label className="text-xs font-medium text-foreground">
-          Garment type
-          <select value={garmentType} onChange={(event) => setGarmentTypeOverride(event.target.value as GarmentType)} disabled={generating} className="mt-1.5 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm">
-            <option value="tops">Top</option>
-            <option value="bottoms">Bottom</option>
-            <option value="one-pieces">Dress / one-piece</option>
-          </select>
-        </label>
-        <button type="button" onClick={generate} disabled={!availableImages.length || generating} className="inline-flex items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">
+        {previewMode === "set" ? (
+          <>
+            <label className="text-xs font-medium text-foreground">
+              Top image
+              <select value={availableImages.some((image) => image.id === topImageId) ? topImageId : (availableImages[0]?.id || "")} onChange={(event) => setTopImageId(event.target.value)} disabled={availableImages.length < 2 || generating} className="mt-1.5 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm">
+                {availableImages.map((image) => <option key={image.id} value={image.id}>{image.label}</option>)}
+              </select>
+            </label>
+            <label className="text-xs font-medium text-foreground">
+              Bottom image
+              <select value={availableImages.some((image) => image.id === bottomImageId) ? bottomImageId : (availableImages[1]?.id || "")} onChange={(event) => setBottomImageId(event.target.value)} disabled={availableImages.length < 2 || generating} className="mt-1.5 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm">
+                {availableImages.map((image) => <option key={image.id} value={image.id}>{image.label}</option>)}
+              </select>
+            </label>
+          </>
+        ) : (
+          <>
+            <label className="text-xs font-medium text-foreground">
+              Product photo
+              <select value={availableImages.some((image) => image.id === imageId) ? imageId : (availableImages[0]?.id || "")} onChange={(event) => setImageId(event.target.value)} disabled={!availableImages.length || generating} className="mt-1.5 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm">
+                {availableImages.length ? availableImages.map((image) => <option key={image.id} value={image.id}>{image.label}</option>) : <option value="">Upload a product photo first</option>}
+              </select>
+            </label>
+            <label className="text-xs font-medium text-foreground">
+              Garment type
+              <select value={garmentType} onChange={(event) => setGarmentTypeOverride(event.target.value as GarmentType)} disabled={generating} className="mt-1.5 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm">
+                <option value="tops">Top</option>
+                <option value="bottoms">Bottom</option>
+                <option value="one-pieces">Dress / one-piece</option>
+              </select>
+            </label>
+          </>
+        )}
+        <button type="button" onClick={generate} disabled={!availableImages.length || generating || (previewMode === "set" && availableImages.length < 2)} className="inline-flex items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">
           {generating ? <><Loader2 className="h-4 w-4 animate-spin" />Generating…</> : <><Sparkles className="h-4 w-4" />Generate preview</>}
         </button>
       </div>
+      {previewMode === "set" && <p className="text-[11px] text-muted-foreground">The selected model wears both pieces in one generated preview. Upload separate top and bottom product photos first.</p>}
       {error && <p role="alert" className="text-xs text-red-600">{error}</p>}
       {generated && (
         <div className="flex flex-col gap-4 rounded-lg border border-accent/30 bg-accent/5 p-4 sm:flex-row sm:items-center">
