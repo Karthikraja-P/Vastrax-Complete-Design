@@ -31,11 +31,22 @@ interface UploadedImage {
   file: File;
   preview: string;
   label?: string;
+  tryonRole?: "top" | "bottom" | "gallery";
 }
 
 interface ReconstructPhoto {
   file: File | null;
   preview: string | null;
+}
+
+function isTwoPieceProductName(value: string): boolean {
+  return /\bcoord(?:inate)?\b|\bco[- ]?ord\b|\btwo[- ]?piece\b|\b2[- ]?piece\b|\bset\b|skirt\s*(?:and|&)\s*top|top\s*(?:and|&)\s*skirt/i.test(value);
+}
+
+function inferTryOnRole(filename: string): "top" | "bottom" | "gallery" {
+  if (/\b(bottom|skirt|pant|trouser|palazzo)\b/i.test(filename)) return "bottom";
+  if (/\b(top|blouse|shirt)\b/i.test(filename)) return "top";
+  return "gallery";
 }
 
 export default function AddProductPage() {
@@ -104,6 +115,7 @@ export default function AddProductPage() {
       id: `img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       file,
       preview: URL.createObjectURL(file),
+      tryonRole: inferTryOnRole(file.name),
     }));
     setImages((prev) => [...prev, ...newImages]);
     if (imageInputRef.current) imageInputRef.current.value = "";
@@ -115,9 +127,14 @@ export default function AddProductPage() {
       file,
       preview: URL.createObjectURL(file),
       label: `AI try-on · ${modelName}`,
+      tryonRole: "gallery",
     };
     setImages((current) => [...current, generated]);
     showToast(`Try-on image added for ${modelName}`);
+  };
+
+  const handleTryOnRoleChange = (id: string, tryonRole: "top" | "bottom" | "gallery") => {
+    setImages((current) => current.map((image) => image.id === id ? { ...image, tryonRole } : image));
   };
 
   const handleRemoveImage = (id: string) => {
@@ -137,6 +154,7 @@ export default function AddProductPage() {
       id: `img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       file,
       preview: URL.createObjectURL(file),
+      tryonRole: inferTryOnRole(file.name),
     }));
     setImages((prev) => [...prev, ...newImages]);
   };
@@ -366,7 +384,7 @@ export default function AddProductPage() {
             size: row.size.trim(),
             stock_qty: Math.max(0, Number.parseInt(stockBySize[row.size] || "0", 10) || 0),
           })),
-        images: imageDataUrls.map((url, i) => ({ s3_url: url, display_order: i })),
+        images: imageDataUrls.map((url, i) => ({ s3_url: url, display_order: i, tryon_role: images[i].tryonRole || "gallery" })),
       };
 
       const result = await productsApi.create(payload);
@@ -797,9 +815,12 @@ export default function AddProductPage() {
               {images.length > 0 && (
                 <div className="mt-4">
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-xs text-muted-foreground">
-                      Drag cards or use arrow buttons to alter garment display order. <span className="text-accent font-medium">#1 is the primary storefront cover photo.</span>
-                    </p>
+                    <div>
+                      <p className="text-xs text-muted-foreground">
+                        Drag cards or use arrow buttons to alter garment display order. <span className="text-accent font-medium">#1 is the primary storefront cover photo.</span>
+                      </p>
+                      {isTwoPieceProductName(name) && <p className="mt-1 text-[11px] text-muted-foreground">For accurate set try-on, tag the actual matching top and bottom once. Other views stay in the gallery.</p>}
+                    </div>
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
                     {images.map((img, idx) => (
@@ -897,6 +918,21 @@ export default function AddProductPage() {
                             {((img.file?.size || 0) / 1024).toFixed(0)} KB
                           </p>
                         </div>
+                        {isTwoPieceProductName(name) && (
+                          <label className="absolute bottom-2 inset-x-2 z-20 text-[9px] font-semibold text-foreground">
+                            Try-on source
+                            <select
+                              value={img.tryonRole || "gallery"}
+                              onChange={(event) => handleTryOnRoleChange(img.id, event.target.value as "top" | "bottom" | "gallery")}
+                              onMouseDown={(event) => event.stopPropagation()}
+                              className="mt-0.5 w-full rounded-md border border-border bg-white/95 px-2 py-1 text-[10px] text-black shadow"
+                            >
+                              <option value="gallery">Gallery only</option>
+                              <option value="top">Set top</option>
+                              <option value="bottom">Set bottom / skirt</option>
+                            </select>
+                          </label>
+                        )}
                       </div>
                     ))}
 

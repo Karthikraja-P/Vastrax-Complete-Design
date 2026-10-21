@@ -156,6 +156,8 @@ export interface ProductImage {
   url?: string;
   is_primary?: boolean;
   sort_order?: number;
+  display_order?: number;
+  tryon_role?: "top" | "bottom" | "gallery" | null;
   [key: string]: unknown;
 }
 

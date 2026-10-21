@@ -32,6 +32,7 @@ interface UploadedImage {
   file: File;
   preview: string;
   label?: string;
+  tryonRole?: "top" | "bottom" | "gallery";
   isExisting?: boolean;
 }
 
@@ -40,6 +41,16 @@ interface ReconstructPhoto {
   preview: string | null;
 }
 
+
+function isTwoPieceProductName(value: string): boolean {
+  return /\bcoord(?:inate)?\b|\bco[- ]?ord\b|\btwo[- ]?piece\b|\b2[- ]?piece\b|\bset\b|skirt\s*(?:and|&)\s*top|top\s*(?:and|&)\s*skirt/i.test(value);
+}
+
+function inferTryOnRole(filename: string): "top" | "bottom" | "gallery" {
+  if (/\b(bottom|skirt|pant|trouser|palazzo)\b/i.test(filename)) return "bottom";
+  if (/\b(top|blouse|shirt)\b/i.test(filename)) return "top";
+  return "gallery";
+}
 
 export default function EditProductPage() {
   return (
@@ -161,9 +172,10 @@ function EditProductContent() {
                   id: `existing-${idx}`,
                   preview: typeof i === 'string' ? i : i.s3_url || "",
                   file: new File([], "existing"),
-                  isExisting: true
+                  isExisting: true,
+                  tryonRole: (typeof i === "string" ? "gallery" : (i.tryon_role as "top" | "bottom" | "gallery" | undefined) || "gallery") as "top" | "bottom" | "gallery"
                 }))
-              : prod.image ? [{ id: 'existing-0', preview: prod.image, file: new File([], "existing"), isExisting: true }] : [];
+              : prod.image ? [{ id: 'existing-0', preview: prod.image, file: new File([], "existing"), isExisting: true, tryonRole: "gallery" as const }] : [];
             setImages(imgs);
 
             if (prod.variants && prod.variants.length > 0) {
@@ -197,6 +209,7 @@ function EditProductContent() {
       id: `img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       file,
       preview: URL.createObjectURL(file),
+      tryonRole: inferTryOnRole(file.name),
     }));
     setImages((prev) => [...prev, ...newImages]);
     if (imageInputRef.current) imageInputRef.current.value = "";
@@ -208,9 +221,14 @@ function EditProductContent() {
       file,
       preview: URL.createObjectURL(file),
       label: `AI try-on · ${modelName}`,
+      tryonRole: "gallery",
     };
     setImages((current) => [...current, generated]);
     showToast(`Try-on image added for ${modelName}`);
+  };
+
+  const handleTryOnRoleChange = (id: string, tryonRole: "top" | "bottom" | "gallery") => {
+    setImages((current) => current.map((image) => image.id === id ? { ...image, tryonRole } : image));
   };
 
   const handleRemoveImage = (id: string) => {
@@ -230,6 +248,7 @@ function EditProductContent() {
       id: `img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       file,
       preview: URL.createObjectURL(file),
+      tryonRole: inferTryOnRole(file.name),
     }));
     setImages((prev) => [...prev, ...newImages]);
   };
@@ -424,7 +443,7 @@ function EditProductContent() {
             size: row.size.trim(),
             stock_qty: Math.max(0, Number.parseInt(stockBySize[row.size] || "0", 10) || 0),
           })),
-        images: imageDataUrls.map((url, i) => ({ s3_url: url, display_order: i })),
+        images: imageDataUrls.map((url, i) => ({ s3_url: url, display_order: i, tryon_role: images[i].tryonRole || "gallery" })),
       };
 
       const result = productId ? await productsApi.update(productId, payload) : await productsApi.create(payload);
@@ -849,9 +868,12 @@ function EditProductContent() {
               {images.length > 0 && (
                 <div className="mt-4">
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-xs text-muted-foreground">
-                      Drag cards or use arrow buttons to alter garment display order. <span className="text-accent font-medium">#1 is the primary storefront cover photo.</span>
-                    </p>
+                    <div>
+                      <p className="text-xs text-muted-foreground">
+                        Drag cards or use arrow buttons to alter garment display order. <span className="text-accent font-medium">#1 is the primary storefront cover photo.</span>
+                      </p>
+                      {isTwoPieceProductName(name) && <p className="mt-1 text-[11px] text-muted-foreground">For accurate set try-on, tag the actual matching top and bottom once. Other views stay in the gallery.</p>}
+                    </div>
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
                     {images.map((img, idx) => (
@@ -949,6 +971,21 @@ function EditProductContent() {
                             {img.file?.size ? `${((img.file.size || 0) / 1024).toFixed(0)} KB` : "Uploaded"}
                           </p>
                         </div>
+                        {isTwoPieceProductName(name) && (
+                          <label className="absolute bottom-2 inset-x-2 z-20 text-[9px] font-semibold text-foreground">
+                            Try-on source
+                            <select
+                              value={img.tryonRole || "gallery"}
+                              onChange={(event) => handleTryOnRoleChange(img.id, event.target.value as "top" | "bottom" | "gallery")}
+                              onMouseDown={(event) => event.stopPropagation()}
+                              className="mt-0.5 w-full rounded-md border border-border bg-white/95 px-2 py-1 text-[10px] text-black shadow"
+                            >
+                              <option value="gallery">Gallery only</option>
+                              <option value="top">Set top</option>
+                              <option value="bottom">Set bottom / skirt</option>
+                            </select>
+                          </label>
+                        )}
                       </div>
                     ))}
 

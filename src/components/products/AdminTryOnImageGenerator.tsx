@@ -10,6 +10,7 @@ export interface ProductImageDraft {
   file?: File;
   preview: string;
   label?: string;
+  tryonRole?: "top" | "bottom" | "gallery";
   isExisting?: boolean;
 }
 
@@ -67,12 +68,8 @@ export default function AdminTryOnImageGenerator({ images, productName, onAddIma
     ...image,
     label: image.label || image.file?.name || "Product image " + (index + 1),
   })), [images]);
-  const defaultTopImage = availableImages.find((image) => /\b(top|blouse|shirt)\b/i.test(image.label)) || availableImages[0];
-  const defaultBottomImage = availableImages.find((image) => (
-    twoPieceSet && /skirt/i.test(productName)
-      ? /skirt/i.test(image.label)
-      : /\b(bottom|skirt|pant|trouser|palazzo)\b/i.test(image.label)
-  )) || availableImages[1];
+  const defaultTopImage = availableImages.find((image) => image.tryonRole === "top") || (!twoPieceSet ? availableImages[0] : undefined);
+  const defaultBottomImage = availableImages.find((image) => image.tryonRole === "bottom") || (!twoPieceSet ? availableImages[1] : undefined);
   const selectedTopImage = twoPieceSet
     ? defaultTopImage
     : availableImages.find((image) => image.id === topImageId) || defaultTopImage;
@@ -99,7 +96,7 @@ export default function AdminTryOnImageGenerator({ images, productName, onAddIma
       return;
     }
     if (effectivePreviewMode === "set" && (!selectedTop || !selectedBottom || selectedTop.id === selectedBottom.id)) {
-      setError("Add separate top and matching bottom photos to this product’s Product Images before generating the set preview.");
+      setError("In Product Images, mark one matching set photo as Top and one as Bottom before generating.");
       return;
     }
 
@@ -155,7 +152,7 @@ export default function AdminTryOnImageGenerator({ images, productName, onAddIma
         </h3>
         <p className="mt-1 text-xs text-muted-foreground">
           {twoPieceSet
-            ? "Choose a model and generate. The top and matching bottom are selected automatically from this product’s Product Images."
+            ? "Choose a model and generate. The top and matching bottom are taken from the roles set on this product’s images."
             : "Choose a model and product photo. The generated result is added to this product gallery and saved with the product."}
         </p>
       </div>
@@ -221,10 +218,11 @@ export default function AdminTryOnImageGenerator({ images, productName, onAddIma
             </label>
           </>
         )}
-        <button type="button" onClick={generate} disabled={!availableImages.length || generating || (effectivePreviewMode === "set" && availableImages.length < 2)} className="inline-flex items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">
+        <button type="button" onClick={generate} disabled={!availableImages.length || generating || (effectivePreviewMode === "set" && (!selectedTopImage || !selectedBottomImage || selectedTopImage.id === selectedBottomImage.id))} className="inline-flex items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">
           {generating ? <><Loader2 className="h-4 w-4 animate-spin" />Generating…</> : <><Sparkles className="h-4 w-4" />Generate</>}
         </button>
       </div>
+      {twoPieceSet && (!selectedTopImage || !selectedBottomImage || selectedTopImage.id === selectedBottomImage.id) && <p className="text-[11px] text-amber-600">Tag the matching top and bottom once on the Product Images cards above to enable set generation.</p>}
       {effectivePreviewMode === "set" && !twoPieceSet && <p className="text-[11px] text-muted-foreground">The selected model wears both pieces in one generated preview.</p>}
       {error && <p role="alert" className="text-xs text-red-600">{error}</p>}
       {generated && (

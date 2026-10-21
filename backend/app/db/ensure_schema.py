@@ -8,6 +8,9 @@ log = logging.getLogger(__name__)
 
 # table -> {column: DDL type + default}
 ADDITIVE_COLUMNS = {
+    "product_images": {
+        "tryon_role": "VARCHAR(20)",
+    },
     "categories": {
         "description": "TEXT",
         "is_active": "BOOLEAN NOT NULL DEFAULT 1",

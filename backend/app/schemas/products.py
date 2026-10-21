@@ -1,6 +1,6 @@
 from datetime import datetime
 from decimal import Decimal
-from typing import Optional, Any
+from typing import Optional, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -8,12 +8,14 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 class ProductImageCreate(BaseModel):
     s3_url: str
     display_order: int = 0
+    tryon_role: Optional[Literal["top", "bottom", "gallery"]] = None
 
 
 class ProductImageResponse(BaseModel):
     id: str
     s3_url: str
     display_order: int
+    tryon_role: Literal["top", "bottom", "gallery"] | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

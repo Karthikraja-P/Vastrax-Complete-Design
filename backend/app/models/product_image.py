@@ -15,5 +15,6 @@ class ProductImage(Base):
     )
     s3_url: Mapped[str] = mapped_column(String(1000), nullable=False)
     display_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    tryon_role: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
     product: Mapped["Product"] = relationship("Product", back_populates="images")

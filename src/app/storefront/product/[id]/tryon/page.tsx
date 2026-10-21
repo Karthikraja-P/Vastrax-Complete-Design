@@ -153,14 +153,15 @@ export default function VirtualTryOnPage() {
       ...(Array.isArray(p.images) ? p.images : []),
       ...(p.image ? [p.image] : []),
     ];
-    const options: { url: string; label: string }[] = [];
+    const options: { url: string; label: string; role?: string }[] = [];
     for (const source of sources) {
       const record = typeof source === "string" ? null : source;
       const url = typeof source === "string" ? source : (record?.s3_url || record?.url);
       if (!url || url.includes("photo-1515347619362") || options.some((option) => option.url === url)) continue;
       const names = record ? [record.name, record.label, record.filename, record.alt].filter((value): value is string => typeof value === "string") : [];
       const fileLabel = url.split(/[/?#]/).filter(Boolean).pop()?.replace(/[-_]+/g, " ");
-      options.push({ url, label: names[0] || fileLabel || "Product image " + (options.length + 1) });
+      const role = record && typeof record.tryon_role === "string" ? record.tryon_role : undefined;
+      options.push({ url, label: names[0] || fileLabel || "Product image " + (options.length + 1), role });
     }
     return options;
   };
@@ -181,10 +182,8 @@ export default function VirtualTryOnPage() {
   const availableTops = products.filter(p => getFashnCategory(String(p.category_name || p.category || p.category_id || ""), p.name || "") === "tops" && String(p.id) !== String(product.id));
   const setImageOptions = getGarmentImageOptions(product);
   const isSkirtSet = /skirt/i.test([product.name, product.title, product.category_name, product.category].filter(Boolean).join(" "));
-  const defaultSetTop = setImageOptions.find((image) => /\b(top|blouse|shirt)\b/i.test(image.label)) || setImageOptions[0];
-  const defaultSetBottom = setImageOptions.find((image) => (
-    isSkirtSet ? /skirt/i.test(image.label) : /\b(bottom|skirt|pant|trouser|palazzo)\b/i.test(image.label)
-  )) || setImageOptions[1];
+  const defaultSetTop = setImageOptions.find((image) => image.role === "top");
+  const defaultSetBottom = setImageOptions.find((image) => image.role === "bottom");
   const setTopImage = defaultSetTop;
   const setBottomImage = defaultSetBottom;
   const isCombo = twoPieceSet || (isBottoms && selectedTop !== null);
@@ -194,7 +193,7 @@ export default function VirtualTryOnPage() {
 
     if (twoPieceSet && (!setTopImage || !setBottomImage || setTopImage.url === setBottomImage.url)) {
       setStatusType("error");
-      setStatusText("This set is missing product images needed for try-on. Please contact the store team.");
+      setStatusText("This set is not ready for virtual try-on yet. The store team needs to match its top and bottom product images.");
       return;
     }
     setIsProcessing(true);
@@ -390,7 +389,7 @@ export default function VirtualTryOnPage() {
                 This product is sold as one two-piece set. Virtual try-on applies the matching top and {isSkirtSet ? "skirt" : "bottom"} together automatically.
               </p>
               {setImageOptions.length < 2 && (
-                <p className="text-xs text-amber-600 mt-3">This product needs its top and matching {isSkirtSet ? "skirt" : "bottom"} images added in the product gallery before try-on is available.</p>
+                <p className="text-xs text-amber-600 mt-3">The store team needs to match this product’s top and {isSkirtSet ? "skirt" : "bottom"} images before try-on is available.</p>
               )}
             </div>
           )}

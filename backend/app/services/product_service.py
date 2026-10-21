@@ -131,6 +131,7 @@ class ProductService:
                 product_id=product.id,
                 s3_url=store_product_image(img_data.s3_url),
                 display_order=img_data.display_order,
+                tryon_role=img_data.tryon_role,
             ))
         for var_data in payload.variants:
             variant = ProductVariant(product_id=product.id, sku=var_data.sku, size=var_data.size, stock_qty=var_data.stock_qty)
@@ -180,6 +181,7 @@ class ProductService:
                     product_id=product.id,
                     s3_url=store_product_image(img_data.s3_url),
                     display_order=img_data.display_order,
+                    tryon_role=img_data.tryon_role,
                 ))
 
         if payload.variants is not None:
