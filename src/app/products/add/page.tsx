@@ -20,9 +20,9 @@ function cn(...inputs: (string | undefined | null | false)[]) {
 }
 
 const tabs = [
-  { id: "basic", label: "Basic Info" },
-  { id: "pricing", label: "Pricing & Inventory" },
-  { id: "images", label: "Product Images" },
+  { id: "basic", label: "Basic Info", required: true },
+  { id: "pricing", label: "Pricing & Inventory", required: true },
+  { id: "images", label: "Product Images", required: true },
   { id: "3d", label: "3D Product" },
 ];
 
@@ -52,7 +52,7 @@ export default function AddProductPage() {
   const [gender, setGender] = useState("Women");
   const [sizeChart, setSizeChart] = useState<SizeChart>({
     unit: "in",
-    headers: ["Size", "Chest (in)", "Waist (in)", "Hips (in)", "Length (in)"],
+    headers: ["Size", "Bust (in)", "Waist (in)", "Hip (in)"],
     rows: [],
   });
   const [categories, setCategories] = useState<CategoryItem[]>([]);
@@ -281,15 +281,42 @@ export default function AddProductPage() {
       setActiveTab("basic");
       return;
     }
-    if (!priceSelling || isNaN(parseFloat(priceSelling))) {
-      showToast("Please enter a valid selling price");
+    if (!categoryId) {
+      showToast("Choose a category before saving.");
+      setActiveTab("basic");
+      return;
+    }
+    if (!description.trim()) {
+      showToast("Enter a product description before saving.");
+      setActiveTab("basic");
+      return;
+    }
+    if (!fabric.trim()) {
+      showToast("Enter the fabric before saving.");
+      setActiveTab("basic");
+      return;
+    }
+    if (!colour.trim()) {
+      showToast("Enter the product colour before saving.");
+      setActiveTab("basic");
+      return;
+    }
+
+    const sellingPrice = Number.parseFloat(priceSelling);
+    if (!priceSelling || !Number.isFinite(sellingPrice) || sellingPrice <= 0) {
+      showToast("Enter a selling price greater than zero.");
       setActiveTab("pricing");
       return;
     }
 
     if (!sizeChart.rows.some((row) => row.size.trim())) {
-      showToast("Add at least one size in the product size chart before saving.");
+      showToast("Select at least one available size before saving.");
       setActiveTab("basic");
+      return;
+    }
+    if (!images.length) {
+      showToast("Upload at least one product image before saving.");
+      setActiveTab("images");
       return;
     }
 
@@ -374,7 +401,7 @@ export default function AddProductPage() {
         </Link>
         <div>
           <h1 className="text-2xl font-bold text-foreground">Add New Product</h1>
-
+          <p className="mt-1 text-xs text-muted-foreground"><span className="font-bold text-red-600">*</span> Required fields must be completed before saving.</p>
         </div>
         <div className="ml-auto flex items-center gap-3">
           <button
@@ -423,6 +450,7 @@ export default function AddProductPage() {
                 >
                   <div className="flex items-center gap-3">
                     {tab.label}
+                    {tab.required && <span aria-label="required section" className="font-bold text-red-600">*</span>}
                   </div>
                 </button>
               ))}
@@ -441,10 +469,12 @@ export default function AddProductPage() {
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-foreground mb-1.5">
-                    Product Name <span className="text-accent">*</span>
+                    Product Name <span className="font-bold text-red-600">*</span>
                   </label>
                   <input
                     type="text"
+                    required
+                    aria-required="true"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder="e.g. Classic Silk Shirt"
@@ -466,9 +496,11 @@ export default function AddProductPage() {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-1.5">
-                      Category
+                      Category <span className="font-bold text-red-600">*</span>
                     </label>
                     <select
+                      required
+                      aria-required="true"
                       value={categoryId}
                       onChange={(e) => setCategoryId(e.target.value)}
                       className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent focus:ring-1 focus:ring-accent outline-none transition-all appearance-none text-foreground"
@@ -485,9 +517,11 @@ export default function AddProductPage() {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-1.5">
-                      Department / Gender <span className="text-accent">*</span>
+                      Department / Gender <span className="font-bold text-red-600">*</span>
                     </label>
                     <select
+                      required
+                      aria-required="true"
                       value={gender}
                       onChange={(e) => setGender(e.target.value)}
                       className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent focus:ring-1 focus:ring-accent outline-none transition-all appearance-none text-foreground"
@@ -502,10 +536,12 @@ export default function AddProductPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-1.5">
-                      Fabric
+                      Fabric <span className="font-bold text-red-600">*</span>
                     </label>
                     <input
                       type="text"
+                      required
+                      aria-required="true"
                       value={fabric}
                       onChange={(e) => setFabric(e.target.value)}
                       placeholder="e.g. Silk, Cotton blend"
@@ -514,10 +550,12 @@ export default function AddProductPage() {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-1.5">
-                      Colour
+                      Colour <span className="font-bold text-red-600">*</span>
                     </label>
                     <input
                       type="text"
+                      required
+                      aria-required="true"
                       value={colour}
                       onChange={(e) => setColour(e.target.value)}
                       placeholder="e.g. Ivory, Midnight Blue"
@@ -543,10 +581,12 @@ export default function AddProductPage() {
                   </div>
                 <div>
                   <label className="block text-sm font-medium text-foreground mb-1.5">
-                    Description
+                    Description <span className="font-bold text-red-600">*</span>
                   </label>
                   <textarea
                     rows={5}
+                    required
+                    aria-required="true"
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                     placeholder="Describe the product..."
@@ -570,10 +610,13 @@ export default function AddProductPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-1.5">
-                      Selling Price (₹) <span className="text-accent">*</span>
+                      Selling Price (₹) <span className="font-bold text-red-600">*</span>
                     </label>
                     <input
                       type="number"
+                      min="0.01"
+                      required
+                      aria-required="true"
                       value={priceSelling}
                       onChange={(e) => setPriceSelling(e.target.value)}
                       placeholder="2499.00"
@@ -664,11 +707,10 @@ export default function AddProductPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="text-lg font-semibold text-foreground">
-                    Product Images
+                    Product Images <span className="font-bold text-red-600">*</span>
                   </h2>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Upload 2D product photos. First image becomes the primary
-                    thumbnail.
+                    Upload at least one 2D product photo. The first image becomes the storefront thumbnail.
                   </p>
                 </div>
                 <span className="text-xs font-semibold text-accent bg-accent/10 border border-accent/20 px-2.5 py-1 rounded-full">
@@ -688,6 +730,8 @@ export default function AddProductPage() {
 
               {/* Drop zone */}
               <div
+                aria-required="true"
+                aria-label="Required product images"
                 onDrop={handleDrop}
                 onDragOver={(e) => e.preventDefault()}
                 onClick={() => imageInputRef.current?.click()}
@@ -936,7 +980,7 @@ export default function AddProductPage() {
                       3D Model Reconstruction
                     </h2>
                     <p className="text-xs text-muted-foreground">
-                      Upload garment photos for a 3D preview
+                      3D creation is optional; all three photos are needed to generate a model.
                     </p>
                   </div>
                 </div>

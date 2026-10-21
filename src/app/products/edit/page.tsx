@@ -66,7 +66,7 @@ function EditProductContent() {
   const [gender, setGender] = useState("Women");
   const [sizeChart, setSizeChart] = useState<SizeChart>({
     unit: "in",
-    headers: ["Size", "Chest (in)", "Waist (in)", "Hips (in)", "Length (in)"],
+    headers: ["Size", "Bust (in)", "Waist (in)", "Hip (in)"],
     rows: [],
   });
   const [categories, setCategories] = useState<CategoryItem[]>([]);

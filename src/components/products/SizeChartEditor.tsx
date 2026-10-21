@@ -1,116 +1,105 @@
 "use client";
 
+import { useState } from "react";
 import type { SizeChart } from "@/lib/sizeChart";
+import { WOMENS_SIZE_CHART } from "@/lib/sizeChart";
 
 interface SizeChartEditorProps {
   value: SizeChart;
   onChange: (value: SizeChart) => void;
 }
 
-export function SizeChartEditor({ value, onChange }: SizeChartEditorProps) {
-  const existingMeasurementKeys = value.rows[0]
-    ? Object.keys(value.rows[0]).filter((key) => key !== "size")
-    : [];
-  const measurementKeys = value.headers.slice(1).map((header, index) =>
-    existingMeasurementKeys[index] || ["chest", "waist", "hips", "length"][index] || header.toLowerCase().replace(/[^a-z0-9]+/g, "_")
-  );
+const availableSizeOptions = WOMENS_SIZE_CHART.rows.map((row) => row.size);
 
-  const updateHeader = (index: number, header: string) => {
-    const headers = [...value.headers];
-    headers[index] = header;
-    onChange({ ...value, headers });
+export function SizeChartEditor({ value, onChange }: SizeChartEditorProps) {
+  const [customSize, setCustomSize] = useState("");
+  const measurementKeys = Object.keys(WOMENS_SIZE_CHART.rows[0] || {}).filter((key) => key !== "size");
+
+  const toggleSize = (size: string) => {
+    const selectedSizes = new Set(value.rows.map((row) => row.size.toLowerCase()));
+    if (selectedSizes.has(size.toLowerCase())) selectedSizes.delete(size.toLowerCase());
+    else selectedSizes.add(size.toLowerCase());
+
+    const customRows = value.rows
+      .filter((row) => !availableSizeOptions.some((option) => option.toLowerCase() === row.size.toLowerCase()))
+      .map((row) => ({
+        size: row.size,
+        ...Object.fromEntries(measurementKeys.map((key) => [key, row[key] || ""])),
+      }));
+    const standardRows = availableSizeOptions
+      .filter((option) => selectedSizes.has(option.toLowerCase()))
+      .map((option) => WOMENS_SIZE_CHART.rows.find((row) => row.size === option)!)
+      .map((row) => ({ ...row }));
+
+    onChange({
+      unit: WOMENS_SIZE_CHART.unit,
+      headers: [...WOMENS_SIZE_CHART.headers],
+      rows: [...standardRows, ...customRows],
+    });
   };
 
-  const updateCell = (rowIndex: number, key: string, cell: string) => {
-    const rows = value.rows.map((row, index) =>
-      index === rowIndex ? { ...row, [key]: cell } : row
-    );
-    onChange({ ...value, rows });
+  const addCustomSize = () => {
+    const size = customSize.trim();
+    if (!size || value.rows.some((row) => row.size.toLowerCase() === size.toLowerCase())) return;
+    toggleSize(size);
+    setCustomSize("");
   };
 
   return (
     <section className="space-y-4 rounded-xl border border-border p-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h3 className="text-sm font-semibold text-foreground">Product sizes and size chart <span className="text-red-600">*</span></h3>
-          <p className="text-xs text-muted-foreground">At least one product size is required. Add each size and its measurements before saving.</p>
-        </div>
-        <label className="flex items-center gap-2 text-xs text-muted-foreground">
-          Unit
-          <select
-            value={value.unit}
-            onChange={(event) => onChange({ ...value, unit: event.target.value })}
-            className="rounded-md border border-border bg-background px-2 py-1 text-foreground"
-          >
-            <option value="in">Inches</option>
-            <option value="cm">Centimeters</option>
-          </select>
-        </label>
+      <div>
+        <h3 className="text-sm font-semibold text-foreground">Available sizes <span className="text-red-600">*</span></h3>
+        <p className="mt-1 text-xs text-muted-foreground">Choose the sizes customers can buy. The women’s size guide measurements are filled in automatically.</p>
       </div>
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[640px] text-xs">
-          <thead>
-            <tr className="border-b border-border">
-              {value.headers.map((header, index) => (
-                <th key={index} className="p-2 text-left">
-                  <input
-                    aria-label={index === 0 ? "Size column heading" : "Measurement column heading"}
-                    value={header}
-                    onChange={(event) => updateHeader(index, event.target.value)}
-                    className="w-full rounded border border-border bg-background px-2 py-1 text-foreground"
-                  />
-                </th>
-              ))}
-              <th className="p-2" />
-            </tr>
-          </thead>
-          <tbody>
-            {value.rows.map((row, rowIndex) => (
-              <tr key={rowIndex} className="border-b border-border/50">
-                <td className="p-2">
-                  <input
-                    aria-label={"Required product size " + (rowIndex + 1)}
-                    aria-required="true"
-                    value={row.size}
-                    onChange={(event) => updateCell(rowIndex, "size", event.target.value)}
-                    className="w-full rounded border border-border bg-background px-2 py-1 text-foreground"
-                  />
-                </td>
-                {measurementKeys.map((key) => (
-                  <td key={key} className="p-2">
-                    <input
-                      aria-label={value.headers[measurementKeys.indexOf(key) + 1] + " " + row.size}
-                      value={row[key] || ""}
-                      onChange={(event) => updateCell(rowIndex, key, event.target.value)}
-                      className="w-full rounded border border-border bg-background px-2 py-1 text-foreground"
-                    />
-                  </td>
-                ))}
-                <td className="p-2 text-right">
-                  <button
-                    type="button"
-                    onClick={() => onChange({ ...value, rows: value.rows.filter((_, index) => index !== rowIndex) })}
-                    className="text-red-500 hover:underline"
-                    aria-label={"Remove size " + row.size}
-                  >
-                    Remove
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <button
-        type="button"
-        onClick={() => onChange({
-          ...value,
-          rows: [...value.rows, { size: "", ...Object.fromEntries(measurementKeys.map((key) => [key, ""])) }],
+
+      <div className="flex flex-wrap gap-2" role="group" aria-label="Available product sizes">
+        {availableSizeOptions.map((size) => {
+          const selected = value.rows.some((row) => row.size.toLowerCase() === size.toLowerCase());
+          return (
+            <button
+              key={size}
+              type="button"
+              aria-pressed={selected}
+              onClick={() => toggleSize(size)}
+              className={"min-w-14 rounded-lg border px-4 py-2 text-sm font-medium transition-colors " + (selected
+                ? "border-accent bg-accent text-white"
+                : "border-border bg-background text-foreground hover:border-accent/60")}
+            >
+              {size}
+            </button>
+          );
         })}
-        className="rounded-lg border border-border px-3 py-2 text-xs font-medium text-foreground hover:bg-surface-hover"
-      >
-        Add size
-      </button>
+      </div>
+
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="text-xs font-medium text-foreground">
+          Add another size
+          <input
+            value={customSize}
+            onChange={(event) => setCustomSize(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                addCustomSize();
+              }
+            }}
+            placeholder="e.g. Petite S"
+            className="mt-1.5 block w-48 rounded-lg border border-border bg-background px-3 py-2 text-sm"
+          />
+        </label>
+        <button
+          type="button"
+          onClick={addCustomSize}
+          disabled={!customSize.trim() || value.rows.some((row) => row.size.toLowerCase() === customSize.trim().toLowerCase())}
+          className="rounded-lg border border-border px-3 py-2 text-xs font-medium text-foreground hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Add size
+        </button>
+      </div>
+
+      <p className="text-xs text-muted-foreground">
+        {value.rows.length ? value.rows.map((row) => row.size).join(", ") : "Select at least one available size."}
+      </p>
     </section>
   );
 }
