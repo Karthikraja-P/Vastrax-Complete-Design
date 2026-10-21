@@ -43,10 +43,9 @@ export default function AdminTryOnImageGenerator({ images, productName, onAddIma
   const twoPieceSet = isTwoPieceSet(productName);
   const [modelId, setModelId] = useState<string>(models[0].id);
   const [imageId, setImageId] = useState("");
+  const [setPhotoId, setSetPhotoId] = useState("");
   const [previewMode, setPreviewMode] = useState<"single" | "set">("single");
   const effectivePreviewMode = twoPieceSet ? "set" : previewMode;
-  const [topImageId, setTopImageId] = useState("");
-  const [bottomImageId, setBottomImageId] = useState("");
   const [garmentTypeOverride, setGarmentTypeOverride] = useState<GarmentType | null>(null);
   const garmentType = garmentTypeOverride || inferGarmentType(productName);
   const [generating, setGenerating] = useState(false);
@@ -68,14 +67,7 @@ export default function AdminTryOnImageGenerator({ images, productName, onAddIma
     ...image,
     label: image.label || image.file?.name || "Product image " + (index + 1),
   })), [images]);
-  const defaultTopImage = availableImages.find((image) => image.tryonRole === "top") || (!twoPieceSet ? availableImages[0] : undefined);
-  const defaultBottomImage = availableImages.find((image) => image.tryonRole === "bottom") || (!twoPieceSet ? availableImages[1] : undefined);
-  const selectedTopImage = twoPieceSet
-    ? defaultTopImage
-    : availableImages.find((image) => image.id === topImageId) || defaultTopImage;
-  const selectedBottomImage = twoPieceSet
-    ? defaultBottomImage
-    : availableImages.find((image) => image.id === bottomImageId) || defaultBottomImage;
+  const selectedSetImage = availableImages.find((image) => image.id === setPhotoId) || availableImages[0];
 
   const getImageFile = async (image: ProductImageDraft, filename: string): Promise<File> => {
     if (image.file && image.file.size > 0) return image.file;
@@ -88,15 +80,9 @@ export default function AdminTryOnImageGenerator({ images, productName, onAddIma
 
   const generate = async () => {
     const selectedImage = availableImages.find((image) => image.id === imageId) || availableImages[0];
-    const selectedTop = selectedTopImage;
-    const selectedBottom = selectedBottomImage;
     const selectedModel = models.find((model) => model.id === modelId);
-    if (!selectedModel || (effectivePreviewMode === "single" && !selectedImage)) {
+    if (!selectedModel || (effectivePreviewMode === "single" && !selectedImage) || (effectivePreviewMode === "set" && !selectedSetImage)) {
       setError("Add a product photo and choose a model first.");
-      return;
-    }
-    if (effectivePreviewMode === "set" && (!selectedTop || !selectedBottom || selectedTop.id === selectedBottom.id)) {
-      setError("In Product Images, mark one matching set photo as Top and one as Bottom before generating.");
       return;
     }
 
@@ -111,9 +97,7 @@ export default function AdminTryOnImageGenerator({ images, productName, onAddIma
       const formData = new FormData();
       formData.append("model_id", modelId);
       if (effectivePreviewMode === "set") {
-        formData.append("garment_type", "tops");
-        formData.append("garment_image", await getImageFile(selectedTop!, "top"));
-        formData.append("bottom_image", await getImageFile(selectedBottom!, "bottom"));
+        formData.append("set_image", await getImageFile(selectedSetImage!, "set"));
       } else {
         formData.append("garment_type", garmentType);
         formData.append("garment_image", await getImageFile(selectedImage!, "product"));
@@ -152,7 +136,7 @@ export default function AdminTryOnImageGenerator({ images, productName, onAddIma
         </h3>
         <p className="mt-1 text-xs text-muted-foreground">
           {twoPieceSet
-            ? "Choose a model and generate. The top and matching bottom are taken from the roles set on this product’s images."
+          ? "Choose one complete set photo and a model. The selected image is used to fit both the top and bottom of the set."
             : "Choose a model and product photo. The generated result is added to this product gallery and saved with the product."}
         </p>
       </div>
@@ -177,6 +161,22 @@ export default function AdminTryOnImageGenerator({ images, productName, onAddIma
         ))}
       </div>
 
+      {effectivePreviewMode === "set" && (
+        <fieldset className="space-y-2">
+          <legend className="text-xs font-semibold text-foreground">Choose the complete set photo</legend>
+          <p className="text-[11px] text-muted-foreground">Select one gallery photo that clearly shows the full outfit. The same set image is applied in two fitting passes.</p>
+          {availableImages.length ? (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {availableImages.map((image) => (
+                <button key={image.id} type="button" onClick={() => setSetPhotoId(image.id)} aria-pressed={selectedSetImage?.id === image.id} className={`overflow-hidden rounded-lg border text-left ${selectedSetImage?.id === image.id ? "border-accent ring-2 ring-accent/30" : "border-border hover:border-accent/50"}`}>
+                  <div className="relative aspect-[3/4] bg-white"><Image src={image.preview} alt={image.label} fill unoptimized sizes="(max-width: 640px) 40vw, 160px" className="object-contain p-1" /></div>
+                  <span className="block truncate px-2 py-1.5 text-[10px] text-foreground">{image.label}</span>
+                </button>
+              ))}
+            </div>
+          ) : <p className="text-xs text-amber-600">Add a complete set photo to Product Images first.</p>}
+        </fieldset>
+      )}
       <div className={`grid grid-cols-1 ${twoPieceSet ? "sm:grid-cols-[1fr_auto]" : "sm:grid-cols-[180px_1fr_180px_auto]"} gap-3 items-end`}>
         {!twoPieceSet && <label className="text-xs font-medium text-foreground">
           Preview type
@@ -186,20 +186,7 @@ export default function AdminTryOnImageGenerator({ images, productName, onAddIma
           </select>
         </label>}
         {effectivePreviewMode === "set" ? (
-          twoPieceSet ? <p className="text-xs text-muted-foreground">Both pieces will be generated together from this product’s images.</p> : <>
-            <label className="text-xs font-medium text-foreground">
-              Top image
-              <select value={selectedTopImage?.id || ""} onChange={(event) => setTopImageId(event.target.value)} disabled={availableImages.length < 2 || generating} className="mt-1.5 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm">
-                {availableImages.map((image) => <option key={image.id} value={image.id}>{image.label}</option>)}
-              </select>
-            </label>
-            <label className="text-xs font-medium text-foreground">
-              Bottom image
-              <select value={selectedBottomImage?.id || ""} onChange={(event) => setBottomImageId(event.target.value)} disabled={availableImages.length < 2 || generating} className="mt-1.5 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm">
-                {availableImages.map((image) => <option key={image.id} value={image.id}>{image.label}</option>)}
-              </select>
-            </label>
-          </>
+          <p className="text-xs text-muted-foreground">Selected set: {selectedSetImage?.label || "Choose a complete set photo above"}</p>
         ) : (
           <>
             <label className="text-xs font-medium text-foreground">
@@ -218,11 +205,10 @@ export default function AdminTryOnImageGenerator({ images, productName, onAddIma
             </label>
           </>
         )}
-        <button type="button" onClick={generate} disabled={!availableImages.length || generating || (effectivePreviewMode === "set" && (!selectedTopImage || !selectedBottomImage || selectedTopImage.id === selectedBottomImage.id))} className="inline-flex items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">
+        <button type="button" onClick={generate} disabled={!availableImages.length || generating || (effectivePreviewMode === "set" && !selectedSetImage)} className="inline-flex items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">
           {generating ? <><Loader2 className="h-4 w-4 animate-spin" />Generating…</> : <><Sparkles className="h-4 w-4" />Generate</>}
         </button>
       </div>
-      {twoPieceSet && (!selectedTopImage || !selectedBottomImage || selectedTopImage.id === selectedBottomImage.id) && <p className="text-[11px] text-amber-600">Tag the matching top and bottom once on the Product Images cards above to enable set generation.</p>}
       {effectivePreviewMode === "set" && !twoPieceSet && <p className="text-[11px] text-muted-foreground">The selected model wears both pieces in one generated preview.</p>}
       {error && <p role="alert" className="text-xs text-red-600">{error}</p>}
       {generated && (

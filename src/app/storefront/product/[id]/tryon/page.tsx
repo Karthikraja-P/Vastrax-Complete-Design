@@ -67,6 +67,7 @@ export default function VirtualTryOnPage() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   const [selectedTop, setSelectedTop] = useState<ProductItem | null>(null);
+  const [selectedSetImageUrl, setSelectedSetImageUrl] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [statusType, setStatusType] = useState("");
   const [statusText, setStatusText] = useState("");
@@ -86,6 +87,7 @@ export default function VirtualTryOnPage() {
           setProducts(allProducts);
           const current = allProducts.find((p) => p.id.toString() === id) || allProducts[0];
           setProduct({ ...current, name: current.name || current.title || "Luxury garment" });
+          setSelectedSetImageUrl("");
         }
       } catch (e) {
         console.error("Failed to load products", e);
@@ -182,18 +184,15 @@ export default function VirtualTryOnPage() {
   const availableTops = products.filter(p => getFashnCategory(String(p.category_name || p.category || p.category_id || ""), p.name || "") === "tops" && String(p.id) !== String(product.id));
   const setImageOptions = getGarmentImageOptions(product);
   const isSkirtSet = /skirt/i.test([product.name, product.title, product.category_name, product.category].filter(Boolean).join(" "));
-  const defaultSetTop = setImageOptions.find((image) => image.role === "top");
-  const defaultSetBottom = setImageOptions.find((image) => image.role === "bottom");
-  const setTopImage = defaultSetTop;
-  const setBottomImage = defaultSetBottom;
+  const selectedSetImage = setImageOptions.find((image) => image.url === selectedSetImageUrl);
   const isCombo = twoPieceSet || (isBottoms && selectedTop !== null);
 
   const startTryOnPipeline = async () => {
     if (!personFile || !product) return;
 
-    if (twoPieceSet && (!setTopImage || !setBottomImage || setTopImage.url === setBottomImage.url)) {
+    if (twoPieceSet && !selectedSetImage) {
       setStatusType("error");
-      setStatusText("This set is not ready for virtual try-on yet. The store team needs to match its top and bottom product images.");
+      setStatusText("Choose the product photo that clearly shows the complete matching set, then try again.");
       return;
     }
     setIsProcessing(true);
@@ -205,7 +204,7 @@ export default function VirtualTryOnPage() {
       let res;
       const targetGarmentImg = getGarmentImage(product);
       if (twoPieceSet) {
-        res = await tryonApi.submitCombo(personFile, setTopImage!.url, setBottomImage!.url, product.id);
+        res = await tryonApi.submitCombo(personFile, selectedSetImage!.url, selectedSetImage!.url, product.id);
       } else if (isCombo) {
         const topImg = getGarmentImage(selectedTop);
         res = await tryonApi.submitCombo(personFile, topImg, targetGarmentImg, product.id);
@@ -351,6 +350,7 @@ export default function VirtualTryOnPage() {
                       onClick={() => {
                         setProduct(p);
                         setSelectedTop(null);
+                        setSelectedSetImageUrl("");
                         router.push(`/storefront/product/${p.id}/tryon`);
                         resetAll();
                         setShowGarmentList(false);
@@ -388,9 +388,15 @@ export default function VirtualTryOnPage() {
               <p className="text-xs text-muted-foreground">
                 This product is sold as one two-piece set. Virtual try-on applies the matching top and {isSkirtSet ? "skirt" : "bottom"} together automatically.
               </p>
-              {setImageOptions.length < 2 && (
-                <p className="text-xs text-amber-600 mt-3">The store team needs to match this product’s top and {isSkirtSet ? "skirt" : "bottom"} images before try-on is available.</p>
-              )}
+              <p className="text-xs text-muted-foreground mt-3">Select one image that clearly shows the complete matching top and {isSkirtSet ? "skirt" : "bottom"} set.</p>
+              <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {setImageOptions.map((image) => (
+                  <button key={image.url} type="button" onClick={() => { setSelectedSetImageUrl(image.url); setTryOnComplete(false); }} aria-pressed={selectedSetImageUrl === image.url} className={`overflow-hidden rounded-lg border text-left ${selectedSetImageUrl === image.url ? "border-[#e07a3f] ring-2 ring-[#e07a3f]/30" : "border-border hover:border-[#e07a3f]/50"}`}>
+                    <Image width={480} height={640} unoptimized src={image.url} alt={image.label} className="h-32 w-full bg-white object-contain p-1" />
+                    <span className="block truncate px-2 py-1 text-[10px]">{image.label}</span>
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 
@@ -438,7 +444,7 @@ export default function VirtualTryOnPage() {
           {/* Action Button */}
           <button
             onClick={startTryOnPipeline}
-            disabled={isProcessing || !personFile || (twoPieceSet && (!setTopImage || !setBottomImage || setTopImage.url === setBottomImage.url))}
+            disabled={isProcessing || !personFile || (twoPieceSet && !selectedSetImage)}
             className="w-full py-4 bg-gradient-to-r from-[#e07a3f] to-[#b95625] hover:from-[#b95625] hover:to-[#9b4a23] text-white font-bold text-xs uppercase tracking-wider rounded-xl flex items-center justify-center gap-2 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all"
           >
             {isCombo ? "Generate Two-Piece Outfit Try-On" : "Generate Virtual Try-On"}

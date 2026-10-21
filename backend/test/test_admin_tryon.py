@@ -117,3 +117,36 @@ def test_admin_preview_combines_top_and_bottom_on_selected_model(client, monkeyp
     assert calls[1][0].name == "generated-1.png"
     assert list(upload_dir.iterdir()) == []
     assert list(results_dir.iterdir()) == []
+
+
+def test_admin_preview_uses_one_complete_set_reference_for_both_passes(client, monkeypatch, tmp_path):
+    upload_dir = tmp_path / "uploads"
+    results_dir = tmp_path / "results"
+    monkeypatch.setattr(settings, "upload_dir", str(upload_dir))
+    monkeypatch.setattr(settings, "results_dir", str(results_dir))
+    calls = []
+
+    def fake_run_fashn(person_image_path, garment_image_path, garment_type, results_dir):
+        assert Path(person_image_path).is_file()
+        assert Path(garment_image_path).is_file()
+        calls.append((Path(person_image_path), Path(garment_image_path), garment_type))
+        result = Path(results_dir) / f"generated-{len(calls)}.png"
+        result.parent.mkdir(parents=True, exist_ok=True)
+        result.write_bytes(f"preview-{len(calls)}".encode())
+        return str(result)
+
+    monkeypatch.setattr("app.services.fashn_service.run_fashn", fake_run_fashn)
+    response = client.post(
+        "/api/v1/try-on/admin-preview",
+        headers=_admin_headers(),
+        data={"model_id": "meera"},
+        files={"set_image": ("complete-set.png", _png_bytes(), "image/png")},
+    )
+
+    assert response.status_code == 200, response.text
+    assert [call[2] for call in calls] == ["tops", "bottoms"]
+    assert calls[0][1] == calls[1][1]
+    assert calls[0][0].name == "meera-curls.webp"
+    assert calls[1][0].name == "generated-1.png"
+    assert list(upload_dir.iterdir()) == []
+    assert list(results_dir.iterdir()) == []

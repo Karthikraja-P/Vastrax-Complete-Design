@@ -133,10 +133,6 @@ export default function AddProductPage() {
     showToast(`Try-on image added for ${modelName}`);
   };
 
-  const handleTryOnRoleChange = (id: string, tryonRole: "top" | "bottom" | "gallery") => {
-    setImages((current) => current.map((image) => image.id === id ? { ...image, tryonRole } : image));
-  };
-
   const handleRemoveImage = (id: string) => {
     setImages((prev) => {
       const img = prev.find((i) => i.id === id);
@@ -918,21 +914,6 @@ export default function AddProductPage() {
                             {((img.file?.size || 0) / 1024).toFixed(0)} KB
                           </p>
                         </div>
-                        {isTwoPieceProductName(name) && (
-                          <label className="absolute bottom-2 inset-x-2 z-20 text-[9px] font-semibold text-foreground">
-                            Try-on source
-                            <select
-                              value={img.tryonRole || "gallery"}
-                              onChange={(event) => handleTryOnRoleChange(img.id, event.target.value as "top" | "bottom" | "gallery")}
-                              onMouseDown={(event) => event.stopPropagation()}
-                              className="mt-0.5 w-full rounded-md border border-border bg-white/95 px-2 py-1 text-[10px] text-black shadow"
-                            >
-                              <option value="gallery">Gallery only</option>
-                              <option value="top">Set top</option>
-                              <option value="bottom">Set bottom / skirt</option>
-                            </select>
-                          </label>
-                        )}
                       </div>
                     ))}
 

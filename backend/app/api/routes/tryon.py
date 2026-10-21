@@ -76,11 +76,12 @@ def get_admin_tryon_model_image(model_id: str):
 async def generate_admin_tryon_preview(
     model_id: str = Form(...),
     garment_type: str = Form("tops"),
-    garment_image: UploadFile = File(...),
+    garment_image: UploadFile | None = File(None),
     bottom_image: UploadFile | None = File(None),
+    set_image: UploadFile | None = File(None),
     _: User = Depends(require_admin),
 ):
-    """Generate a preview with one garment, or layer a top and bottom on a curated model."""
+    """Generate one garment or apply a complete set reference in two passes to a curated model."""
     from app.core.config import settings
     from app.core.exceptions import BadRequestError, InternalError
 
@@ -90,6 +91,10 @@ async def generate_admin_tryon_preview(
         raise ServiceUnavailableError("The selected model image is unavailable")
     if garment_type not in {"tops", "bottoms", "one-pieces"}:
         raise BadRequestError("Choose a supported garment type")
+    if set_image and (garment_image or bottom_image):
+        raise BadRequestError("Choose either one complete set photo or separate garment photos")
+    if not set_image and not garment_image:
+        raise BadRequestError("Choose a product photo or a complete set photo")
     if bottom_image and garment_type != "tops":
         raise BadRequestError("For a top + bottom preview, set the primary garment type to top")
 
@@ -110,11 +115,18 @@ async def generate_admin_tryon_preview(
             raise BadRequestError(f"The selected {label} image is not a valid image") from exc
         return content, extension
 
-    top_content, top_extension = await read_image(garment_image, "top" if bottom_image else "product")
+    set_mode = set_image is not None
+    primary_image = set_image or garment_image
+    assert primary_image is not None
+    top_content, top_extension = await read_image(primary_image, "complete set" if set_mode else ("top" if bottom_image else "product"))
     bottom_content: bytes | None = None
     bottom_extension: str | None = None
-    if bottom_image:
+    if bottom_image and not set_mode:
         bottom_content, bottom_extension = await read_image(bottom_image, "bottom")
+    elif set_mode:
+        # A complete catalog image contains both pieces; reuse it as the source for
+        # the top and bottom passes so the model wears the selected matching set.
+        bottom_content, bottom_extension = top_content, top_extension
 
     os.makedirs(settings.upload_dir, exist_ok=True)
     os.makedirs(settings.results_dir, exist_ok=True)
@@ -129,8 +141,8 @@ async def generate_admin_tryon_preview(
             temp_paths.append(handle.name)
             return handle.name
 
-        top_path = save_temp(top_content, top_extension, "admin-tryon-top-")
-        bottom_path = save_temp(bottom_content, bottom_extension, "admin-tryon-bottom-") if bottom_content and bottom_extension else None
+        top_path = save_temp(top_content, top_extension, "admin-tryon-set-" if set_mode else "admin-tryon-top-")
+        bottom_path = top_path if set_mode else (save_temp(bottom_content, bottom_extension, "admin-tryon-bottom-") if bottom_content and bottom_extension else None)
         from app.core.gpu_queue import gpu_queue
         from app.services.fashn_service import run_fashn
 
