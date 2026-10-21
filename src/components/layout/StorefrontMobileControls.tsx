@@ -43,15 +43,14 @@ export default function StorefrontMobileControls({ showMenu = true, inlineSearch
         {menuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
       </button>}
       {inlineSearch && (
-        <form onSubmit={submitSearch} role="search" className="hidden sm:flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1.5 text-sm transition-colors focus-within:border-accent focus-within:ring-1 focus-within:ring-accent dark:bg-[#222]">
+        <form onSubmit={submitSearch} role="search" className="hidden sm:flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1.5 text-sm transition-colors focus-within:border-accent dark:bg-[#222]">
           <Search aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" />
           <input
             type="search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search"
             aria-label="Search products"
-            className="w-20 bg-transparent text-foreground outline-none placeholder:text-muted-foreground md:w-28 lg:w-36"
+            className="w-20 appearance-none border-0 bg-transparent text-foreground shadow-none outline-none ring-0 focus:border-0 focus:shadow-none focus:outline-none focus:ring-0 md:w-28 lg:w-36"
           />
           <button type="submit" aria-label="Search products" className="rounded-full bg-accent px-3 py-1.5 text-xs font-semibold text-accent-foreground">Search</button>
         </form>
@@ -92,9 +91,8 @@ export default function StorefrontMobileControls({ showMenu = true, inlineSearch
             type="search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search products..."
             aria-label="Search products"
-            className="min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
+            className="min-w-0 flex-1 appearance-none border-0 bg-transparent text-sm text-foreground shadow-none outline-none ring-0 focus:border-0 focus:shadow-none focus:outline-none focus:ring-0"
           />
           <button type="submit" className="rounded-full bg-accent px-3 py-2 text-xs font-semibold text-accent-foreground">
             Search
