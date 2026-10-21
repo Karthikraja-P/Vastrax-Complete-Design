@@ -3,7 +3,7 @@ import Image from "next/image";
 
 import { useState, useEffect, Suspense, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { Heart, Star, Ruler, Minus, Plus, ShoppingBag, RefreshCw, Check, Box, Bell, Sparkles, X, ChevronLeft, ChevronRight } from "lucide-react";
+import { Heart, Star, Ruler, Minus, Plus, ShoppingBag, RefreshCw, Check, Bell, Sparkles, X, ChevronLeft, ChevronRight } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { AuthModal } from "@/components/auth/AuthModal";
 import { useSession } from "next-auth/react";
@@ -93,13 +93,22 @@ function ProductContent() {
   });
 
   const galleryImages = product.images?.length ? product.images : [product.image];
-  const showPreviousImage = () => {
-    setActiveImageIndex((index) => (index - 1 + galleryImages.length) % galleryImages.length);
+  const has3DModel = Boolean(product.model3dUrl || product.model_path);
+  const totalSlides = galleryImages.length + Number(has3DModel);
+  const currentSlideIndex = is3DMode && has3DModel ? galleryImages.length : activeImageIndex;
+  const selectGallerySlide = (index: number) => {
+    if (has3DModel && index === galleryImages.length) {
+      setIs3DMode(true);
+      return;
+    }
+    setActiveImageIndex(index);
     setIs3DMode(false);
   };
+  const showPreviousImage = () => {
+    selectGallerySlide((currentSlideIndex - 1 + totalSlides) % totalSlides);
+  };
   const showNextImage = () => {
-    setActiveImageIndex((index) => (index + 1) % galleryImages.length);
-    setIs3DMode(false);
+    selectGallerySlide((currentSlideIndex + 1) % totalSlides);
   };
 
 
@@ -446,7 +455,7 @@ function ProductContent() {
                     const start = touchStart.current;
                     const touch = event.changedTouches[0];
                     touchStart.current = null;
-                    if (!start || !touch || galleryImages.length < 2) return;
+                    if (!start || !touch || totalSlides < 2) return;
                     const dx = touch.clientX - start.x;
                     const dy = touch.clientY - start.y;
                     if (Math.abs(dx) > 45 && Math.abs(dx) > Math.abs(dy)) {
@@ -491,7 +500,7 @@ function ProductContent() {
                     className="w-full h-full object-contain rounded-2xl bg-white p-2 md:p-4 animate-fade-in"
                     />
                   )}
-                  {!is3DMode && galleryImages.length > 1 && (
+                  {totalSlides > 1 && (
                     <>
                       <button type="button" onClick={showPreviousImage} aria-label="Previous product image" className="absolute left-4 top-1/2 z-20 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/95 text-[#29231f] shadow-md transition hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#a84d25]">
                         <ChevronLeft aria-hidden="true" className="h-5 w-5" />
@@ -503,27 +512,21 @@ function ProductContent() {
                   )}
                 </div>
 
-                {galleryImages.length > 1 && (
+                {totalSlides > 1 && (
                   <div className="mt-4 flex items-center justify-center gap-2" role="group" aria-label="Product image slides">
-                    {galleryImages.map((_, idx) => (
+                    {Array.from({ length: totalSlides }, (_, idx) => (
                       <button
                         key={idx}
                         type="button"
-                        onClick={() => { setActiveImageIndex(idx); setIs3DMode(false); }}
-                        aria-label={`Show image ${idx + 1} of ${product.name}`}
-                        aria-pressed={!is3DMode && activeImageIndex === idx}
-                        className={`h-2.5 rounded-full transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#a84d25] ${!is3DMode && activeImageIndex === idx ? "w-6 bg-[#a84d25]" : "w-2.5 bg-[#b9afa6] hover:bg-[#8d4e2c]"}`}
+                        onClick={() => selectGallerySlide(idx)}
+                        aria-label={has3DModel && idx === galleryImages.length ? `Show 3D model of ${product.name}` : `Show image ${idx + 1} of ${product.name}`}
+                        aria-pressed={currentSlideIndex === idx}
+                        className={`h-2.5 rounded-full transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#a84d25] ${currentSlideIndex === idx ? "w-6 bg-[#a84d25]" : "w-2.5 bg-[#b9afa6] hover:bg-[#8d4e2c]"}`}
                       />
                     ))}
                   </div>
                 )}
 
-                {(product.model3dUrl || product.model_path) && (
-                  <button type="button" onClick={() => setIs3DMode((active) => !active)} aria-pressed={is3DMode} className="mx-auto mt-3 inline-flex min-h-10 items-center gap-2 rounded-full border border-border bg-surface px-4 text-sm font-medium text-foreground transition hover:border-accent">
-                    <Box aria-hidden="true" className="h-4 w-4" />
-                    {is3DMode ? "View product images" : "View 3D model"}
-                  </button>
-                )}
 
                 <div className="mt-6 px-1">
                   <h1 className="text-2xl md:text-3xl font-bold leading-tight text-foreground">{product.name}</h1>
