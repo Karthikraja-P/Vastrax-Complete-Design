@@ -88,20 +88,18 @@ export function SizeChartEditor({ value, onChange, stockBySize, onStockChange }:
                 {size}
               </button>
               {selected && stockBySize && onStockChange ? (
-                <label className="min-w-0 flex-1 text-xs font-medium text-foreground">
-                  Stock quantity <span className="font-bold text-red-500">*</span>
-                  <input
-                    type="number"
-                    min="0"
-                    step="1"
-                    required
-                    aria-required="true"
-                    aria-label={`Stock quantity for size ${size}`}
-                    value={stockBySize[size] ?? "0"}
-                    onChange={(event) => onStockChange((current) => ({ ...current, [size]: event.target.value }))}
-                    className="mt-1 block w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-                  />
-                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  required
+                  aria-required="true"
+                  aria-label={`Available quantity for size ${size}`}
+                  placeholder="Qty"
+                  value={stockBySize[size] ?? "0"}
+                  onChange={(event) => onStockChange((current) => ({ ...current, [size]: event.target.value }))}
+                  className="min-w-0 flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+                />
               ) : (
                 <span className="text-xs text-muted-foreground">Select size to set stock</span>
               )}
