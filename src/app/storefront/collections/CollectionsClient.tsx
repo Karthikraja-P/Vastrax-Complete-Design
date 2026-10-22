@@ -42,6 +42,9 @@ function CollectionsPageContent({ initialCategory, initialSort, initialSearch }:
   const [selectedCategory, setSelectedCategory] = useState(initialCategory || "All Categories");
   const [searchTerm, setSearchTerm] = useState(initialSearch || "");
   const [selectedColour, setSelectedColour] = useState("All Colors");
+  const [selectedFabric, setSelectedFabric] = useState("All Fabrics");
+  const [selectedOccasion, setSelectedOccasion] = useState("All Occasions");
+  const [descriptionFilter, setDescriptionFilter] = useState("");
   const [selectedDepartment, setSelectedDepartment] = useState<string>("Women");
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
@@ -139,7 +142,10 @@ function CollectionsPageContent({ initialCategory, initialSort, initialSearch }:
             stock: p.stock ?? p.inventoryCount,
             isSale: Boolean(p.isSale) && Boolean(originalPrice),
             categoryName: resolvedCatName,
+            description: p.description || "",
+            fabric: p.fabric || "",
             colour: [...new Set([p.colour, ...(p.variants || []).map((variant) => variant.colour || variant.color)].map((value) => String(value || "").trim()).filter(Boolean))].join(" | "),
+            occasion: p.occasion || "",
             model3dUrl: p.model_path || p.model3dUrl,
             variants: p.variants || [],
             created_at: p.created_at
@@ -237,6 +243,8 @@ function CollectionsPageContent({ initialCategory, initialSort, initialSearch }:
   const [isSortOpen, setIsSortOpen] = useState(false);
   const sortOptions = ["Recommended", "Newest Arrivals", "Price: Low to High", "Price: High to Low"];
   const availableColours = [...new Set(products.flatMap((product) => String(product.colour || "").split("|").map((colour) => colour.trim()).filter(Boolean)))].sort((a, b) => a.localeCompare(b));
+  const availableFabrics = [...new Set(products.map((product) => String(product.fabric || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  const availableOccasions = [...new Set(products.map((product) => String(product.occasion || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
 
   useEffect(() => {
     const handleOpenStylist = () => setIsStylistOpen(true);
@@ -297,7 +305,7 @@ function CollectionsPageContent({ initialCategory, initialSort, initialSearch }:
   const filteredProducts = products.filter((p) => {
     const normalizedSearch = searchTerm.trim().toLocaleLowerCase();
     if (normalizedSearch) {
-      const searchableText = [p.name, p.categoryName, p.colour].join(" ").toLocaleLowerCase();
+      const searchableText = [p.name, p.categoryName, p.colour, p.fabric, p.occasion, p.description].join(" ").toLocaleLowerCase();
       if (!searchableText.includes(normalizedSearch)) return false;
     }
 
@@ -344,6 +352,9 @@ function CollectionsPageContent({ initialCategory, initialSort, initialSearch }:
     if (String(p.gender || "").trim().toLowerCase() !== "women") return false;
 
     if (selectedColour !== "All Colors" && !String(p.colour || "").split("|").some((colour) => colour.trim().toLowerCase() === selectedColour.toLowerCase())) return false;
+    if (selectedFabric !== "All Fabrics" && String(p.fabric || "").trim().toLowerCase() !== selectedFabric.toLowerCase()) return false;
+    if (selectedOccasion !== "All Occasions" && String(p.occasion || "").trim().toLowerCase() !== selectedOccasion.toLowerCase()) return false;
+    if (descriptionFilter.trim() && !String(p.description || "").toLowerCase().includes(descriptionFilter.trim().toLowerCase())) return false;
 
     // 4. Price Filter
     if (minPrice && p.price < Number(minPrice)) return false;
@@ -357,7 +368,7 @@ function CollectionsPageContent({ initialCategory, initialSort, initialSearch }:
     return 0;
   });
 
-  const pageFilterKey = JSON.stringify([searchTerm, selectedCategory, selectedDepartment, selectedColour, minPrice, maxPrice, sortBy]);
+  const pageFilterKey = JSON.stringify([searchTerm, selectedCategory, selectedDepartment, selectedColour, selectedFabric, selectedOccasion, descriptionFilter, minPrice, maxPrice, sortBy]);
   const totalPages = Math.ceil(filteredProducts.length / productsPerPage);
   const currentPage = Math.min(
     pagination.filterKey === pageFilterKey ? pagination.page : 1,
@@ -509,7 +520,7 @@ function CollectionsPageContent({ initialCategory, initialSort, initialSearch }:
                   <div className="flex items-center justify-between mb-6">
                     <h2 className="font-bold text-lg">Filters</h2>
                     <button
-                      onClick={() => { setSelectedCategory("All Categories"); setSelectedDepartment("Women"); setSelectedColour("All Colors"); setMinPrice(""); setMaxPrice(""); }}
+                      onClick={() => { setSelectedCategory("All Categories"); setSelectedDepartment("Women"); setSelectedColour("All Colors"); setSelectedFabric("All Fabrics"); setSelectedOccasion("All Occasions"); setDescriptionFilter(""); setMinPrice(""); setMaxPrice(""); }}
                       className="min-h-11 text-[#8d4e2c] text-xs font-bold tracking-wider uppercase flex items-center gap-1 hover:underline">
                       Reset Filters
                     </button>
@@ -528,6 +539,44 @@ function CollectionsPageContent({ initialCategory, initialSort, initialSearch }:
                         <option key={colour} value={colour}>{colour.replace(/\b\w/g, (letter) => letter.toUpperCase())}</option>
                       ))}
                     </select>
+                  </div>
+
+                  <div className="mb-8">
+                    <label htmlFor="collection-fabric-filter" className="block text-[10px] font-bold text-muted-foreground tracking-[0.2em] uppercase mb-4">Fabric</label>
+                    <select
+                      id="collection-fabric-filter"
+                      value={selectedFabric}
+                      onChange={(event) => setSelectedFabric(event.target.value)}
+                      className="w-full bg-surface dark:bg-[#111111] border border-border dark:border-white/10 rounded-xl px-3 py-3 text-sm text-foreground dark:text-white focus:outline-none focus:border-[#e07a3f]"
+                    >
+                      <option value="All Fabrics">All Fabrics</option>
+                      {availableFabrics.map((fabric) => <option key={fabric} value={fabric}>{fabric}</option>)}
+                    </select>
+                  </div>
+
+                  <div className="mb-8">
+                    <label htmlFor="collection-occasion-filter" className="block text-[10px] font-bold text-muted-foreground tracking-[0.2em] uppercase mb-4">Occasion</label>
+                    <select
+                      id="collection-occasion-filter"
+                      value={selectedOccasion}
+                      onChange={(event) => setSelectedOccasion(event.target.value)}
+                      className="w-full bg-surface dark:bg-[#111111] border border-border dark:border-white/10 rounded-xl px-3 py-3 text-sm text-foreground dark:text-white focus:outline-none focus:border-[#e07a3f]"
+                    >
+                      <option value="All Occasions">All Occasions</option>
+                      {availableOccasions.map((occasion) => <option key={occasion} value={occasion}>{occasion}</option>)}
+                    </select>
+                  </div>
+
+                  <div className="mb-8">
+                    <label htmlFor="collection-description-filter" className="block text-[10px] font-bold text-muted-foreground tracking-[0.2em] uppercase mb-4">Description</label>
+                    <input
+                      id="collection-description-filter"
+                      type="text"
+                      value={descriptionFilter}
+                      onChange={(event) => setDescriptionFilter(event.target.value)}
+                      placeholder="Filter product descriptions"
+                      className="w-full bg-surface dark:bg-[#111111] border border-border dark:border-white/10 rounded-xl px-3 py-3 text-sm text-foreground dark:text-white focus:outline-none focus:border-[#e07a3f]"
+                    />
                   </div>
 
                   {/* Category */}

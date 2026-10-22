@@ -224,7 +224,10 @@ export interface StorefrontProduct {
   categoryId?: string | number;
   categoryName: string;
   model3dUrl?: string;
+  description?: string;
+  fabric?: string;
   colour?: string;
+  occasion?: string;
   gender?: string;
   stock?: number;
   isSale?: boolean;

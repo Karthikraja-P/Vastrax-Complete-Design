@@ -67,6 +67,7 @@ function ProductContent() {
     description: string;
     fabric: string;
     colour: string;
+    occasion: string;
     image: string;
     images: string[];
     rating: number;
@@ -86,6 +87,7 @@ function ProductContent() {
     description: "",
     fabric: "",
     colour: "",
+    occasion: "",
     image: "/product-placeholder.svg",
     images: ["/product-placeholder.svg"],
     rating: 0,
@@ -158,6 +160,7 @@ function ProductContent() {
             description: item.description || "",
             fabric: item.fabric || "",
             colour: item.colour || "Default",
+            occasion: item.occasion || "",
             image: img,
             images: allImgs,
             rating: Number(item.rating || item.rating_average || 0),
@@ -198,6 +201,7 @@ function ProductContent() {
           description: item.description || "",
           fabric: item.fabric || "",
           colour: item.colour || "Default",
+          occasion: item.occasion || "",
           image: img,
           images: allImgs,
           rating: Number(item.rating_average || item.rating || 0),
@@ -548,6 +552,7 @@ function ProductContent() {
                   <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
                     <dt className="text-muted-foreground">Fabric</dt><dd className="font-medium text-foreground">{product.fabric || "Not specified"}</dd>
                     <dt className="text-muted-foreground">Colour</dt><dd className="font-medium text-foreground">{product.colour || "Not specified"}</dd>
+                    <dt className="text-muted-foreground">Occasion</dt><dd className="font-medium text-foreground">{product.occasion || "Not specified"}</dd>
                     <dt className="text-muted-foreground">Category</dt><dd className="font-medium text-foreground">{product.categoryName || "Not specified"}</dd>
                   </dl>
                 </section>
