@@ -106,6 +106,7 @@ function EditProductContent() {
   const [backPhoto, setBackPhoto] = useState<ReconstructPhoto>({ file: null, preview: null });
   const [reconstructing, setReconstructing] = useState(false);
   const [reconstructStatus, setReconstructStatus] = useState("");
+  const [reconstructError, setReconstructError] = useState("");
   const [reconstructResult, setReconstructResult] = useState<string | null>(null);
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
   const frontRef = useRef<HTMLInputElement>(null);
@@ -306,6 +307,7 @@ function EditProductContent() {
     }
     setReconstructing(true);
     setReconstructStatus("Submitting 3D reconstruction…");
+    setReconstructError("");
     setReconstructResult(null);
     try {
       showToast("Sending photos to 3D garment generator service…");
@@ -341,7 +343,10 @@ function EditProductContent() {
       showToast("Textured Hunyuan 3D model generated.");
     } catch (err: unknown) {
       console.error(err);
-      showToast(`Reconstruction failed: ${err instanceof Error ? err.message : "Server error"}`);
+      const message = err instanceof Error ? err.message : "Unexpected server error. Please retry.";
+      setReconstructError(message);
+      setReconstructStatus("3D reconstruction failed.");
+      showToast(`Reconstruction failed: ${message}`);
     } finally {
       setReconstructing(false);
     }
@@ -1161,6 +1166,14 @@ function EditProductContent() {
                   >
                     {reconstructStatus || "Generating your 3D model…"}
                     {reconstructing ? " Keep this page open; the preview will appear automatically when it is ready." : ""}
+                  </p>
+                ) : null}
+                {reconstructError ? (
+                  <p
+                    role="alert"
+                    className="max-w-md rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-center text-xs text-red-700 dark:text-red-300"
+                  >
+                    3D reconstruction failed: {reconstructError}
                   </p>
                 ) : null}
               </div>
