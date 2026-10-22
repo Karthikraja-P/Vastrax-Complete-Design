@@ -940,16 +940,14 @@ export default function AddProductPage() {
 
           {/* 3D PRODUCT */}
           {activeTab === "3d" && (
-            <div className="space-y-8 animate-in fade-in">
+            <section className="space-y-8 animate-in fade-in rounded-xl border border-border bg-background/30 p-6">
               {/* Header */}
               <div>
                 <div className="mb-2">
                   <div>
-                    <h2 className="text-lg font-semibold text-foreground">
-                      3D Model Reconstruction
-                    </h2>
+                    <h2 className="text-lg font-semibold text-foreground">3D Product</h2>
                     <p className="text-xs text-muted-foreground">
-                      3D creation is optional; all three photos are needed to generate a model.
+                      Upload an existing .glb model or create one from product photos below.
                     </p>
                   </div>
                 </div>
@@ -959,11 +957,9 @@ export default function AddProductPage() {
               <div className="mt-8 pt-8 border-t border-border">
                 <div className="mb-4">
                   <div>
-                    <h2 className="text-sm font-bold text-foreground">
-                      Interactive 3D Model
-                    </h2>
+                    <h3 className="text-sm font-bold text-foreground">Upload existing 3D model</h3>
                     <p className="text-[11px] text-muted-foreground">
-                      Link a 3D .glb file for the immersive product viewer
+                      Upload a .glb file or enter its model path.
                     </p>
                   </div>
                 </div>
@@ -1136,7 +1132,7 @@ export default function AddProductPage() {
                   </button>
                 </div>
               )}
-            </div>
+            </section>
           )}
         </div>
       </div>
