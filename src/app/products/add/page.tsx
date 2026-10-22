@@ -328,6 +328,15 @@ export default function AddProductPage() {
       setActiveTab("basic");
       return;
     }
+    const invalidStockSize = sizeChart.rows.find((row) => {
+      const quantity = stockBySize[row.size];
+      return quantity === "" || !Number.isInteger(Number(quantity)) || Number(quantity) < 0;
+    });
+    if (invalidStockSize) {
+      showToast(`Enter a whole number of 0 or more for size ${invalidStockSize.size}.`);
+      setActiveTab("pricing");
+      return;
+    }
     if (!images.length) {
       showToast("Upload at least one product image before saving.");
       setActiveTab("images");
@@ -498,7 +507,7 @@ export default function AddProductPage() {
                 <div className="grid grid-cols-3 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-1.5">
-                      SKU
+                      SKU <span className="text-xs font-normal text-muted-foreground">(Optional)</span>
                     </label>
                     <input
                       type="text"
@@ -579,7 +588,7 @@ export default function AddProductPage() {
                 </div>
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-1.5">
-                      Occasion
+                      Occasion <span className="text-xs font-normal text-muted-foreground">(Optional)</span>
                     </label>
                     <select
                       value={occasion}
@@ -639,7 +648,7 @@ export default function AddProductPage() {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-1.5">
-                      MRP / Compare Price (₹)
+                      MRP / Compare Price (₹) <span className="text-xs font-normal text-muted-foreground">(Optional)</span>
                     </label>
                     <input
                       type="number"
@@ -651,12 +660,13 @@ export default function AddProductPage() {
                   </div>
                 </div>
                 <div>
-                  <h3 className="mb-2 text-sm font-medium text-foreground">Stock by size</h3>
+                  <h3 className="mb-1 text-sm font-medium text-foreground">Stock by size <span className="font-bold text-red-600">*</span></h3>
+                  <p className="mb-2 text-xs text-muted-foreground">Enter the quantity for every selected size. Use 0 when that size is out of stock.</p>
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                     {sizeChart.rows.filter((row) => row.size.trim()).map((row) => (
                       <label key={row.size} className="text-xs text-muted-foreground">
                         {row.size}
-                        <input type="number" min="0" value={stockBySize[row.size] ?? "0"}
+                        <input type="number" min="0" step="1" required aria-required="true" value={stockBySize[row.size] ?? "0"}
                           onChange={(event) => setStockBySize((current) => ({ ...current, [row.size]: event.target.value }))}
                           className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground" />
                       </label>
