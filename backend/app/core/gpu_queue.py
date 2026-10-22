@@ -94,12 +94,14 @@ class GPUQueueManager:
         queued = sorted(self._waiting, key=self._rank)
         tryon_waiting = sum(t.priority == PRIORITY_TRYON for t in queued)
         three_d_waiting = sum(t.priority == PRIORITY_3D for t in queued)
+        tryon_active = a is not None and a.priority == PRIORITY_TRYON
         return {
             "active": {"job": a.name, "running_seconds": round(now - (a.started or now))} if a else None,
             "depth": len(queued),
             "tryon_waiting": tryon_waiting,
+            "tryon_active": tryon_active,
             "three_d_waiting": three_d_waiting,
-            "three_d_deferred_by_tryon": three_d_waiting > 0 and tryon_waiting > 0,
+            "three_d_deferred_by_tryon": three_d_waiting > 0 and (tryon_active or tryon_waiting > 0),
             "queued": [
                 {"job": t.name, "priority": t.priority, "waiting_seconds": round(now - t.enqueued)}
                 for t in queued

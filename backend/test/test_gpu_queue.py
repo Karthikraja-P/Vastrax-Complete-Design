@@ -78,6 +78,7 @@ def test_queue_snapshot_reports_3d_deferred_for_tryon():
 
     snapshot = run(main())
     assert snapshot["tryon_waiting"] == 1
+    assert snapshot["tryon_active"] is True
     assert snapshot["three_d_waiting"] == 1
     assert snapshot["three_d_deferred_by_tryon"] is True
 
