@@ -1005,19 +1005,6 @@ function EditProductContent() {
 
               {/* 3D Model Section */}
               <div className="mt-8 pt-8 border-t border-border">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-10 h-10 rounded-xl bg-accent/10 border border-accent/20 flex items-center justify-center">
-                    <Box className="w-5 h-5 text-accent" />
-                  </div>
-                  <div>
-                    <h2 className="text-sm font-bold text-foreground">
-                      Upload existing 3D model
-                    </h2>
-                    <p className="text-[11px] text-muted-foreground">
-                      Upload a .glb file or enter its model path.
-                    </p>
-                  </div>
-                </div>
                 <div>
                   <label className="block text-sm font-medium text-foreground mb-1.5 flex justify-between items-center">
                     <span>3D Model Path (.glb)</span>

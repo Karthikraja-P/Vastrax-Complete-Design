@@ -955,14 +955,6 @@ export default function AddProductPage() {
 
               {/* 3D Model Section */}
               <div className="mt-8 pt-8 border-t border-border">
-                <div className="mb-4">
-                  <div>
-                    <h3 className="text-sm font-bold text-foreground">Upload existing 3D model</h3>
-                    <p className="text-[11px] text-muted-foreground">
-                      Upload a .glb file or enter its model path.
-                    </p>
-                  </div>
-                </div>
                 <div>
                   <label className="block text-sm font-medium text-foreground mb-1.5 flex justify-between items-center">
                     <span>3D Model Path (.glb)</span>
