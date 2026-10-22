@@ -323,9 +323,15 @@ export default function AddProductPage() {
       return;
     }
 
-    const sellingPrice = Number.parseFloat(priceSelling);
-    if (!priceSelling || !Number.isFinite(sellingPrice) || sellingPrice <= 0) {
-      showToast("Enter a selling price greater than zero.");
+    const regularPrice = Number.parseFloat(priceSelling);
+    const offerPrice = priceMrp.trim() ? Number.parseFloat(priceMrp) : null;
+    if (!priceSelling || !Number.isFinite(regularPrice) || regularPrice <= 0) {
+      showToast("Enter a regular price greater than zero.");
+      setActiveTab("pricing");
+      return;
+    }
+    if (offerPrice !== null && (!Number.isFinite(offerPrice) || offerPrice <= 0 || offerPrice >= regularPrice)) {
+      showToast("Offer price must be greater than zero and lower than the regular price.");
       setActiveTab("pricing");
       return;
     }
@@ -385,8 +391,8 @@ export default function AddProductPage() {
         colour: colour.trim() || undefined,
         occasion: occasion.trim() || undefined,
         model_path: modelPath.trim(),
-        price_selling: parseFloat(priceSelling),
-        price_mrp: priceMrp ? parseFloat(priceMrp) : parseFloat(priceSelling),
+        price_selling: offerPrice ?? regularPrice,
+        price_mrp: regularPrice,
         is_published: publish,
         is_featured: isFeatured,
         variants: sizeChart.rows
@@ -640,7 +646,7 @@ export default function AddProductPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-1.5">
-                      Selling Price (₹) <span className="font-bold text-red-500 text-base">*</span>
+                      Regular Price (₹) <span className="font-bold text-red-500 text-base">*</span>
                     </label>
                     <input
                       type="number"
@@ -652,18 +658,20 @@ export default function AddProductPage() {
                       placeholder="2499.00"
                       className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent focus:ring-1 focus:ring-accent outline-none transition-all text-foreground"
                     />
+                    <p className="mt-1.5 text-xs text-muted-foreground">The fixed price charged when no offer is active.</p>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-1.5">
-                      MRP / Compare Price (₹) <span className="text-xs font-normal text-muted-foreground">(Optional)</span>
+                      Offer Price (₹) <span className="text-xs font-normal text-muted-foreground">(Optional)</span>
                     </label>
                     <input
                       type="number"
                       value={priceMrp}
                       onChange={(e) => setPriceMrp(e.target.value)}
-                      placeholder="3499.00"
+                      placeholder="Optional discounted price"
                       className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent focus:ring-1 focus:ring-accent outline-none transition-all text-foreground"
                     />
+                    <p className="mt-1.5 text-xs text-muted-foreground">Leave blank at the regular price. An offer must be lower than the regular price.</p>
                   </div>
                 </div>
                 <div className="pt-4 border-t border-border/50 mt-6">
@@ -1132,7 +1140,7 @@ export default function AddProductPage() {
         product={{
           id: "preview",
           name: name || "Garment 3D Model",
-          price: parseFloat(priceSelling) || 0,
+          price: (priceMrp ? parseFloat(priceMrp) : parseFloat(priceSelling)) || 0,
           model3dUrl: modelPath || undefined,
         }}
       />
