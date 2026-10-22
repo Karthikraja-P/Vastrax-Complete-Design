@@ -181,7 +181,6 @@ export default function VirtualTryOnPage() {
   const isBottoms = !twoPieceSet && fashnType === "bottoms";
   const availableTops = products.filter(p => getFashnCategory(String(p.category_name || p.category || p.category_id || ""), p.name || "") === "tops" && String(p.id) !== String(product.id));
   const setImageOptions = getGarmentImageOptions(product);
-  const isSkirtSet = /skirt/i.test([product.name, product.title, product.category_name, product.category].filter(Boolean).join(" "));
   const primaryProductImage = getGarmentImage(product);
   const selectedSetImage = setImageOptions.find((image) => image.url === primaryProductImage) || setImageOptions[0];
   const isCombo = twoPieceSet || (isBottoms && selectedTop !== null);
@@ -380,14 +379,6 @@ export default function VirtualTryOnPage() {
             </div>
           </div>
 
-          {twoPieceSet && (
-            <div className="rounded-2xl border border-border bg-surface p-4">
-              <h3 className="text-[10px] font-bold uppercase tracking-widest text-[#e07a3f]">Two-piece set</h3>
-              <p className="mt-1 text-xs text-muted-foreground">
-                The main product image shown above is used automatically for both the top and {isSkirtSet ? "skirt" : "bottom"}.
-              </p>
-            </div>
-          )}
 
           {/* Optional top replacement for a standalone bottom garment. */}
           {isBottoms && (
