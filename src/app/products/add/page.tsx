@@ -995,18 +995,18 @@ export default function AddProductPage() {
               <div className="bg-accent/5 border border-accent/20 rounded-xl p-4 flex items-start gap-3">
                 <div className="text-xs text-muted-foreground leading-relaxed">
                   <span className="font-semibold text-foreground">
-                    Current limitation:
+                    All three photos are required.
                   </span>{" "}
-                  Hunyuan currently reconstructs the shape from the front photo
-                  only; side and back photos are not used as reconstruction
-              constraints. Review the generated model carefully before saving.
+                  Hunyuan currently builds the model from the front photo;
+                  side and back views are collected but do not yet constrain
+                  reconstruction. Review the generated model carefully before saving.
                 </div>
               </div>
 
               {/* 3-Photo Upload Grid */}
               <div className="grid grid-cols-3 gap-6">
                 <PhotoUploadCard
-                  label="Front View"
+                  label="Front View *"
                   photo={frontPhoto}
                   inputRef={frontRef}
                   onSelect={(e) => handlePhotoSelect(e, setFrontPhoto)}
@@ -1014,7 +1014,7 @@ export default function AddProductPage() {
                   showCameraIcon={false}
                 />
                 <PhotoUploadCard
-                  label="Side View"
+                  label="Side View *"
                   photo={sidePhoto}
                   inputRef={sideRef}
                   onSelect={(e) => handlePhotoSelect(e, setSidePhoto)}
@@ -1022,7 +1022,7 @@ export default function AddProductPage() {
                   showCameraIcon={false}
                 />
                 <PhotoUploadCard
-                  label="Back View"
+                  label="Back View *"
                   photo={backPhoto}
                   inputRef={backRef}
                   onSelect={(e) => handlePhotoSelect(e, setBackPhoto)}

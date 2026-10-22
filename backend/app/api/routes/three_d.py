@@ -22,8 +22,8 @@ async def generate_3d_mesh(
     category_id: str = Form(None),
     product_name: str = Form(None),
     front_image: UploadFile = File(...),
-    side_image: UploadFile = File(None),
-    back_image: UploadFile = File(None),
+    side_image: UploadFile = File(...),
+    back_image: UploadFile = File(...),
     current_user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
