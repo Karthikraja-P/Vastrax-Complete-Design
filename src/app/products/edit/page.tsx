@@ -401,6 +401,15 @@ function EditProductContent() {
       setActiveTab("basic");
       return;
     }
+    const invalidStockSize = sizeChart.rows.find((row) => {
+      const quantity = stockBySize[row.size];
+      return quantity === "" || !Number.isInteger(Number(quantity)) || Number(quantity) < 0;
+    });
+    if (invalidStockSize) {
+      showToast(`Enter a whole number of 0 or more for size ${invalidStockSize.size}.`);
+      setActiveTab("basic");
+      return;
+    }
 
     setSaving(true);
     try {
@@ -655,7 +664,17 @@ function EditProductContent() {
                 </div>
               </div>
               <div className="mt-6">
-                <SizeChartEditor value={sizeChart} onChange={setSizeChart} />
+                <SizeChartEditor
+                  value={sizeChart}
+                  onChange={(nextSizeChart) => {
+                    setSizeChart(nextSizeChart);
+                    setStockBySize((current) => Object.fromEntries(
+                      nextSizeChart.rows.map((row) => [row.size, current[row.size] ?? "0"])
+                    ));
+                  }}
+                  stockBySize={stockBySize}
+                  onStockChange={setStockBySize}
+                />
               </div>
             </div>
           )}
@@ -693,20 +712,6 @@ function EditProductContent() {
                     />
                   </div>
                 </div>
-                <div>
-                  <h3 className="mb-2 text-sm font-medium text-foreground">Stock by size</h3>
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                    {sizeChart.rows.filter((row) => row.size.trim()).map((row) => (
-                      <label key={row.size} className="text-xs text-muted-foreground">
-                        {row.size}
-                        <input type="number" min="0" value={stockBySize[row.size] ?? "0"}
-                          onChange={(event) => setStockBySize((current) => ({ ...current, [row.size]: event.target.value }))}
-                          className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground" />
-                      </label>
-                    ))}
-                  </div>
-                </div>
-
                 <div className="pt-4 border-t border-border/50 mt-6">
                   <h3 className="text-sm font-medium text-foreground mb-4">Visibility & Status</h3>
                   <div className="flex items-center gap-10">

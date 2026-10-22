@@ -68,8 +68,8 @@ export function SizeChartEditor({ value, onChange, stockBySize, onStockChange }:
   return (
     <section className="space-y-4 rounded-xl border border-border p-4">
       <div>
-        <h3 className="text-sm font-semibold text-foreground">Available sizes &amp; stock <span className="text-red-600">*</span></h3>
-        <p className="mt-1 text-xs text-muted-foreground">Select the sizes customers can buy, then enter stock for each selected size. Use 0 for out of stock.</p>
+        <h3 className="text-sm font-semibold text-foreground">Available sizes <span className="text-red-600">*</span></h3>
+        <p className="mt-1 text-xs text-muted-foreground">Select the sizes customers can buy and enter the quantity beside each selected size. Enter 0 when unavailable.</p>
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2" role="group" aria-label="Available sizes and stock quantities">
