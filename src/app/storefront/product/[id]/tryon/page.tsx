@@ -67,7 +67,6 @@ export default function VirtualTryOnPage() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   const [selectedTop, setSelectedTop] = useState<ProductItem | null>(null);
-  const [selectedSetImageUrl, setSelectedSetImageUrl] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [statusType, setStatusType] = useState("");
   const [statusText, setStatusText] = useState("");
@@ -87,7 +86,6 @@ export default function VirtualTryOnPage() {
           setProducts(allProducts);
           const current = allProducts.find((p) => p.id.toString() === id) || allProducts[0];
           setProduct({ ...current, name: current.name || current.title || "Luxury garment" });
-          setSelectedSetImageUrl("");
         }
       } catch (e) {
         console.error("Failed to load products", e);
@@ -184,7 +182,8 @@ export default function VirtualTryOnPage() {
   const availableTops = products.filter(p => getFashnCategory(String(p.category_name || p.category || p.category_id || ""), p.name || "") === "tops" && String(p.id) !== String(product.id));
   const setImageOptions = getGarmentImageOptions(product);
   const isSkirtSet = /skirt/i.test([product.name, product.title, product.category_name, product.category].filter(Boolean).join(" "));
-  const selectedSetImage = setImageOptions.find((image) => image.url === selectedSetImageUrl);
+  const primaryProductImage = getGarmentImage(product);
+  const selectedSetImage = setImageOptions.find((image) => image.url === primaryProductImage) || setImageOptions[0];
   const isCombo = twoPieceSet || (isBottoms && selectedTop !== null);
 
   const startTryOnPipeline = async () => {
@@ -192,7 +191,7 @@ export default function VirtualTryOnPage() {
 
     if (twoPieceSet && !selectedSetImage) {
       setStatusType("error");
-      setStatusText("Choose the product photo that clearly shows the complete matching set, then try again.");
+      setStatusText("This product has no gallery image available for virtual try-on.");
       return;
     }
     setIsProcessing(true);
@@ -350,7 +349,6 @@ export default function VirtualTryOnPage() {
                       onClick={() => {
                         setProduct(p);
                         setSelectedTop(null);
-                        setSelectedSetImageUrl("");
                         router.push(`/storefront/product/${p.id}/tryon`);
                         resetAll();
                         setShowGarmentList(false);
@@ -383,19 +381,22 @@ export default function VirtualTryOnPage() {
           </div>
 
           {twoPieceSet && (
-            <div className="bg-surface border border-border p-6 rounded-2xl">
-              <h3 className="text-[10px] font-bold uppercase tracking-widest text-[#e07a3f] mb-3">Step 3 — Your set</h3>
-              <p className="text-xs text-muted-foreground">
-                This product is sold as one two-piece set. Virtual try-on applies the matching top and {isSkirtSet ? "skirt" : "bottom"} together automatically.
-              </p>
-              <p className="text-xs text-muted-foreground mt-3">Select one image that clearly shows the complete matching top and {isSkirtSet ? "skirt" : "bottom"} set.</p>
-              <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
-                {setImageOptions.map((image) => (
-                  <button key={image.url} type="button" onClick={() => { setSelectedSetImageUrl(image.url); setTryOnComplete(false); }} aria-pressed={selectedSetImageUrl === image.url} className={`overflow-hidden rounded-lg border text-left ${selectedSetImageUrl === image.url ? "border-[#e07a3f] ring-2 ring-[#e07a3f]/30" : "border-border hover:border-[#e07a3f]/50"}`}>
-                    <Image width={480} height={640} unoptimized src={image.url} alt={image.label} className="h-32 w-full bg-white object-contain p-1" />
-                    <span className="block truncate px-2 py-1 text-[10px]">{image.label}</span>
-                  </button>
-                ))}
+            <div className="flex items-center gap-4 rounded-2xl border border-border bg-surface p-4">
+              {selectedSetImage && (
+                <Image
+                  width={480}
+                  height={640}
+                  unoptimized
+                  src={selectedSetImage.url}
+                  alt={selectedSetImage.label}
+                  className="h-20 w-16 rounded-lg border border-border bg-white object-contain p-1"
+                />
+              )}
+              <div>
+                <h3 className="text-[10px] font-bold uppercase tracking-widest text-[#e07a3f]">Two-piece set</h3>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  The main product image is used automatically for both the top and {isSkirtSet ? "skirt" : "bottom"}.
+                </p>
               </div>
             </div>
           )}
