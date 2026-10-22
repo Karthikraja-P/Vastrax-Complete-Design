@@ -980,6 +980,29 @@ function EditProductContent() {
                 </div>
               )}
 
+
+            </div>
+          )}
+
+
+          {/* 3D PRODUCT */}
+          {activeTab === "3d" && (
+            <section className="space-y-8 animate-in fade-in rounded-xl border border-border bg-background/30 p-6">
+              {/* Header */}
+              <div>
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="w-10 h-10 rounded-xl bg-accent/10 border border-accent/20 flex items-center justify-center">
+                    <Box className="w-5 h-5 text-accent" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-semibold text-foreground">3D Product</h2>
+                    <p className="text-xs text-muted-foreground">
+                      Upload an existing .glb model or create one from product photos below.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
               {/* 3D Model Section */}
               <div className="mt-8 pt-8 border-t border-border">
                 <div className="flex items-center gap-3 mb-4">
@@ -988,10 +1011,10 @@ function EditProductContent() {
                   </div>
                   <div>
                     <h2 className="text-sm font-bold text-foreground">
-                      Interactive 3D Model
+                      Upload existing 3D model
                     </h2>
                     <p className="text-[11px] text-muted-foreground">
-                      Link a 3D .glb file for the immersive product viewer
+                      Upload a .glb file or enter its model path.
                     </p>
                   </div>
                 </div>
@@ -1030,29 +1053,6 @@ function EditProductContent() {
                 </div>
               </div>
 
-            </div>
-          )}
-
-
-          {/* 3D PRODUCT */}
-          {activeTab === "3d" && (
-            <div className="space-y-8 animate-in fade-in">
-              {/* Header */}
-              <div>
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="w-10 h-10 rounded-xl bg-accent/10 border border-accent/20 flex items-center justify-center">
-                    <Box className="w-5 h-5 text-accent" />
-                  </div>
-                  <div>
-                    <h2 className="text-lg font-semibold text-foreground">
-                      3D Model Reconstruction
-                    </h2>
-                    <p className="text-xs text-muted-foreground">
-                      Upload garment photos for a 3D preview
-                    </p>
-                  </div>
-                </div>
-              </div>
 
               {/* Info banner */}
               <div className="bg-accent/5 border border-accent/20 rounded-xl p-4 flex items-start gap-3">
@@ -1185,7 +1185,7 @@ function EditProductContent() {
                   </button>
                 </div>
               )}
-            </div>
+            </section>
           )}
         </div>
       </div>
