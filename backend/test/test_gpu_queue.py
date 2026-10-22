@@ -33,9 +33,7 @@ def test_serial_and_tryon_before_3d():
     assert run(main()) == ["3d_first", "tryon_a", "tryon_b", "3d_second"]
 
 
-def test_aging_prevents_starvation(monkeypatch):
-    monkeypatch.setattr(gq, "AGING_SECONDS_PER_LEVEL", 0.01)
-
+def test_queued_tryon_always_precedes_older_3d_job():
     async def main():
         q = gq.GPUQueueManager()
         order = []
@@ -45,16 +43,48 @@ def test_aging_prevents_starvation(monkeypatch):
                 order.append(name)
                 await asyncio.sleep(hold)
 
-        holder = asyncio.create_task(job("tryon_hold", 0.3))
+        holder = asyncio.create_task(job("tryon_hold", 0.15))
         await asyncio.sleep(0.01)
         old3d = asyncio.create_task(job("3d_old", 0.01))
-        await asyncio.sleep(0.2)  # 3D job has aged past a fresh try-on
+        await asyncio.sleep(0.08)
         fresh = asyncio.create_task(job("tryon_fresh", 0.01))
         await asyncio.gather(holder, old3d, fresh)
         return order
 
-    assert run(main())[1] == "3d_old"
+    order = run(main())
+    assert order == ["tryon_hold", "tryon_fresh", "3d_old"]
 
+
+def test_queue_snapshot_reports_3d_deferred_for_tryon():
+    async def main():
+        q = gq.GPUQueueManager()
+        entered = asyncio.Event()
+        release = asyncio.Event()
+
+        async def hold():
+            async with q.acquire("tryon_active"):
+                entered.set()
+                await release.wait()
+
+        active = asyncio.create_task(hold())
+        await entered.wait()
+        three_d = asyncio.create_task(_acquire_and_release(q, "3d_admin"))
+        tryon = asyncio.create_task(_acquire_and_release(q, "tryon_customer"))
+        await asyncio.sleep(0)
+        snapshot = q.snapshot()
+        release.set()
+        await asyncio.gather(active, three_d, tryon)
+        return snapshot
+
+    snapshot = run(main())
+    assert snapshot["tryon_waiting"] == 1
+    assert snapshot["three_d_waiting"] == 1
+    assert snapshot["three_d_deferred_by_tryon"] is True
+
+
+async def _acquire_and_release(q, name):
+    async with q.acquire(name):
+        pass
 
 def test_cancelled_waiter_does_not_leak_slot():
     async def main():

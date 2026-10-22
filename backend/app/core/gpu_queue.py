@@ -11,7 +11,6 @@ logger = logging.getLogger("vastrax.gpu_queue")
 
 PRIORITY_TRYON = 0  # short, user-facing
 PRIORITY_3D = 10  # long admin jobs
-AGING_SECONDS_PER_LEVEL = float(os.getenv("GPU_QUEUE_AGING_SECONDS", "30"))  # waiting jobs gain priority so 3D cannot starve
 MAX_QUEUE = int(os.getenv("GPU_QUEUE_MAX", "20"))
 MAX_WAIT_SECONDS = float(os.getenv("GPU_QUEUE_MAX_WAIT_SECONDS", "1800"))
 
@@ -36,8 +35,9 @@ class GPUQueueManager:
         self._waiting: list[_Ticket] = []
         self._active: _Ticket | None = None
 
-    def _rank(self, t: _Ticket, now: float) -> tuple[float, float]:
-        return (t.priority - (now - t.enqueued) / AGING_SECONDS_PER_LEVEL, t.enqueued)
+    def _rank(self, t: _Ticket) -> tuple[int, float]:
+        # Strict priority: an admin 3D job must never overtake a queued shopper try-on.
+        return (t.priority, t.enqueued)
 
     @property
     def queue_depth(self) -> int:
@@ -50,7 +50,7 @@ class GPUQueueManager:
     def _grant_next(self) -> None:
         while self._active is None and self._waiting:
             now = time.monotonic()
-            nxt = min(self._waiting, key=lambda t: self._rank(t, now))
+            nxt = min(self._waiting, key=self._rank)
             self._waiting.remove(nxt)
             if nxt.future.done():  # cancelled while waiting
                 continue
@@ -91,12 +91,18 @@ class GPUQueueManager:
     def snapshot(self) -> dict:
         now = time.monotonic()
         a = self._active
+        queued = sorted(self._waiting, key=self._rank)
+        tryon_waiting = sum(t.priority == PRIORITY_TRYON for t in queued)
+        three_d_waiting = sum(t.priority == PRIORITY_3D for t in queued)
         return {
             "active": {"job": a.name, "running_seconds": round(now - (a.started or now))} if a else None,
-            "depth": len(self._waiting),
+            "depth": len(queued),
+            "tryon_waiting": tryon_waiting,
+            "three_d_waiting": three_d_waiting,
+            "three_d_deferred_by_tryon": three_d_waiting > 0 and tryon_waiting > 0,
             "queued": [
                 {"job": t.name, "priority": t.priority, "waiting_seconds": round(now - t.enqueued)}
-                for t in sorted(self._waiting, key=lambda t: self._rank(t, now))
+                for t in queued
             ],
         }
 
