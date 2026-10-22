@@ -381,23 +381,11 @@ export default function VirtualTryOnPage() {
           </div>
 
           {twoPieceSet && (
-            <div className="flex items-center gap-4 rounded-2xl border border-border bg-surface p-4">
-              {selectedSetImage && (
-                <Image
-                  width={480}
-                  height={640}
-                  unoptimized
-                  src={selectedSetImage.url}
-                  alt={selectedSetImage.label}
-                  className="h-20 w-16 rounded-lg border border-border bg-white object-contain p-1"
-                />
-              )}
-              <div>
-                <h3 className="text-[10px] font-bold uppercase tracking-widest text-[#e07a3f]">Two-piece set</h3>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  The main product image is used automatically for both the top and {isSkirtSet ? "skirt" : "bottom"}.
-                </p>
-              </div>
+            <div className="rounded-2xl border border-border bg-surface p-4">
+              <h3 className="text-[10px] font-bold uppercase tracking-widest text-[#e07a3f]">Two-piece set</h3>
+              <p className="mt-1 text-xs text-muted-foreground">
+                The main product image shown above is used automatically for both the top and {isSkirtSet ? "skirt" : "bottom"}.
+              </p>
             </div>
           )}
 
