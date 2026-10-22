@@ -415,14 +415,7 @@ export default function ProductsPage() {
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex flex-col">
-                        <span className="font-bold text-foreground">{product.price}</span>
-                        {product.originalPrice && (
-                          <span className="text-xs text-muted-foreground line-through">
-                            {product.originalPrice}
-                          </span>
-                        )}
-                      </div>
+                      <span className="font-bold text-foreground">{product.price}</span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap font-medium text-foreground">
                       {product.stock} in stock
