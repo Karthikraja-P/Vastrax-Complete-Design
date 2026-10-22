@@ -341,7 +341,7 @@ export default function AddProductPage() {
     });
     if (invalidStockSize) {
       showToast(`Enter a whole number of 0 or more for size ${invalidStockSize.size}.`);
-      setActiveTab("pricing");
+      setActiveTab("basic");
       return;
     }
     if (!images.length) {
@@ -431,7 +431,7 @@ export default function AddProductPage() {
         </Link>
         <div>
           <h1 className="text-2xl font-bold text-foreground">Add New Product</h1>
-          <p className="mt-1 text-xs text-muted-foreground"><span className="font-bold text-red-600">*</span> Required fields must be completed before saving.</p>
+          <p className="mt-1 text-xs text-muted-foreground"><span className="font-bold text-red-500 text-base">*</span> Required fields must be completed before saving.</p>
         </div>
         <div className="ml-auto flex items-center gap-3">
           <button
@@ -480,7 +480,7 @@ export default function AddProductPage() {
                 >
                   <div className="flex items-center gap-3">
                     {tab.label}
-                    {tab.required && <span aria-label="required section" className="font-bold text-red-600">*</span>}
+                    {tab.required && <span aria-label="required section" className="font-bold text-red-500 text-base">*</span>}
                   </div>
                 </button>
               ))}
@@ -499,7 +499,7 @@ export default function AddProductPage() {
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-foreground mb-1.5">
-                    Product Name <span className="font-bold text-red-600">*</span>
+                    Product Name <span className="font-bold text-red-500 text-base">*</span>
                   </label>
                   <input
                     type="text"
@@ -526,7 +526,7 @@ export default function AddProductPage() {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-1.5">
-                      Category <span className="font-bold text-red-600">*</span>
+                      Category <span className="font-bold text-red-500 text-base">*</span>
                     </label>
                     <select
                       required
@@ -547,7 +547,7 @@ export default function AddProductPage() {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-1.5">
-                      Department / Gender <span className="font-bold text-red-600">*</span>
+                      Department / Gender <span className="font-bold text-red-500 text-base">*</span>
                     </label>
                     <select
                       required
@@ -566,7 +566,7 @@ export default function AddProductPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-1.5">
-                      Fabric <span className="font-bold text-red-600">*</span>
+                      Fabric <span className="font-bold text-red-500 text-base">*</span>
                     </label>
                     <input
                       type="text"
@@ -580,7 +580,7 @@ export default function AddProductPage() {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-1.5">
-                      Colour <span className="font-bold text-red-600">*</span>
+                      Colour <span className="font-bold text-red-500 text-base">*</span>
                     </label>
                     <input
                       type="text"
@@ -611,7 +611,7 @@ export default function AddProductPage() {
                   </div>
                 <div>
                   <label className="block text-sm font-medium text-foreground mb-1.5">
-                    Description <span className="font-bold text-red-600">*</span>
+                    Description <span className="font-bold text-red-500 text-base">*</span>
                   </label>
                   <textarea
                     rows={5}
@@ -640,7 +640,7 @@ export default function AddProductPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-1.5">
-                      Selling Price (₹) <span className="font-bold text-red-600">*</span>
+                      Selling Price (₹) <span className="font-bold text-red-500 text-base">*</span>
                     </label>
                     <input
                       type="number"
@@ -723,7 +723,7 @@ export default function AddProductPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="text-lg font-semibold text-foreground">
-                    Product Images <span className="font-bold text-red-600">*</span>
+                    Product Images <span className="font-bold text-red-500 text-base">*</span>
                   </h2>
                 </div>
                 <span className="text-xs font-semibold text-accent bg-accent/10 border border-accent/20 px-2.5 py-1 rounded-full">
