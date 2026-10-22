@@ -5,6 +5,10 @@ const BACKEND_INTERNAL = process.env.INTERNAL_BACKEND_URL || "http://backend:809
 const nextConfig: NextConfig = {
   output: "standalone",
   poweredByHeader: false,
+  experimental: {
+    // Combo try-on runs two GPU passes and can exceed Next's 30-second proxy default.
+    proxyTimeout: 90_000,
+  },
   async headers() {
     return [
       {
