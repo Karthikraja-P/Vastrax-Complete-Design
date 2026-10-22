@@ -1153,9 +1153,14 @@ function EditProductContent() {
                     Upload all three photos to enable reconstruction
                   </p>
                 ) : null}
-                {reconstructing ? (
-                  <p className="max-w-md text-center text-xs text-muted-foreground">
-                    {reconstructStatus || "Generating your 3D model…"} Keep this page open; the preview will appear automatically when it is ready.
+                {(reconstructing || reconstructResult) ? (
+                  <p
+                    role="status"
+                    aria-live="polite"
+                    className={`max-w-md text-center text-xs ${reconstructResult ? "text-emerald-600" : "text-muted-foreground"}`}
+                  >
+                    {reconstructStatus || "Generating your 3D model…"}
+                    {reconstructing ? " Keep this page open; the preview will appear automatically when it is ready." : ""}
                   </p>
                 ) : null}
               </div>
