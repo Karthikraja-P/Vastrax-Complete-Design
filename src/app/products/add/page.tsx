@@ -108,6 +108,13 @@ export default function AddProductPage() {
     setTimeout(() => setToast(null), 4000);
   };
 
+  const handleSizeChartChange = (nextSizeChart: SizeChart) => {
+    setSizeChart(nextSizeChart);
+    setStockBySize((current) => Object.fromEntries(
+      nextSizeChart.rows.map((row) => [row.size, current[row.size] ?? "0"])
+    ));
+  };
+
   // ─── 2D Image Handlers ──────────────────────────────────────
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -618,7 +625,7 @@ export default function AddProductPage() {
                 </div>
               </div>
               <div className="mt-6">
-                <SizeChartEditor value={sizeChart} onChange={setSizeChart} />
+                <SizeChartEditor value={sizeChart} onChange={handleSizeChartChange} stockBySize={stockBySize} onStockChange={setStockBySize} />
               </div>
             </div>
           )}
@@ -659,21 +666,6 @@ export default function AddProductPage() {
                     />
                   </div>
                 </div>
-                <div>
-                  <h3 className="mb-1 text-sm font-medium text-foreground">Stock by size <span className="font-bold text-red-600">*</span></h3>
-                  <p className="mb-2 text-xs text-muted-foreground">Enter the quantity for every selected size. Use 0 when that size is out of stock.</p>
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                    {sizeChart.rows.filter((row) => row.size.trim()).map((row) => (
-                      <label key={row.size} className="text-xs text-muted-foreground">
-                        {row.size}
-                        <input type="number" min="0" step="1" required aria-required="true" value={stockBySize[row.size] ?? "0"}
-                          onChange={(event) => setStockBySize((current) => ({ ...current, [row.size]: event.target.value }))}
-                          className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground" />
-                      </label>
-                    ))}
-                  </div>
-                </div>
-
                 <div className="pt-4 border-t border-border/50 mt-6">
                   <h3 className="text-sm font-medium text-foreground mb-4">Visibility & Status</h3>
                   <div className="flex items-center gap-10">
@@ -941,6 +933,28 @@ export default function AddProductPage() {
                 </div>
               )}
 
+
+            </div>
+          )}
+
+
+          {/* 3D PRODUCT */}
+          {activeTab === "3d" && (
+            <div className="space-y-8 animate-in fade-in">
+              {/* Header */}
+              <div>
+                <div className="mb-2">
+                  <div>
+                    <h2 className="text-lg font-semibold text-foreground">
+                      3D Model Reconstruction
+                    </h2>
+                    <p className="text-xs text-muted-foreground">
+                      3D creation is optional; all three photos are needed to generate a model.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
               {/* 3D Model Section */}
               <div className="mt-8 pt-8 border-t border-border">
                 <div className="mb-4">
@@ -988,26 +1002,6 @@ export default function AddProductPage() {
                 </div>
               </div>
 
-            </div>
-          )}
-
-
-          {/* 3D PRODUCT */}
-          {activeTab === "3d" && (
-            <div className="space-y-8 animate-in fade-in">
-              {/* Header */}
-              <div>
-                <div className="mb-2">
-                  <div>
-                    <h2 className="text-lg font-semibold text-foreground">
-                      3D Model Reconstruction
-                    </h2>
-                    <p className="text-xs text-muted-foreground">
-                      3D creation is optional; all three photos are needed to generate a model.
-                    </p>
-                  </div>
-                </div>
-              </div>
 
               {/* Info banner */}
               <div className="bg-accent/5 border border-accent/20 rounded-xl p-4 flex items-start gap-3">

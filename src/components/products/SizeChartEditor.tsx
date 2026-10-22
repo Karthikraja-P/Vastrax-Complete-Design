@@ -7,11 +7,13 @@ import { WOMENS_SIZE_CHART } from "@/lib/sizeChart";
 interface SizeChartEditorProps {
   value: SizeChart;
   onChange: (value: SizeChart) => void;
+  stockBySize?: Record<string, string>;
+  onStockChange?: (update: (current: Record<string, string>) => Record<string, string>) => void;
 }
 
 const availableSizeOptions = WOMENS_SIZE_CHART.rows.map((row) => row.size);
 
-export function SizeChartEditor({ value, onChange }: SizeChartEditorProps) {
+export function SizeChartEditor({ value, onChange, stockBySize, onStockChange }: SizeChartEditorProps) {
   const [customSize, setCustomSize] = useState("");
   const measurementKeys = Object.keys(WOMENS_SIZE_CHART.rows[0] || {}).filter((key) => key !== "size");
 
@@ -70,6 +72,30 @@ export function SizeChartEditor({ value, onChange }: SizeChartEditorProps) {
           );
         })}
       </div>
+
+      {stockBySize && onStockChange && value.rows.length > 0 && (
+        <div className="border-t border-border pt-4">
+          <h4 className="text-sm font-semibold text-foreground">Stock count by size <span className="text-red-600">*</span></h4>
+          <p className="mt-1 mb-3 text-xs text-muted-foreground">Set the quantity for each selected size. Enter 0 when it is out of stock.</p>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            {value.rows.map((row) => (
+              <label key={row.size} className="text-xs font-medium text-foreground">
+                Size {row.size}
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  required
+                  aria-required="true"
+                  value={stockBySize[row.size] ?? "0"}
+                  onChange={(event) => onStockChange((current) => ({ ...current, [row.size]: event.target.value }))}
+                  className="mt-1 block w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+                />
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="flex flex-wrap items-end gap-2">
         <label className="text-xs font-medium text-foreground">
