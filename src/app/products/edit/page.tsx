@@ -14,6 +14,7 @@ import type { SizeChart } from "@/lib/sizeChart";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getSession } from "next-auth/react";
 import { Product3DModal } from "@/components/3d/Product3DModal";
+import { generateThreeDModel } from "@/lib/threeDGeneration";
 import PhotoUploadCard from "@/components/products/PhotoUploadCard";
 
 function cn(...inputs: (string | undefined | null | false)[]) {
@@ -104,6 +105,7 @@ function EditProductContent() {
   const [sidePhoto, setSidePhoto] = useState<ReconstructPhoto>({ file: null, preview: null });
   const [backPhoto, setBackPhoto] = useState<ReconstructPhoto>({ file: null, preview: null });
   const [reconstructing, setReconstructing] = useState(false);
+  const [reconstructStatus, setReconstructStatus] = useState("");
   const [reconstructResult, setReconstructResult] = useState<string | null>(null);
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
   const frontRef = useRef<HTMLInputElement>(null);
@@ -303,6 +305,7 @@ function EditProductContent() {
       return;
     }
     setReconstructing(true);
+    setReconstructStatus("Submitting 3D reconstruction…");
     setReconstructResult(null);
     try {
       showToast("Sending photos to 3D garment generator service…");
@@ -325,24 +328,16 @@ function EditProductContent() {
         } catch {}
       }
 
-      const res = await fetch("/api/v1/3d/generate", {
-        method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: formData,
+      const generation = await generateThreeDModel(formData, token, (job) => {
+        setReconstructStatus(job.message || "Generating the 3D model…");
       });
-
-      if (!res.ok) {
-        const errJson = await res.json().catch(() => ({}));
-        throw new Error(errJson.detail || errJson.message || "Failed to generate 3D model");
-      }
-
-      const data = await res.json();
-      const generatedModelUrl = data.model_url;
-      if (!generatedModelUrl || data.generation_mode !== "hunyuan_textured") {
-        throw new Error("A textured garment-specific reconstruction was not produced. No template was attached.");
+      const generatedModelUrl = generation.model_url;
+      if (!generatedModelUrl) {
+        throw new Error("The 3D service finished without returning a model path.");
       }
       setModelPath(generatedModelUrl);
       setReconstructResult(generatedModelUrl);
+      setReconstructStatus("3D model ready to preview.");
       showToast("Textured Hunyuan 3D model generated.");
     } catch (err: unknown) {
       console.error(err);
@@ -1156,6 +1151,11 @@ function EditProductContent() {
                 {!frontPhoto.file || !sidePhoto.file || !backPhoto.file ? (
                   <p className="text-xs text-muted-foreground">
                     Upload all three photos to enable reconstruction
+                  </p>
+                ) : null}
+                {reconstructing ? (
+                  <p className="max-w-md text-center text-xs text-muted-foreground">
+                    {reconstructStatus || "Generating your 3D model…"} Keep this page open; the preview will appear automatically when it is ready.
                   </p>
                 ) : null}
               </div>
