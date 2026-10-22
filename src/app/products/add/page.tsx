@@ -725,9 +725,6 @@ export default function AddProductPage() {
                   <h2 className="text-lg font-semibold text-foreground">
                     Product Images <span className="font-bold text-red-600">*</span>
                   </h2>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Upload at least one 2D product photo. The first image becomes the storefront thumbnail.
-                  </p>
                 </div>
                 <span className="text-xs font-semibold text-accent bg-accent/10 border border-accent/20 px-2.5 py-1 rounded-full">
                   {images.length} image{images.length !== 1 ? "s" : ""}
@@ -763,11 +760,6 @@ export default function AddProductPage() {
                   Browse Files
                 </span>
               </div>
-
-              <AdminTryOnImageGenerator
-                productName={name}
-                onAddImage={handleGeneratedImage}
-              />
 
               {/* Upload status bar */}
               {images.length > 0 && (
@@ -933,6 +925,11 @@ export default function AddProductPage() {
                 </div>
               )}
 
+
+              <AdminTryOnImageGenerator
+                productName={name}
+                onAddImage={handleGeneratedImage}
+              />
 
             </div>
           )}

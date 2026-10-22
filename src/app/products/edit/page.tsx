@@ -765,10 +765,6 @@ function EditProductContent() {
                   <h2 className="text-lg font-semibold text-foreground">
                     Product Images
                   </h2>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Upload 2D product photos. First image becomes the primary
-                    thumbnail.
-                  </p>
                 </div>
                 <span className="text-xs font-semibold text-accent bg-accent/10 border border-accent/20 px-2.5 py-1 rounded-full">
                   {images.length} image{images.length !== 1 ? "s" : ""}
@@ -805,11 +801,6 @@ function EditProductContent() {
                   Browse Files
                 </span>
               </div>
-
-              <AdminTryOnImageGenerator
-                productName={name}
-                onAddImage={handleGeneratedImage}
-              />
 
               {/* Upload status bar */}
               {images.length > 0 && (
@@ -980,6 +971,11 @@ function EditProductContent() {
                 </div>
               )}
 
+
+              <AdminTryOnImageGenerator
+                productName={name}
+                onAddImage={handleGeneratedImage}
+              />
 
             </div>
           )}
