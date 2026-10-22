@@ -371,9 +371,11 @@ export default function VirtualTryOnPage() {
               <Image width={1200} height={900} unoptimized src={String(productImgUrl || "/placeholder.svg")} alt={String(product.name || "Product")} className="w-20 h-24 object-contain rounded-lg border border-border bg-[#f8f7f4] p-1" />
               <div>
                 <h4 className="text-sm font-semibold text-foreground">{product.name}</h4>
-                <span className="text-[9px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-800 text-muted-foreground mt-1 inline-block">
-                  {twoPieceSet ? "Two-piece set" : fashnType}
-                </span>
+                {!twoPieceSet && (
+                  <span className="text-[9px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-800 text-muted-foreground mt-1 inline-block">
+                    {fashnType}
+                  </span>
+                )}
                 <p className="text-sm font-bold text-[#e07a3f] mt-1">₹{(product.price_selling || product.price)?.toLocaleString()}</p>
               </div>
             </div>
@@ -427,7 +429,7 @@ export default function VirtualTryOnPage() {
             disabled={isProcessing || !personFile || (twoPieceSet && !selectedSetImage)}
             className="w-full py-4 bg-gradient-to-r from-[#e07a3f] to-[#b95625] hover:from-[#b95625] hover:to-[#9b4a23] text-white font-bold text-xs uppercase tracking-wider rounded-xl flex items-center justify-center gap-2 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all"
           >
-            {isCombo ? "Generate Two-Piece Outfit Try-On" : "Generate Virtual Try-On"}
+            Generate
           </button>
 
           {/* Status Banner */}
