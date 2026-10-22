@@ -763,7 +763,6 @@ export default function AddProductPage() {
               </div>
 
               <AdminTryOnImageGenerator
-                images={images}
                 productName={name}
                 onAddImage={handleGeneratedImage}
               />

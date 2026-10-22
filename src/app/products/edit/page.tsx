@@ -23,8 +23,8 @@ function cn(...inputs: (string | undefined | null | false)[]) {
 const tabs = [
   { id: "basic", label: "Basic Info" },
   { id: "pricing", label: "Pricing & Inventory" },
-  { id: "images", label: "Product Images", icon: ImageIcon },
-  { id: "3d", label: "3D Product", icon: Box, highlight: true },
+  { id: "images", label: "Product Images" },
+  { id: "3d", label: "3D Product" },
 ];
 
 interface UploadedImage {
@@ -522,12 +522,8 @@ function EditProductContent() {
                   )}
                 >
                   <div className="flex items-center gap-3">
-                    {tab.icon && <tab.icon className="w-4 h-4" />}
                     {tab.label}
                   </div>
-                  {tab.highlight && (
-                    <Sparkles className="w-3 h-3 text-accent" />
-                  )}
                 </button>
               ))}
             </nav>
@@ -811,7 +807,6 @@ function EditProductContent() {
               </div>
 
               <AdminTryOnImageGenerator
-                images={images}
                 productName={name}
                 onAddImage={handleGeneratedImage}
               />
