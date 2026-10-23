@@ -1,491 +1,11 @@
-"""Vastra AI Stylist service. Shopper conversations use MiniMax M3 only."""
+"""Vastra AI Stylist service. Shopper conversations use self-hosted Qwen only."""
 import json
 import logging
 import os
 import httpx
 
-from anthropic import Anthropic
-
 logger = logging.getLogger(__name__)
 
-
-def _get_anthropic_client() -> Anthropic:
-    return Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY", ""))
-
-
-# ── Profile extraction ────────────────────────────────────────────────────────
-
-def _extract_profile(messages: list) -> dict:
-    text = " ".join(m["content"].lower() for m in messages if m["role"] == "user")
-    profile: dict = {}
-
-    if any(w in text for w in ["petite", "short", "under 5", "5'1", "5'0", "4'"]):
-        profile["height"] = "petite"
-    elif any(w in text for w in ["tall", "5'6", "5'7", "5'8", "5'9", "6'"]):
-        profile["height"] = "tall"
-    elif any(w in text for w in ["regular", "average", "medium height", "5'2", "5'3", "5'4", "5'5"]):
-        profile["height"] = "regular"
-
-    if any(w in text for w in ["fair", "light skin", "pale", "fair skin"]):
-        profile["skinTone"] = "fair"
-    elif any(w in text for w in ["wheatish", "wheat", "medium complexion", "medium skin", "golden"]):
-        profile["skinTone"] = "wheatish"
-    elif any(w in text for w in ["dusky", "dark", "deep skin", "brown skin", "dark complexion"]):
-        profile["skinTone"] = "dusky"
-
-    if any(w in text for w in ["wedding", "ceremony", "bride", "shaadi", "wedding / festive"]):
-        profile["occasion"] = "wedding"
-    elif any(w in text for w in ["office", "work", "professional", "corporate", "meeting", "office wear"]):
-        profile["occasion"] = "office"
-    elif any(w in text for w in ["party", "night out", "club", "celebration", "birthday", "party / night out", "cocktail", "gala"]):
-        profile["occasion"] = "party"
-    elif any(w in text for w in ["festive", "festival", "diwali", "puja", "navratri"]):
-        profile["occasion"] = "festive"
-    elif any(w in text for w in ["casual", "everyday", "daily", "weekend", "relaxed", "comfortable", "casual / everyday", "normal wear"]):
-        profile["occasion"] = "casual"
-    elif any(w in text for w in ["trending", "trending looks", "runway", "latest"]):
-        profile["occasion"] = "trending"
-    elif any(w in text for w in ["resort", "vacation", "holiday", "beach", "resort / vacation"]):
-        profile["occasion"] = "resort"
-
-    if any(w in text for w in ["hourglass", "curvy", "balanced"]):
-        profile["bodyShape"] = "hourglass"
-    elif any(w in text for w in ["pear", "wider hips", "hip heavy"]):
-        profile["bodyShape"] = "pear"
-    elif any(w in text for w in ["apple", "midsection", "tummy"]):
-        profile["bodyShape"] = "apple"
-    elif any(w in text for w in ["rectangle", "straight", "athletic build"]):
-        profile["bodyShape"] = "rectangle"
-
-    return profile
-
-
-# ── Recommendation matrix ─────────────────────────────────────────────────────
-
-_RECS: dict = {
-    ("petite", "fair", "wedding"): (["vtx-frock-floral", "vtx-top-slimfit"], "The Aditi Floral A-Line frock is a dream for petite frames — the A-line silhouette creates beautiful length, and the French blue floral is absolutely gorgeous against fair skin. The Blush Pink slim-fit top is a great second option if you prefer separates for a more flexible look."),
-    ("petite", "fair", "casual"): (["vtx-top-slimfit", "vtx-pants-beige"], "The Blush Pink slim-fit top with the Linen Wide-Leg Trousers is a chic casual pairing. The high waist on the trousers adds lovely length to your frame — perfect for your height!"),
-    ("petite", "fair", "office"): (["vtx-top-vneck", "vtx-pants-beige"], "The navy V-neck collared knit top is structured and polished — great for office. Pair it with the high-waisted linen trousers; the vertical stripe detail elongates your silhouette beautifully."),
-    ("petite", "fair", "party"): (["vtx-frock-floral"], "A floral A-line frock for a party? Absolutely yes! The French blue will make you stand out, and the A-line cut gives you that elegant flowy movement while flattering your petite frame perfectly."),
-    ("petite", "wheatish", "wedding"): (["vtx-frock-floral", "vtx-top-checked"], "For your warm wheatish skin tone, the French blue floral frock creates a beautiful contrast — you'll absolutely glow! If you'd prefer separates, the Caramel Checked top is a stunning match for wheatish skin."),
-    ("petite", "wheatish", "casual"): (["vtx-top-tieup", "vtx-pants-beige"], "The Olive Green tie-up top is *perfect* for your skin tone — earthy greens bring out the warmth in wheatish complexions beautifully. Pair it with the high-waisted linen trousers for a chic everyday look."),
-    ("petite", "wheatish", "office"): (["vtx-top-checked", "vtx-pants-beige"], "The Caramel Checked collared top is a wonderful office pick — that warm brown checks complement wheatish skin tone gorgeously, and it has a polished collar that reads professional."),
-    ("petite", "dusky", "wedding"): (["vtx-frock-textured", "vtx-top-vneck"], "For your gorgeous dusky complexion and a wedding, the Powder Blue Textured Midi Frock is *chef's kiss* — jewel-adjacent blues and bold structure make dusky skin tones radiate. The Navy V-neck is a stunning alternative if you prefer a two-piece look."),
-    ("petite", "dusky", "casual"): (["vtx-top-tieup", "vtx-top-vneck"], "Olive green and navy are both brilliant for dusky skin tones — they make your complexion glow. The Tie-Up Halter Top is a playful summer pick, and the Navy V-neck is more structured if you want something versatile."),
-    ("petite", "dusky", "office"): (["vtx-top-vneck", "vtx-pants-beige"], "The Navy V-neck knit top is a powerhouse for dusky skin — the deep navy creates a stunning contrast and the structured collar looks incredibly polished at the office."),
-    ("regular", "fair", "wedding"): (["vtx-frock-textured", "vtx-frock-floral"], "You have the most versatile frame — both our frocks will look beautiful on you! The Powder Blue Textured Midi with puff sleeves is perfect for an elevated wedding look. The Aditi Floral is a lighter, breezier option if the ceremony is outdoors."),
-    ("regular", "fair", "casual"): (["vtx-top-wrap", "vtx-pants-beige"], "The Sky Blue Wrap Top with bishop cuffs is elegant yet relaxed — perfect for your fair skin. Pair it with the linen wide-leg trousers and you have a polished casual look that works for brunch, errands, or a day out."),
-    ("regular", "fair", "office"): (["vtx-top-vneck", "vtx-pants-flared"], "The structured Navy V-neck with the High-Waisted Flared Trousers is a sleek, professional combination. The flared silhouette balances beautifully with your regular height — very editorial."),
-    ("regular", "fair", "party"): (["vtx-frock-textured"], "The Puff-Sleeve Textured Midi Frock is made for a party! The structured puff sleeves and embossed jacquard texture read 'statement piece' — you'll absolutely own the room."),
-    ("regular", "wheatish", "wedding"): (["vtx-frock-floral", "vtx-top-checked"], "The French Blue Floral Frock is a classic choice — the blue against wheatish skin is timeless and elegant for a wedding. If you prefer separates, the Caramel Checked top paired with wide-leg trousers creates a chic, coordinated look."),
-    ("regular", "wheatish", "casual"): (["vtx-top-tieup", "vtx-top-checked"], "Olive green and caramel are your best friends — both these shades complement wheatish skin tones beautifully. The Tie-Up Halter Top is perfect for warm days; the Caramel Checked Top for cooler ones."),
-    ("regular", "wheatish", "office"): (["vtx-top-checked", "vtx-pants-flared"], "The Caramel Checked Collared Top is a brilliant office piece — structured, warm-toned, and polished. Pair it with the Flared Tailored Trousers for a complete professional look."),
-    ("regular", "dusky", "wedding"): (["vtx-frock-floral", "vtx-top-vneck"], "The French Blue Aditi Frock is stunning on dusky skin tones — the bold blue creates a jewel-tone effect that makes your complexion absolutely glow at a wedding. The Navy V-neck top is a strong alternative for a more modern look."),
-    ("regular", "dusky", "casual"): (["vtx-top-tieup", "vtx-top-wrap"], "Olive green and sky blue stripes are brilliant colour choices for your complexion. The Tie-Up Halter is vibrant and playful; the Wrap Top is more elevated. Both will look gorgeous on you!"),
-    ("regular", "dusky", "office"): (["vtx-top-vneck", "vtx-pants-flared"], "The Navy V-neck Knit Top is a showstopper for dusky skin in an office setting — the deep navy reads authoritative and chic. Pair it with the flared trousers for a complete professional look."),
-    ("tall", "fair", "wedding"): (["vtx-frock-textured", "vtx-pants-beige"], "Oh, tall frames can truly rock structured midi dresses — the Puff-Sleeve Textured Midi Frock will look *incredible* on you. The powder blue and bold silhouette are made for tall figures at weddings! As an alternative, the wide-leg linen trousers with a wrap top make a very elegant ensemble."),
-    ("tall", "fair", "casual"): (["vtx-pants-beige", "vtx-top-wrap"], "Wide-leg trousers are absolutely your thing — tall frames carry them effortlessly. The Linen Striped Wide-Legs with the Sky Blue Wrap Top is a chic, fashion-forward casual look. That sky blue is gorgeous against fair skin!"),
-    ("tall", "fair", "office"): (["vtx-pants-flared", "vtx-top-vneck"], "The Flared Tailored Trousers look especially striking on tall frames — the dramatic flare is something only you can truly pull off. Pair with the Navy V-neck for a polished, editorial office look."),
-    ("tall", "wheatish", "wedding"): (["vtx-frock-floral", "vtx-pants-flared"], "The Aditi Floral Frock on a tall frame at a wedding — absolutely stunning! The flowy A-line will move beautifully at your height. Alternatively, the Flared Trousers with the Olive Green or Caramel top creates a very chic modern wedding guest look."),
-    ("tall", "wheatish", "casual"): (["vtx-pants-beige", "vtx-top-tieup"], "Wide-leg linen trousers are *made* for tall figures — and paired with the Olive Green Tie-Up Top, that earthy colour palette will complement your wheatish skin beautifully for a relaxed, stylish day."),
-    ("tall", "wheatish", "office"): (["vtx-pants-flared", "vtx-top-checked"], "The Flared Trousers + Caramel Checked Top is a power combination for tall frames at the office — the warm caramel tones are perfect for wheatish skin, and the structured silhouette looks very polished."),
-    ("tall", "dusky", "wedding"): (["vtx-frock-textured", "vtx-pants-flared"], "A tall frame with dusky skin in the Textured Midi Frock — honestly one of the most striking combinations possible! The powder blue against deep skin tones creates a jewel-toned contrast that will have every eye in the room on you. If you prefer separates, the flared trousers + navy top is equally commanding."),
-    ("tall", "dusky", "casual"): (["vtx-pants-flared", "vtx-top-tieup"], "Wide-leg flared trousers look *incredible* on tall frames, and the Olive Green Tie-Up Top is a gorgeous earthy complement to dusky skin. This is a very fashion-forward casual look!"),
-    ("tall", "dusky", "office"): (["vtx-pants-flared", "vtx-top-vneck"], "This is one of my favourite combinations — Flared Tailored Trousers + Navy V-neck on a tall frame with dusky skin. The navy creates a striking contrast, the silhouette is powerful, and the whole look reads very senior and stylish."),
-    ("tall", "dusky", "party"): (["vtx-frock-floral", "vtx-frock-textured"], "Two words: show-stopper. The French Blue Floral Frock on a tall frame with dusky skin is exactly the kind of look people remember. The blue creates a jewel-tone effect against your complexion. The Textured Midi is a great alternative if you want something more structured."),
-}
-
-_FALLBACK_RECS: dict = {
-    "fair": (["vtx-frock-floral", "vtx-top-slimfit", "vtx-top-wrap"], "Based on your fair complexion, I'm drawn to our cooler, softer tones — the French Blue Floral Frock, the Blush Pink Top, and the Sky Blue Wrap Top will all complement you beautifully."),
-    "wheatish": (["vtx-top-tieup", "vtx-top-checked", "vtx-pants-beige"], "Earthy, warm tones look stunning on wheatish skin! The Olive Green Tie-Up Top, the Caramel Checked Top, and the Oatmeal Linen Trousers are all made for your complexion."),
-    "dusky": (["vtx-top-vneck", "vtx-frock-floral", "vtx-top-tieup"], "Jewel tones and bold colours are your superpower! Navy, French Blue, and Olive Green all make dusky skin tones absolutely radiate. These three pieces are a great starting point."),
-    "petite": (["vtx-frock-floral", "vtx-pants-beige", "vtx-top-slimfit"], "For petite frames, A-line silhouettes and high-waisted cuts are your best friend — they create beautiful length. Here are three pieces that'll look especially lovely on you."),
-    "regular": (["vtx-frock-textured", "vtx-top-wrap", "vtx-pants-flared"], "You have a wonderfully versatile frame — most of our collection will look great on you! Here are three of my current favourites that I think you'll love."),
-    "tall": (["vtx-pants-flared", "vtx-frock-textured", "vtx-pants-beige"], "Tall frames can wear wide-leg trousers and bold silhouettes like nobody else! Here are three pieces that'll look especially striking at your height."),
-}
-
-
-def _product_tags(ids: list) -> str:
-    return " ".join(f"[PRODUCT:{i}]" for i in ids)
-
-
-def _profile_tag(profile: dict) -> str:
-    if not profile:
-        return ""
-    return f" [PROFILE:{json.dumps(profile, separators=(',', ':'))}]"
-
-
-# ── Mock chat ─────────────────────────────────────────────────────────────────
-
-def mock_chat(messages: list, profile: dict, db=None, user_id: str = None, session_id: str = None) -> tuple[str, list]:
-    extracted = _extract_profile(messages)
-    merged = {**profile, **extracted}
-
-    user_turn_count = sum(1 for m in messages if m["role"] == "user")
-    last_user = messages[-1]["content"].lower() if messages else ""
-
-    h = merged.get("height")
-    s = merged.get("skinTone")
-    o = merged.get("occasion")
-
-    profile_tag = _profile_tag(merged) if merged != profile else ""
-    executed_tools = []
-
-    # Priority 1: Order Tracking Check
-    if any(w in last_user for w in ["order", "track", "tracking", "delivery status", "where is my order", "where is my package"]):
-        import re
-        from app.services.chat_tools import execute_tool
-        order_match = re.search(r"ORD-[\w-]+|[0-9a-f]{8}-[0-9a-f]{4}", last_user, re.I)
-        order_id = order_match.group(0) if order_match else None
-        
-        if not order_id and db is not None and user_id:
-            from app.models.order import Order
-            latest = db.query(Order).filter(Order.user_id == user_id).order_by(Order.placed_at.desc()).first()
-            if latest:
-                order_id = latest.id
-        
-        if order_id and db is not None:
-            res = execute_tool("get_order_status", {"order_id": order_id}, db=db, user_id=user_id, session_id=session_id)
-            executed_tools.append({"tool": "get_order_status", "result": res})
-            if res.get("authorized"):
-                reply = (
-                    f"I located your luxury order **#{res['order_id']}**! 📦\n\n"
-                    f"• **Status:** {res['status']}\n"
-                    f"• **Courier:** {res['courier']}\n"
-                    f"• **Tracking AWB:** `{res['tracking_awb']}`\n"
-                    f"• **Estimated Delivery:** {res['estimated_delivery']}\n"
-                    f"• **Order Total:** {res['total_amount']}\n\n"
-                    "Would you like to view item details or connect with our concierge? "
-                    "[CHIPS:Order details|Return policy|Talk to human advisor]"
-                )
-                return reply, executed_tools
-        return (
-            "I can track your order status in real time! Please sign in to the account that placed the order, then share your Order ID (e.g. #ORD-2026-1048). "
-            "[CHIPS:Check recent order|Return policy|Contact human concierge]",
-            executed_tools
-        )
-
-    # Priority 2: Order Cancellation Check
-    if any(w in last_user for w in ["cancel order", "cancel my order", "cancellation"]):
-        import re
-        from app.services.chat_tools import execute_tool
-        order_match = re.search(r"ORD-[\w-]+|[0-9a-f]{8}-[0-9a-f]{4}", last_user, re.I)
-        order_id = order_match.group(0) if order_match else None
-        if not order_id and db is not None and user_id:
-            from app.models.order import Order
-            latest = db.query(Order).filter(Order.user_id == user_id).order_by(Order.placed_at.desc()).first()
-            if latest:
-                order_id = latest.id
-        if order_id and db is not None:
-            res = execute_tool("cancel_order", {"order_id": order_id, "reason": "Customer chat cancellation"}, db=db, user_id=user_id, session_id=session_id)
-            executed_tools.append({"tool": "cancel_order", "result": res})
-            return res.get("message", "Order cancellation processed."), executed_tools
-        return "To cancel an order, please specify the Order ID you wish to cancel.", executed_tools
-
-    # Priority 3: Human Concierge Escalation Check
-    if any(w in last_user for w in ["human", "agent", "representative", "escalate", "support ticket", "complaint", "talk to someone"]):
-        from app.services.chat_tools import execute_tool
-        if db is not None:
-            res = execute_tool("connect_to_human", {"summary": f"Customer requested human advisor: {last_user}"}, db=db, user_id=user_id, session_id=session_id)
-            executed_tools.append({"tool": "connect_to_human", "result": res})
-            return f"🛎️ {res.get('message', 'Connecting you to our Human Atelier Team.')} [CHIPS:Check order status|Return policy|Continue styling]", executed_tools
-        return "I have alerted our Human Atelier Concierge. An advisor will connect with you shortly! [CHIPS:Start over|Current offers]", executed_tools
-
-    # Priority 4: Return Policy / Eligibility Check
-    if any(w in last_user for w in ["return policy", "returns", "exchange", "refund", "return item"]):
-        return (
-            "Our luxury policy offers **14-day complimentary returns and exchanges** on all unworn garments with original atelier tags intact. "
-            "Refunds are credited to your original payment method within 3-5 business days after inspection.\n\n"
-            "Would you like me to check eligibility for a specific order? "
-            "[CHIPS:Check return eligibility|Where is my order|Talk to human advisor]",
-            executed_tools
-        )
-
-    import re
-    def _has_word(words):
-        return any(re.search(rf"\b{re.escape(w)}\b", last_user) for w in words)
-
-    # Standard Actions
-    if _has_word(["start over", "reset", "again"]):
-        return (
-            "Of course! Let's start fresh. What brings you in today — are you shopping for a specific occasion, or would you like some general style advice? "
-            "[CHIPS:Wedding / Festive|Office / Work|Casual / Everyday|Party / Night out|Style advice]",
-            executed_tools
-        )
-
-    if _has_word(["try on", "tryon", "virtual try on"]):
-        return (
-            "Absolutely! Our AI Virtual Try-On lets you see exactly how any garment looks on *you* — just upload a photo and the AI drapes the outfit on your image. "
-            "Head to any product page and tap the ✨ Try On button, or click the Try On link on any product card above!",
-            executed_tools
-        )
-
-    # Multi-Occasion Handlers with Product Recommendations (Priority)
-    if _has_word(["wedding", "wedding / festive", "festive", "wedding guest", "shaadi", "wedding guest outfit ideas"]):
-        ids = ["vtx-frock-floral", "vtx-frock-textured"]
-        return (
-            "For weddings and festive celebrations, ethereal chiffon and embossed jacquard midi cuts create an enchanting, regal silhouette. "
-            "Our French Blue Aditi Floral Frock and Powder Blue Textured Jacquard are our most celebrated pieces for ceremonies. "
-            "Which of these speaks to your taste? Tap Try On to see how they look on you! "
-            + _product_tags(ids)
-            + " [CHIPS:Tell me about sizing|How to try on|Office Wear|Trending Looks]"
-            + profile_tag,
-            executed_tools
-        )
-
-    if _has_word(["sizing", "size chart", "what size", "size guide", "which size", "measurement", "measurements", "fit guide"]):
-        return (
-            "Our garments follow precision atelier sizing across XS to XXL:\n"
-            "• XS — Chest 32-34\", Waist 25-26\"\n"
-            "• S — Chest 34-36\", Waist 27-28\"\n"
-            "• M — Chest 36-38\", Waist 29-30\"\n"
-            "• L — Chest 39-41\", Waist 31-33\"\n"
-            "• XL — Chest 42-44\", Waist 34-36\"\n"
-            "• XXL — Chest 45-47\", Waist 37-39\"\n\n"
-            "For full measurements in inches and cm, tap the Size Chart tab on any product page. You can also tap 'Try On' to test fit directly in our AI Fitting Room! "
-            "[CHIPS:How to try on|Wedding / Festive|Casual / Everyday|Trending Looks]",
-            executed_tools
-        )
-
-    if any(w in last_user for w in ["offer", "offers", "discount", "sale", "current offers", "promo", "coupon"]):
-        return (
-            "Enjoy our exclusive boutique promotions! ✨\n\n"
-            "• 🎟️ **VASTRAX10** — 10% off your VIP order\n"
-            "• 👑 **VIP20** — 20% off for boutique patrons\n"
-            "• ✈️ **FREESHIP** — Complimentary Global Express Delivery\n\n"
-            "Enter any code at checkout or let me curate pieces to pair with your savings! "
-            "[CHIPS:Wedding / Festive|Office Wear|Casual / Everyday|Trending Looks]"
-            + profile_tag,
-            executed_tools
-        )
-
-
-    if _has_word(["office", "office wear", "office chic", "office capsule", "curate an office capsule look", "corporate"]):
-        ids = ["vtx-top-vneck", "vtx-pants-flared"]
-        return (
-            "For a sharp, authoritative office capsule, combining a structured V-neck knit with tailored high-waisted flared trousers creates an impeccably polished silhouette. "
-            "Here are two of our premier workwear staples: "
-            + _product_tags(ids)
-            + " [CHIPS:Tell me about sizing|How to try on|Casual / Everyday|Trending Looks]"
-            + profile_tag,
-            executed_tools
-        )
-
-    if _has_word(["casual", "casual wear", "casual / everyday", "relaxed", "normal wear", "relaxed weekend casual styling"]):
-        ids = ["vtx-top-slimfit", "vtx-pants-beige"]
-        return (
-            "For relaxed casual elegance, breathable linen wide-leg trousers paired with a soft ribbed poplin top deliver all-day comfort with high-fashion ease. "
-            "Here is our signature casual combination: "
-            + _product_tags(ids)
-            + " [CHIPS:Tell me about sizing|How to try on|Trending Looks|Resort / Vacation]"
-            + profile_tag,
-            executed_tools
-        )
-
-    if _has_word(["trending", "trending looks", "runway", "trending pieces this week"]):
-        ids = ["vtx-frock-textured", "vtx-top-tieup"]
-        return (
-            "Here are the top trending pieces turning heads at the atelier this week! "
-            "Our Puff-Sleeve Textured Midi Frock and Lime Olive Tie-Up Neck Top are leading contemporary luxury style edits. "
-            "Tap Try On to see them in our AI Fitting Room! "
-            + _product_tags(ids)
-            + " [CHIPS:How to try on|Tell me about sizing|Wedding / Festive|Office Wear]"
-            + profile_tag,
-            executed_tools
-        )
-
-    if _has_word(["party", "party / night out", "cocktail", "night out", "evening gala", "curate an evening gala look"]):
-        ids = ["vtx-frock-textured", "vtx-top-wrap"]
-        return (
-            "For an evening gala or cocktail night, dramatic textures and flowing satin drape command attention effortlessly. "
-            "Our Puff-Sleeve Jacquard Midi and Sky Blue Wrap Top are immaculate choices for evening events: "
-            + _product_tags(ids)
-            + " [CHIPS:Tell me about sizing|How to try on|Wedding / Festive|Trending Looks]"
-            + profile_tag,
-            executed_tools
-        )
-
-    if _has_word(["resort", "resort / vacation", "vacation", "holiday", "beach"]):
-        ids = ["vtx-top-wrap", "vtx-pants-beige"]
-        return (
-            "For resort getaways and summer travels, effortless movement and light-catching fabrics are paramount. "
-            "Our Sky Blue Wrap Top paired with Oatmeal Linen Striped Trousers makes an iconic vacation ensemble: "
-            + _product_tags(ids)
-            + " [CHIPS:How to try on|Tell me about sizing|Casual / Everyday]"
-            + profile_tag,
-            executed_tools
-        )
-
-    if any(w in last_user for w in ["why", "tell me why", "suit me", "explain"]):
-        ids = ["vtx-frock-floral", "vtx-pants-beige"]
-        if s and _FALLBACK_RECS.get(s):
-            ids = _FALLBACK_RECS.get(s)[0][:2]
-        return (
-            "Absolutely! I look at three things: your height, your skin tone, and the occasion. "
-            "For instance, based on your profile, I selected these pieces because their colours "
-            "complement your complexion beautifully, and the silhouettes are tailored to flatter your frame. "
-            "Here they are again so you can see the details and Try them on! "
-            + _product_tags(ids)
-            + " [CHIPS:How to try on|Tell me about sizing|Show more options]"
-            + _profile_tag(merged)
-        )
-
-    if any(w in last_user for w in ["stripe", "stripes"]):
-        return (
-            "Great question! Vertical stripes are a petite person's best friend — they draw the eye up and down, creating the illusion of height. "
-            "For tall frames, horizontal or bold diagonal stripes add wonderful presence and width. "
-            "Our Linen Striped Wide-Leg Trousers have a subtle vertical stripe that looks chic on almost every frame! "
-            "[PRODUCT:vtx-pants-beige]" + profile_tag
-        )
-
-    if any(w in last_user for w in ["colour", "color", "colour suit", "what colour"]):
-        if s == "dusky":
-            return (
-                "For dusky skin tones, jewel tones are absolutely magical — navy, emerald, royal blue, deep purple. "
-                "Bold brights like olive green and sky blue also make your complexion radiate. "
-                "What to avoid: muted, greyed-out, or dusty tones — they can look flat against rich skin. "
-                "Here are two pieces from our collection that'll look stunning on you: "
-                "[PRODUCT:vtx-top-vneck] [PRODUCT:vtx-frock-floral]" + profile_tag
-            )
-        elif s == "wheatish":
-            return (
-                "Wheatish skin tones are so beautifully warm — earth tones, coral, mustard, olive green, and teal all complement them perfectly. "
-                "The caramel and olive pieces in our collection were practically made for you! "
-                "[PRODUCT:vtx-top-tieup] [PRODUCT:vtx-top-checked]" + profile_tag
-            )
-        elif s == "fair":
-            return (
-                "Fair skin tones glow beautifully in cool pastels and soft tones — powder blue, blush pink, lavender, and French blue are all wonderful. "
-                "Here are two of our pieces that'll look especially lovely: "
-                "[PRODUCT:vtx-frock-floral] [PRODUCT:vtx-top-slimfit]" + profile_tag
-            )
-        return "Colour choice depends a lot on your skin tone! Could you tell me — is your skin tone fair, wheatish, or dusky? [CHIPS:Fair|Wheatish|Dusky]"
-
-    if any(w in last_user for w in ["body shape", "body type", "figure", "pear", "hourglass", "apple", "rectangle"]):
-        bs = merged.get("bodyShape", "")
-        if "pear" in last_user or bs == "pear":
-            return (
-                "For pear-shaped frames (wider hips), the goal is to balance the silhouette by drawing attention upward. "
-                "A-line frocks work beautifully — they skim the hips without clinging. "
-                "Structured shoulders and wide-neck tops also help balance proportions. "
-                "The Aditi Floral Frock is a brilliant pick for you! [PRODUCT:vtx-frock-floral]"
-                + _profile_tag({**merged, "bodyShape": "pear"})
-            )
-        elif "hourglass" in last_user or bs == "hourglass":
-            return (
-                "Hourglass frames are all about showing off that beautiful waist! Wrap styles, fitted tops, and belted dresses are your best look. "
-                "The Wrap Style Top with a tucked-in or belted finish would be gorgeous — and the slim-fit top too! "
-                "[PRODUCT:vtx-top-wrap] [PRODUCT:vtx-top-slimfit]"
-                + _profile_tag({**merged, "bodyShape": "hourglass"})
-            )
-        elif "apple" in last_user or bs == "apple":
-            return (
-                "For apple-shaped frames, the key is creating a defined silhouette with V-necks, flowy fabrics, and empire-waist cuts. "
-                "The V-neck Knit Top is a brilliant choice — it draws the eye vertically and creates a slimming, elongated look. "
-                "[PRODUCT:vtx-top-vneck]"
-                + _profile_tag({**merged, "bodyShape": "apple"})
-            )
-        return (
-            "Knowing your body shape helps me recommend the most flattering cuts! Which describes you best? "
-            "[CHIPS:Hourglass (balanced curves)|Pear (wider hips)|Apple (midsection fullness)|Rectangle (straight, athletic)]"
-        )
-
-    if h and s and o:
-        rec = _RECS.get((h, s, o))
-        if rec:
-            ids, why = rec
-            return (
-                f"{why}\n\n" + _product_tags(ids)
-                + "\n\nWould you like to explore more options, or shall I guide you to the virtual try-on for any of these?"
-                + " [CHIPS:Show more options|How to try on|Tell me about sizing]"
-                + _profile_tag(merged)
-            )
-        fallback = _FALLBACK_RECS.get(s) or _FALLBACK_RECS.get(h)
-        if fallback:
-            ids, why = fallback
-            return (
-                f"{why}\n\n" + _product_tags(ids)
-                + " [CHIPS:Show more options|How to try on]"
-                + _profile_tag(merged)
-            )
-
-    if not o and user_turn_count == 1:
-        return (
-            "Lovely! I'd love to help you find the perfect look. "
-            "First — what's the occasion you're shopping for? "
-            "[CHIPS:Wedding / Festive|Office / Work|Casual / Everyday|Party / Night out]"
-        )
-
-    if o and not h:
-        occasion_text = {"wedding": "a wedding", "office": "office", "casual": "everyday wear", "party": "a party", "festive": "a festive occasion"}.get(o, "this occasion")
-        return (
-            f"Perfect, {occasion_text} — great taste! Now, what's your height? This helps me suggest the most flattering silhouettes for you. "
-            "[CHIPS:Petite (under 5'2\")|Regular (5'2\"–5'6\")|Tall (5'6\"+)]"
-            + _profile_tag(merged)
-        )
-
-    if h and not s:
-        height_text = {"petite": "Petite frames have such an elegant look", "regular": "Regular height is wonderfully versatile", "tall": "Tall frames can wear such beautiful silhouettes"}.get(h, "")
-        return (
-            f"{height_text} — I have some wonderful ideas already! One more thing: what's your skin tone? "
-            "This helps me match the most flattering colours from our collection. "
-            "[CHIPS:Fair|Wheatish / Medium|Dusky]" + _profile_tag(merged)
-        )
-
-    if h and s and not o:
-        return (
-            "Almost there! What's the occasion you're dressing for? "
-            "[CHIPS:Wedding / Festive|Office / Work|Casual / Everyday|Party / Night out]"
-            + _profile_tag(merged)
-        )
-
-    return (
-        "I'd love to help you find the perfect look! Could you tell me what you're shopping for today? "
-        "[CHIPS:Wedding / Festive|Office / Work|Casual / Everyday|Party / Night out|Style advice]"
-    )
-
-
-# ── Live Claude API ────────────────────────────────────────────────────────────
-
-_CATALOG = """
-PRODUCT CATALOG (9 items — always recommend from this list only):
-
-1. ID: vtx-frock-floral | Name: Aditi Floral A-Line Frock | Category: dress
-   Fabric: Pure Chiffon Crepe | Colour: French Blue Floral | Price: ₹2,499
-   Silhouette: A-line | Best for: petite/regular frames, fair/dusky skin, weddings/parties
-
-2. ID: vtx-frock-textured | Name: Puff-Sleeve Textured Midi Frock | Category: dress
-   Fabric: Embossed Jacquard Cotton | Colour: Powder Blue | Price: ₹2,999
-   Silhouette: Structured midi | Best for: tall/regular frames, dusky/wheatish skin, weddings/parties
-
-3. ID: vtx-pants-beige | Name: Linen Striped Wide-Leg Trousers | Category: pants
-   Fabric: Premium Linen | Colour: Oatmeal Beige | Price: ₹1,999
-   Silhouette: High-waisted wide-leg with vertical stripes | Best for: all heights, casual/office
-
-4. ID: vtx-pants-flared | Name: High-Waisted Flared Tailored Trousers | Category: pants
-   Fabric: Tailored Ponte Knit | Colour: Sand Beige | Price: ₹2,299
-   Silhouette: Dramatic flared leg | Best for: tall/regular, office/formal
-
-5. ID: vtx-top-vneck | Name: V-Neck Collared Knit Top | Category: tops
-   Fabric: Knit Rib Cotton | Colour: Navy & Light Blue | Price: ₹1,499
-   Best for: dusky/fair skin, apple body shape, office/casual
-
-6. ID: vtx-top-tieup | Name: Tie-Up Neck Fitted Top | Category: tops
-   Fabric: Crinkled Chiffon | Colour: Lime Olive Green | Price: ₹1,299
-   Best for: wheatish/dusky skin, hourglass, casual/party
-
-7. ID: vtx-top-checked | Name: Checked Collared Button Top | Category: tops
-   Fabric: Gingham Seersucker | Colour: Caramel Brown | Price: ₹1,399
-   Best for: wheatish skin, office/casual
-
-8. ID: vtx-top-slimfit | Name: Slim Fit Short Sleeved Top | Category: tops
-   Fabric: Stretch Poplin | Colour: Blush Pink | Price: ₹1,699
-   Best for: fair/regular skin, hourglass, casual/office
-
-9. ID: vtx-top-wrap | Name: Wrap Style Top | Category: tops
-   Fabric: Satin Crepe | Colour: Sky Blue Stripe | Price: ₹1,799
-   Best for: fair/wheatish skin, hourglass/regular, casual/smart-casual
-"""
 
 _STYLING_RULES = """
 STYLING, PALETTE & FIT ENGINE:
@@ -499,14 +19,9 @@ STYLING, PALETTE & FIT ENGINE:
   * Pear: structured/accented shoulders, statement necklines, fluid A-line bottoms.
   * Athletic/Rectangle: defined waistlines, ruffles, asymmetric drapes, peplums.
 - Garment Sizing & Fit Consultation:
-  * Size Chart standards: XS (Chest 32-34", Waist 25-26"), S (Chest 34-36", Waist 27-28"), M (Chest 36-38", Waist 29-30"), L (Chest 39-41", Waist 31-33"), XL (Chest 42-44", Waist 34-36"), XXL (Chest 45-47", Waist 37-39"). Metric equivalents: 1 inch ≈ 2.54 cm.
-  * Suggest shoppers reference the interactive Size Chart tab on each product page for precision fit.
+  * Refer shoppers to the actual product Size Chart for measurements; do not invent size availability or fit guarantees.
 - AI Fitting Room (Virtual Try-On):
   * Invite shoppers to test recommended pieces virtually: "Tap 'Try On' to see how this drapes on your photo in our AI Fitting Room."
-- Active Promotions:
-  * VASTRAX10: 10% off VIP invitation.
-  * VIP20: 20% off for boutique patrons.
-  * FREESHIP: Complimentary express shipping.
 """
 
 _SYSTEM_PROMPT_TEMPLATE = """{admin_instructions}
@@ -519,6 +34,7 @@ ACTIVE STORE PROMOTIONS:
 
 CONVERSATIONAL & CARD RENDERING DIRECTIVES:
 1. STRICT CATALOG GROUNDING: Recommend ONLY garments listed in the live catalog above with valid IDs. Never invent or hallucinate products or brands.
+   Do not guess missing fabric, colour, price, stock, discounts, or shipping details. If no products are published, say so plainly.
 2. MANDATORY INTERACTIVE CARDS: When recommending any catalog item, ALWAYS include [PRODUCT:product-id] inline (e.g. [PRODUCT:vtx-top-wrap]). The UI uses this tag to render an interactive card with photo, price, 'Try On', and 'Add to Bag'.
 3. CURATION & PACING: Recommend 1-3 tailored pieces per query. Keep responses concise (2-4 sentences). Ask at most ONE focused follow-up question.
 4. ACTIVITY-AWARE SUGGESTION CHIPS: Format quick-reply buttons at the very end of your response as [CHIPS:Opt1|Opt2|Opt3].
@@ -533,7 +49,7 @@ CUSTOMER CONTEXT:
 
 
 def _get_catalog_context(db=None) -> str:
-    """Fetch live published products from database, falling back to default boutique list."""
+    """Fetch published products only; never expose the legacy demo catalog."""
     if db is not None:
         try:
             from app.models.product import Product
@@ -542,10 +58,10 @@ def _get_catalog_context(db=None) -> str:
                 lines = [f"LIVE BOUTIQUE CATALOG ({len(products)} active products — recommend strictly from this list):"]
                 for i, p in enumerate(products, 1):
                     cat_name = p.category.name if p.category else "Boutique Collection"
-                    fabric = p.fabric or "Premium Luxury Fabric"
-                    colour = p.colour or "Signature Shade"
-                    occasion = p.occasion or "Any Occasion"
-                    price = f"₹{p.price_selling:,.0f}" if p.price_selling else "₹1,999"
+                    fabric = p.fabric or "not specified"
+                    colour = p.colour or "not specified"
+                    occasion = p.occasion or "not specified"
+                    price = f"₹{p.price_selling:,.0f}" if p.price_selling is not None else "not specified"
                     desc = p.description or ""
                     lines.append(f"{i}. ID: {p.id} | Name: {p.name} | Category: {cat_name} | Occasion: {occasion}")
                     lines.append(f"   Fabric: {fabric} | Colour: {colour} | Price: {price}")
@@ -554,14 +70,14 @@ def _get_catalog_context(db=None) -> str:
                 return "\n".join(lines)
         except Exception as e:
             logger.warning("Could not load products from database: %s", e)
-    return _CATALOG
+    return "LIVE BOUTIQUE CATALOG: No published products are currently available."
 
 
 def _build_system_prompt(profile: dict, db=None, context_url: str = None, cart_items: list = None) -> str:
     from app.api.routes.settings import get_app_settings
     app_settings = get_app_settings()
     admin_instructions = getattr(app_settings, "stylistSystemPrompt", "You are Vastra, the personal style advisor for VastraX boutique.")
-    active_offers = getattr(app_settings, "activeOffers", "Use code VASTRA10 for 10% off; Free express shipping on orders over ₹2,500.")
+    active_offers = (app_settings.get("activeOffers", "") if isinstance(app_settings, dict) else getattr(app_settings, "activeOffers", "")) or "No verified offers are currently listed."
 
     catalog_text = _get_catalog_context(db)
     if profile:
@@ -584,12 +100,11 @@ def _build_system_prompt(profile: dict, db=None, context_url: str = None, cart_i
     )
 
 
-def _call_minimax(
+def _call_qwen(
     messages: list,
     system_prompt: str,
-    api_key: str,
-    model: str = "MiniMax-M3",
-    base_url: str = "https://api.minimax.io/v1/chat/completions",
+    model: str = "qwen3.5:9b-q4_K_M",
+    base_url: str = "http://stylist-model:11434/api/chat",
     db=None,
     user_id: str = None,
     session_id: str = None,
@@ -597,84 +112,72 @@ def _call_minimax(
     from app.core.exceptions import BadGatewayError
     from app.services.chat_tools import CHAT_TOOLS, execute_tool
 
-    minimax_messages = [{"role": "system", "content": system_prompt}] + messages
+    qwen_messages = [{"role": "system", "content": system_prompt}] + messages
     executed_tools = []
     try:
-        with httpx.Client(timeout=60.0) as client:
-            headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+        with httpx.Client(timeout=120.0, trust_env=False) as client:
 
             def complete(include_tools: bool):
                 payload = {
                     "model": model,
-                    "messages": minimax_messages,
-                    "max_completion_tokens": 4096,
-                    "temperature": 0.7,
-                    "reasoning_split": True,
+                    "messages": qwen_messages,
+                    "options": {"num_predict": 768, "num_ctx": 4096, "temperature": 0.6},
+                    "think": False,
+                    "stream": False,
                 }
                 if include_tools and db is not None:
                     payload["tools"] = CHAT_TOOLS
-                    payload["tool_choice"] = "auto"
-                res = client.post(base_url, headers=headers, json=payload)
+                res = client.post(base_url, json=payload)
                 if res.status_code != 200:
-                    logger.error("MiniMax API returned HTTP %s", res.status_code)
-                    raise BadGatewayError(f"MiniMax service returned HTTP {res.status_code}")
+                    logger.error("Local Qwen API returned HTTP %s", res.status_code)
+                    raise BadGatewayError("Stylist model is temporarily unavailable")
                 data = res.json()
                 if not isinstance(data, dict):
-                    raise BadGatewayError("Invalid response structure from MiniMax provider")
-                base_resp = data.get("base_resp") or {}
-                if not isinstance(base_resp, dict):
-                    raise BadGatewayError("Invalid response structure from MiniMax provider")
-                if base_resp.get("status_code", 0) != 0:
-                    logger.error("MiniMax provider error %s", base_resp.get("status_code"))
-                    raise BadGatewayError("MiniMax provider rejected the request")
-                choices = data.get("choices")
-                if (
-                    not isinstance(choices, list)
-                    or not choices
-                    or not isinstance(choices[0], dict)
-                    or not isinstance(choices[0].get("message"), dict)
-                ):
-                    raise BadGatewayError("Invalid response structure from MiniMax provider")
-                return choices[0]["message"]
+                    raise BadGatewayError("Invalid response from local stylist model")
+                if not isinstance(data.get("message"), dict):
+                    raise BadGatewayError("Invalid response from local stylist model")
+                return data["message"]
 
             response_message = complete(include_tools=True)
             tool_calls = response_message.get("tool_calls") or []
             if tool_calls:
                 if db is None or len(tool_calls) > 3:
-                    raise BadGatewayError("MiniMax requested unsupported stylist actions")
+                    raise BadGatewayError("Stylist requested unsupported actions")
                 # Validate the whole batch before executing anything so a malformed
                 # later call cannot leave earlier side effects (e.g. cancel_order) applied.
                 parsed_calls = []
                 for call in tool_calls:
                     function = call.get("function") if isinstance(call, dict) else None
-                    if not isinstance(function, dict) or not call.get("id") or not function.get("name"):
-                        raise BadGatewayError("Invalid MiniMax tool call")
+                    if not isinstance(function, dict) or not function.get("name"):
+                        raise BadGatewayError("Invalid stylist tool call")
                     try:
-                        arguments = json.loads(function.get("arguments") or "{}")
+                        raw_args = function.get("arguments") or {}
+                        arguments = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
                     except (TypeError, ValueError) as exc:
-                        raise BadGatewayError("Invalid MiniMax tool arguments") from exc
+                        raise BadGatewayError("Invalid stylist tool arguments") from exc
                     if not isinstance(arguments, dict):
-                        raise BadGatewayError("Invalid MiniMax tool arguments")
-                    parsed_calls.append((call["id"], function["name"], arguments))
+                        raise BadGatewayError("Invalid stylist tool arguments")
+                    parsed_calls.append((call.get("id"), function["name"], arguments))
 
-                minimax_messages.append(response_message)
+                qwen_messages.append(response_message)
                 for call_id, name, arguments in parsed_calls:
                     result = execute_tool(name, arguments, db=db, user_id=user_id, session_id=session_id)
                     executed_tools.append({"tool": name, "arguments": arguments, "result": result})
-                    minimax_messages.append({
-                        "role": "tool", "tool_call_id": call_id, "content": json.dumps(result)
-                    })
+                    tool_message = {"role": "tool", "tool_name": name, "content": json.dumps(result)}
+                    if call_id:
+                        tool_message["tool_call_id"] = call_id
+                    qwen_messages.append(tool_message)
                 response_message = complete(include_tools=False)
 
             reply = response_message.get("content")
             if not isinstance(reply, str) or not reply.strip():
-                raise BadGatewayError("MiniMax returned an empty reply")
+                raise BadGatewayError("Stylist model returned an empty reply")
             return reply.strip(), executed_tools
     except BadGatewayError:
         raise
     except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
-        logger.error("MiniMax request failed: %s", type(exc).__name__)
-        raise BadGatewayError("MiniMax service is temporarily unavailable") from exc
+        logger.error("Local Qwen request failed: %s", type(exc).__name__)
+        raise BadGatewayError("Stylist model is temporarily unavailable") from exc
 
 
 _CLIENT_ROLES = ("user", "assistant")
@@ -701,33 +204,24 @@ def chat(
     session_id: str = None,
 ) -> tuple[str, list]:
     """
-    Shopper stylist chat. MiniMax M3 is the only provider: when it is not configured
-    or fails, a controlled error is raised (HTTP 503/502) and no scripted, OpenAI or
-    Anthropic reply is substituted.
+    Shopper stylist chat uses the self-hosted Qwen model only. An outage raises
+    a controlled error and never substitutes a scripted or remote-model reply.
     Returns: (reply_text, executed_tools_list)
     """
     from app.core.config import settings
     from app.core.exceptions import ServiceUnavailableError
 
     messages = _sanitize_client_messages(messages)
-    minimax_key = (os.getenv("MINIMAX_API_KEY", "") or getattr(settings, "minimax_api_key", "") or "").strip()
-    if not minimax_key or minimax_key.startswith("your_"):
-        logger.error("MINIMAX_API_KEY is not configured; stylist is out of service")
+    model = os.getenv("STYLIST_MODEL", "").strip() or settings.stylist_model
+    url = os.getenv("STYLIST_BASE_URL", "").strip() or settings.stylist_base_url
+    if not model or not url:
         raise ServiceUnavailableError("Stylist is not configured")
-
-    minimax_model = os.getenv("MINIMAX_MODEL", "").strip() or getattr(settings, "minimax_model", "") or "MiniMax-M3"
-    minimax_url = (
-        os.getenv("MINIMAX_BASE_URL", "").strip()
-        or getattr(settings, "minimax_base_url", "")
-        or "https://api.minimax.io/v1/chat/completions"
-    )
     system_prompt = _build_system_prompt(profile, db=db, context_url=context_url, cart_items=cart_items)
-    return _call_minimax(
+    return _call_qwen(
         messages=messages,
         system_prompt=system_prompt,
-        api_key=minimax_key,
-        model=minimax_model,
-        base_url=minimax_url,
+        model=model,
+        base_url=url,
         db=db,
         user_id=user_id,
         session_id=session_id,
@@ -745,7 +239,7 @@ def chat_stream(
 ):
     """
     Server-Sent Events for a streamed reply. The provider call runs eagerly (before the
-    response starts) so MiniMax outages surface as a real HTTP 502/503, not a broken stream.
+    response starts) so model outages surface as a real HTTP 502/503, not a broken stream.
     """
     reply_text, executed_tools = chat(
         messages=messages,

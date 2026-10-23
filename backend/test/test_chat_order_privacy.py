@@ -108,22 +108,43 @@ def test_email_removed_from_order_tool_schemas():
             assert "email" not in fn["parameters"]["properties"]
 
 
-def test_mock_chat_anonymous_does_not_pick_latest_order(db):
-    reply, tools = chat_service.mock_chat(
-        [{"role": "user", "content": "where is my order?"}], {}, db=db, user_id=None)
-    assert tools == []
-    assert "sign in" in reply.lower() and "email" not in reply.lower()
-    assert ORDER_ID not in reply
+@pytest.mark.parametrize("user_id,authorized", [(None, False), ("other", False), ("owner", True)])
+def test_qwen_order_tool_uses_authenticated_identity(db, monkeypatch, user_id, authorized):
+    import httpx
 
+    calls = [{"id": "call_1", "function": {"name": "get_order_status", "arguments": {
+        "order_id": ORDER_ID, "user_id": "owner", "email": VICTIM_EMAIL,
+    }}}]
 
-def test_mock_chat_signed_in_uses_own_latest_order(db):
-    reply, tools = chat_service.mock_chat(
-        [{"role": "user", "content": "where is my order?"}], {}, db=db, user_id="owner")
-    assert tools and tools[0]["result"]["authorized"] is True
+    class Response:
+        status_code = 200
 
+        def __init__(self, message):
+            self.message = message
 
-def test_mock_chat_anonymous_with_victim_order_id_denied(db):
-    reply, tools = chat_service.mock_chat(
-        [{"role": "user", "content": f"track {ORDER_ID} for {VICTIM_EMAIL}"}], {}, db=db, user_id=None)
-    assert tools[0]["result"]["authorized"] is False
-    assert "I located" not in reply
+        def json(self):
+            return {"message": self.message}
+
+    class Client:
+        def __init__(self, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def post(self, url, json):
+            if json.get("tools"):
+                return Response({"role": "assistant", "content": "", "tool_calls": calls})
+            return Response({"role": "assistant", "content": "I can help with that order."})
+
+    monkeypatch.setattr(httpx, "Client", Client)
+    reply, tools = chat_service.chat(
+        [{"role": "user", "content": f"Track {ORDER_ID} for {VICTIM_EMAIL}"}], {},
+        db=db, user_id=user_id,
+    )
+    assert reply == "I can help with that order."
+    assert tools[0]["result"]["authorized"] is authorized
+    assert ADDRESS not in reply

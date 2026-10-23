@@ -28,7 +28,7 @@ class AppSettingsSchema(BaseModel):
         "Virtual Try-On CTA: Invite shoppers to visualize outfits in the real-time AI Fitting Room via 'Try On'.\n"
         "Activity-Aware Chips: Provide contextual [CHIPS:Option1|Option2|Option3] matching user intent (styling chips for outfits, order chips only when discussing orders)."
     )
-    activeOffers: str = "VASTRAX10 (10% off VIP invitation), VIP20 (20% patron discount), FREESHIP (Complimentary express delivery)."
+    activeOffers: str = ""
 
 # In-memory store or DB-backed settings
 _current_settings = AppSettingsSchema()
