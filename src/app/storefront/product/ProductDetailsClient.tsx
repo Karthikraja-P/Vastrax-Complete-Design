@@ -50,7 +50,11 @@ function ProductContent() {
   const [activeSize, setActiveSize] = useState('M');
   const [quantity, setQuantity] = useState(1);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [isGalleryOpen, setIsGalleryOpen] = useState(false);
+  const [isZoomed, setIsZoomed] = useState(false);
+  const [zoomOrigin, setZoomOrigin] = useState("center center");
   const touchStart = useRef<{ x: number; y: number } | null>(null);
+  const swipeHandled = useRef(false);
   const [isSizeChartOpen, setIsSizeChartOpen] = useState(false);
   const { favorites, toggleFavorite: toggleFavoriteStore } = useFavorites();
 
@@ -112,6 +116,25 @@ function ProductContent() {
   const showNextImage = () => {
     selectGallerySlide((currentSlideIndex + 1) % totalSlides);
   };
+
+  useEffect(() => {
+    if (!isGalleryOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIsGalleryOpen(false);
+      if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+        event.preventDefault();
+        setIsZoomed(false);
+        setActiveImageIndex((index) => (index + (event.key === "ArrowRight" ? 1 : -1) + galleryImages.length) % galleryImages.length);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [isGalleryOpen, galleryImages.length]);
 
 
 
@@ -452,6 +475,7 @@ function ProductContent() {
                 <div
                   className="bg-white dark:bg-white rounded-[2.5rem] aspect-square relative flex items-center justify-center p-4 sm:p-8 transition-colors duration-300 overflow-hidden"
                   onTouchStart={(event) => {
+                    swipeHandled.current = false;
                     const touch = event.touches[0];
                     touchStart.current = touch ? { x: touch.clientX, y: touch.clientY } : null;
                   }}
@@ -463,6 +487,7 @@ function ProductContent() {
                     const dx = touch.clientX - start.x;
                     const dy = touch.clientY - start.y;
                     if (Math.abs(dx) > 45 && Math.abs(dx) > Math.abs(dy)) {
+                      swipeHandled.current = true;
                       if (dx < 0) showNextImage();
                       else showPreviousImage();
                     }
@@ -498,11 +523,22 @@ function ProductContent() {
                       />
                     </div>
                   ) : (
-                    <Image width={1200} height={900} unoptimized
-                      src={product.images?.[activeImageIndex] || product.image}
-                      alt={product.name}
-                    className="w-full h-full object-contain rounded-2xl bg-white p-2 md:p-4 animate-fade-in"
-                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (swipeHandled.current) { swipeHandled.current = false; return; }
+                        setIsZoomed(false);
+                        setIsGalleryOpen(true);
+                      }}
+                      aria-label={`Enlarge image ${activeImageIndex + 1} of ${product.name}`}
+                      className="h-full w-full cursor-zoom-in rounded-2xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                    >
+                      <Image width={1200} height={900} unoptimized
+                        src={product.images?.[activeImageIndex] || product.image}
+                        alt={product.name}
+                        className="w-full h-full object-contain rounded-2xl bg-white p-2 md:p-4 animate-fade-in"
+                      />
+                    </button>
                   )}
                   {totalSlides > 1 && (
                     <>
@@ -774,6 +810,70 @@ function ProductContent() {
               <p className="pt-10 text-center text-sm text-muted-foreground">No size chart is available for this product.</p>
             )}
           </section>
+        </div>
+      )}
+
+      {isGalleryOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={`${product.name} image gallery`}
+          className="fixed inset-0 z-[100] flex flex-col bg-[#111]/95 text-white"
+        >
+          <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-8">
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold">{product.name}</p>
+              <p className="text-xs text-white/60">Image {activeImageIndex + 1} of {galleryImages.length} · Tap image to zoom</p>
+            </div>
+            <button type="button" onClick={() => setIsGalleryOpen(false)} aria-label="Close image gallery" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/15 transition hover:bg-white/25 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white">
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+
+          <div className="relative mx-auto flex min-h-0 w-full max-w-7xl flex-1 items-center justify-center px-12 sm:px-20">
+            {galleryImages.length > 1 && (
+              <>
+                <button type="button" onClick={() => { setIsZoomed(false); setActiveImageIndex((index) => (index - 1 + galleryImages.length) % galleryImages.length); }} aria-label="Previous image" className="absolute left-2 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-white/15 hover:bg-white/25 sm:left-5">
+                  <ChevronLeft className="h-6 w-6" />
+                </button>
+                <button type="button" onClick={() => { setIsZoomed(false); setActiveImageIndex((index) => (index + 1) % galleryImages.length); }} aria-label="Next image" className="absolute right-2 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-white/15 hover:bg-white/25 sm:right-5">
+                  <ChevronRight className="h-6 w-6" />
+                </button>
+              </>
+            )}
+            <button
+              type="button"
+              onClick={() => setIsZoomed((value) => !value)}
+              onMouseMove={(event) => {
+                if (!isZoomed) return;
+                const bounds = event.currentTarget.getBoundingClientRect();
+                setZoomOrigin(`${((event.clientX - bounds.left) / bounds.width) * 100}% ${((event.clientY - bounds.top) / bounds.height) * 100}%`);
+              }}
+              aria-label={isZoomed ? "Zoom out of product image" : "Zoom into product image"}
+              className={`h-full w-full overflow-hidden rounded-lg bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-white ${isZoomed ? "cursor-zoom-out" : "cursor-zoom-in"}`}
+            >
+              <Image
+                src={galleryImages[activeImageIndex] || product.image}
+                alt={`${product.name}, image ${activeImageIndex + 1}`}
+                width={1600}
+                height={1600}
+                unoptimized
+                className={`h-full w-full object-contain transition-transform duration-300 ${isZoomed ? "scale-[1.8]" : "scale-100"}`}
+                style={{ transformOrigin: zoomOrigin }}
+              />
+            </button>
+          </div>
+
+          <div className="mx-auto w-full max-w-7xl px-4 pb-4 pt-3 sm:px-8">
+            <div className="flex gap-2 overflow-x-auto pb-2" role="group" aria-label="All product images">
+              {galleryImages.map((src, index) => (
+                <button key={`${src}-${index}`} type="button" onClick={() => { setActiveImageIndex(index); setIsZoomed(false); }} aria-label={`View image ${index + 1}`} aria-pressed={activeImageIndex === index}
+                  className={`h-16 w-16 shrink-0 overflow-hidden rounded-lg border-2 bg-white transition sm:h-20 sm:w-20 ${activeImageIndex === index ? "border-[#e07a3f]" : "border-transparent opacity-70 hover:opacity-100"}`}>
+                  <Image src={src} alt={`${product.name} thumbnail ${index + 1}`} width={96} height={96} unoptimized className="h-full w-full object-contain" />
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       )}
 
