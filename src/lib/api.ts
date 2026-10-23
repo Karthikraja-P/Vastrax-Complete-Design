@@ -157,7 +157,7 @@ export interface ProductImage {
   is_primary?: boolean;
   sort_order?: number;
   display_order?: number;
-  tryon_role?: "top" | "bottom" | "gallery" | null;
+  tryon_role?: "top" | "bottom" | "gallery" | "set" | null;
   [key: string]: unknown;
 }
 

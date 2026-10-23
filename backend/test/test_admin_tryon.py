@@ -150,3 +150,36 @@ def test_admin_preview_uses_one_complete_set_reference_for_both_passes(client, m
     assert calls[1][0].name == "generated-1.png"
     assert list(upload_dir.iterdir()) == []
     assert list(results_dir.iterdir()) == []
+
+
+def test_admin_preview_uses_uploaded_person_instead_of_template(client, monkeypatch, tmp_path):
+    upload_dir = tmp_path / "uploads"
+    results_dir = tmp_path / "results"
+    monkeypatch.setattr(settings, "upload_dir", str(upload_dir))
+    monkeypatch.setattr(settings, "results_dir", str(results_dir))
+    calls = []
+
+    def fake_run_fashn(person_image_path, garment_image_path, garment_type, results_dir):
+        calls.append((Path(person_image_path).name, garment_type))
+        assert Path(person_image_path).is_file()
+        assert Path(garment_image_path).is_file()
+        result = Path(results_dir) / f"generated-{len(calls)}.png"
+        result.parent.mkdir(parents=True, exist_ok=True)
+        result.write_bytes(b"preview")
+        return str(result)
+
+    monkeypatch.setattr("app.services.fashn_service.run_fashn", fake_run_fashn)
+    response = client.post(
+        "/api/v1/try-on/admin-preview",
+        headers=_admin_headers(),
+        files=[
+            ("person_image", ("person.png", _png_bytes(), "image/png")),
+            ("set_image", ("complete-set.png", _png_bytes(), "image/png")),
+        ],
+    )
+
+    assert response.status_code == 200, response.text
+    assert calls[0][0].startswith("admin-tryon-person-")
+    assert [category for _, category in calls] == ["tops", "bottoms"]
+    assert list(upload_dir.iterdir()) == []
+    assert list(results_dir.iterdir()) == []

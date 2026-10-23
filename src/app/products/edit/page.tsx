@@ -33,7 +33,7 @@ interface UploadedImage {
   file: File;
   preview: string;
   label?: string;
-  tryonRole?: "top" | "bottom" | "gallery";
+  tryonRole?: "top" | "bottom" | "gallery" | "set";
   isExisting?: boolean;
 }
 
@@ -177,7 +177,7 @@ function EditProductContent() {
                   preview: typeof i === 'string' ? i : i.s3_url || "",
                   file: new File([], "existing"),
                   isExisting: true,
-                  tryonRole: (typeof i === "string" ? "gallery" : (i.tryon_role as "top" | "bottom" | "gallery" | undefined) || "gallery") as "top" | "bottom" | "gallery"
+                  tryonRole: typeof i === "string" ? "gallery" : i.tryon_role || "gallery"
                 }))
               : prod.image ? [{ id: 'existing-0', preview: prod.image, file: new File([], "existing"), isExisting: true, tryonRole: "gallery" as const }] : [];
             setImages(imgs);
@@ -229,6 +229,13 @@ function EditProductContent() {
     };
     setImages((current) => [...current, generated]);
     showToast(`Try-on image added for ${modelName}`);
+  };
+
+  const handleSelectSetImage = (id: string) => {
+    setImages((current) => current.map((image) => ({
+      ...image,
+      tryonRole: image.id === id ? "set" : image.tryonRole === "set" ? "gallery" : image.tryonRole,
+    })));
   };
 
   const handleRemoveImage = (id: string) => {
@@ -989,6 +996,8 @@ function EditProductContent() {
 
               <AdminTryOnImageGenerator
                 productName={name}
+                images={images}
+                onSelectSetImage={handleSelectSetImage}
                 onAddImage={handleGeneratedImage}
               />
 

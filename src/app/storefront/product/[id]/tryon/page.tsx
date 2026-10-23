@@ -181,8 +181,7 @@ export default function VirtualTryOnPage() {
   const isBottoms = !twoPieceSet && fashnType === "bottoms";
   const availableTops = products.filter(p => getFashnCategory(String(p.category_name || p.category || p.category_id || ""), p.name || "") === "tops" && String(p.id) !== String(product.id));
   const setImageOptions = getGarmentImageOptions(product);
-  const primaryProductImage = getGarmentImage(product);
-  const selectedSetImage = setImageOptions.find((image) => image.url === primaryProductImage) || setImageOptions[0];
+  const selectedSetImage = setImageOptions.find((image) => image.role === "set");
   const isCombo = twoPieceSet || (isBottoms && selectedTop !== null);
 
   const startTryOnPipeline = async () => {
@@ -190,7 +189,7 @@ export default function VirtualTryOnPage() {
 
     if (twoPieceSet && !selectedSetImage) {
       setStatusType("error");
-      setStatusText("This product has no gallery image available for virtual try-on.");
+      setStatusText("A complete set photo has not been selected for this product yet.");
       return;
     }
     setIsProcessing(true);
@@ -272,7 +271,7 @@ export default function VirtualTryOnPage() {
     ? "Upload a full-body photo. We apply the product’s top and matching skirt/bottom as the two pieces of this set; no extra trouser garment is selected."
     : PHOTO_TIPS[fashnType as keyof typeof PHOTO_TIPS] || PHOTO_TIPS.tops;
   const tipLabel = twoPieceSet ? "Two-Piece Set Try-On Guide" : TIP_LABEL[fashnType as keyof typeof TIP_LABEL];
-  const productImgUrl = getGarmentImage(product);
+  const productImgUrl = twoPieceSet ? selectedSetImage?.url : getGarmentImage(product);
 
   return (
     <div className="min-h-screen bg-background text-foreground pb-20">
@@ -368,7 +367,7 @@ export default function VirtualTryOnPage() {
             )}
 
             <div className="flex gap-4 items-center">
-              <Image width={1200} height={900} unoptimized src={String(productImgUrl || "/placeholder.svg")} alt={String(product.name || "Product")} className="w-20 h-24 object-contain rounded-lg border border-border bg-[#f8f7f4] p-1" />
+              <Image width={1200} height={900} unoptimized src={String(productImgUrl || "/product-placeholder.svg")} alt={twoPieceSet ? `${product.name || "Product"} complete set` : String(product.name || "Product")} className="w-20 h-24 object-contain rounded-lg border border-border bg-[#f8f7f4] p-1" />
               <div>
                 <h4 className="text-sm font-semibold text-foreground">{product.name}</h4>
                 {!twoPieceSet && (
@@ -377,6 +376,7 @@ export default function VirtualTryOnPage() {
                   </span>
                 )}
                 <p className="text-sm font-bold text-[#e07a3f] mt-1">₹{(product.price_selling || product.price)?.toLocaleString()}</p>
+                {twoPieceSet && !selectedSetImage && <p className="mt-2 text-xs text-red-500">Complete set photo unavailable for try-on.</p>}
               </div>
             </div>
           </div>

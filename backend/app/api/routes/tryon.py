@@ -74,19 +74,22 @@ def get_admin_tryon_model_image(model_id: str):
 
 @router.post("/admin-preview")
 async def generate_admin_tryon_preview(
-    model_id: str = Form(...),
+    model_id: str | None = Form(None),
     garment_type: str = Form("tops"),
+    person_image: UploadFile | None = File(None),
     garment_image: UploadFile | None = File(None),
     bottom_image: UploadFile | None = File(None),
     set_image: UploadFile | None = File(None),
     _: User = Depends(require_admin),
 ):
-    """Generate one garment or apply a complete set reference in two passes to a curated model."""
+    """Preview a product on an uploaded person photo or a curated model."""
     from app.core.config import settings
     from app.core.exceptions import BadRequestError, InternalError
 
-    model_path = _admin_model_path(model_id)
-    if not model_path.is_file():
+    if not person_image and not model_id:
+        raise BadRequestError("Upload a person photo for virtual try-on")
+    model_path = _admin_model_path(model_id) if model_id and not person_image else None
+    if model_path and not model_path.is_file():
         from app.core.exceptions import ServiceUnavailableError
         raise ServiceUnavailableError("The selected model image is unavailable")
     if garment_type not in {"tops", "bottoms", "one-pieces"}:
@@ -127,6 +130,7 @@ async def generate_admin_tryon_preview(
         # A complete catalog image contains both pieces; reuse it as the source for
         # the top and bottom passes so the model wears the selected matching set.
         bottom_content, bottom_extension = top_content, top_extension
+    person_content, person_extension = await read_image(person_image, "person") if person_image else (None, None)
 
     os.makedirs(settings.upload_dir, exist_ok=True)
     os.makedirs(settings.results_dir, exist_ok=True)
@@ -142,6 +146,7 @@ async def generate_admin_tryon_preview(
             return handle.name
 
         top_path = save_temp(top_content, top_extension, "admin-tryon-set-" if set_mode else "admin-tryon-top-")
+        person_path = save_temp(person_content, person_extension, "admin-tryon-person-") if person_content and person_extension else str(model_path)
         bottom_path = top_path if set_mode else (save_temp(bottom_content, bottom_extension, "admin-tryon-bottom-") if bottom_content and bottom_extension else None)
         from app.core.gpu_queue import gpu_queue
         from app.services.fashn_service import run_fashn
@@ -149,7 +154,7 @@ async def generate_admin_tryon_preview(
         async with gpu_queue.acquire("tryon_admin_preview"):
             result_path = await asyncio.to_thread(
                 run_fashn,
-                person_image_path=str(model_path),
+                person_image_path=person_path,
                 garment_image_path=top_path,
                 garment_type="tops" if bottom_path else garment_type,
                 results_dir=preview_results_dir,

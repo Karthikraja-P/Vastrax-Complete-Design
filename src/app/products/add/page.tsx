@@ -32,7 +32,7 @@ interface UploadedImage {
   file: File;
   preview: string;
   label?: string;
-  tryonRole?: "top" | "bottom" | "gallery";
+  tryonRole?: "top" | "bottom" | "gallery" | "set";
 }
 
 interface ReconstructPhoto {
@@ -141,6 +141,13 @@ export default function AddProductPage() {
     };
     setImages((current) => [...current, generated]);
     showToast(`Try-on image added for ${modelName}`);
+  };
+
+  const handleSelectSetImage = (id: string) => {
+    setImages((current) => current.map((image) => ({
+      ...image,
+      tryonRole: image.id === id ? "set" : image.tryonRole === "set" ? "gallery" : image.tryonRole,
+    })));
   };
 
   const handleRemoveImage = (id: string) => {
@@ -936,6 +943,8 @@ export default function AddProductPage() {
 
               <AdminTryOnImageGenerator
                 productName={name}
+                images={images}
+                onSelectSetImage={handleSelectSetImage}
                 onAddImage={handleGeneratedImage}
               />
 

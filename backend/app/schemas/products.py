@@ -8,14 +8,14 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 class ProductImageCreate(BaseModel):
     s3_url: str
     display_order: int = 0
-    tryon_role: Optional[Literal["top", "bottom", "gallery"]] = None
+    tryon_role: Optional[Literal["top", "bottom", "gallery", "set"]] = None
 
 
 class ProductImageResponse(BaseModel):
     id: str
     s3_url: str
     display_order: int
-    tryon_role: Literal["top", "bottom", "gallery"] | None = None
+    tryon_role: Literal["top", "bottom", "gallery", "set"] | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
