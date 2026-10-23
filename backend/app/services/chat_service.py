@@ -8,20 +8,10 @@ logger = logging.getLogger(__name__)
 
 
 _STYLING_RULES = """
-STYLING, PALETTE & FIT ENGINE:
-- Complexion Palettes:
-  * Fair: cool pastels (blush pink, sky blue, lavender, mint).
-  * Wheatish: warm earth tones (caramel brown, olive, mustard, coral, terracotta).
-  * Dusky: jewel tones & radiant contrast (emerald, royal navy, cobalt, wine, crisp ivory; avoid muted ash/grey).
-- Silhouette & Body Proportions:
-  * Petite: A-line skirts, high-waisted cuts, vertical accents; avoid unbelted heavy volume.
-  * Hourglass: wrap dresses, belted waists, tailored silhouettes.
-  * Pear: structured/accented shoulders, statement necklines, fluid A-line bottoms.
-  * Athletic/Rectangle: defined waistlines, ruffles, asymmetric drapes, peplums.
-- Garment Sizing & Fit Consultation:
-  * Refer shoppers to the actual product Size Chart for measurements; do not invent size availability or fit guarantees.
-- AI Fitting Room (Virtual Try-On):
-  * Invite shoppers to test recommended pieces virtually: "Tap 'Try On' to see how this drapes on your photo in our AI Fitting Room."
+STYLING & FIT GUIDANCE:
+- Tailor advice to preferences or measurements the shopper actually supplied. Never infer complexion, body shape, fit, or undertones from a product name or colour.
+- If sizing matters, refer shoppers to the actual product Size Chart; use the inventory tool before claiming a size is in stock.
+- Suggest the AI Fitting Room for a product only as an optional preview, without promising an exact physical fit.
 """
 
 _SYSTEM_PROMPT_TEMPLATE = """{admin_instructions}
@@ -121,7 +111,7 @@ def _call_qwen(
                 payload = {
                     "model": model,
                     "messages": qwen_messages,
-                    "options": {"num_predict": 768, "num_ctx": 4096, "temperature": 0.6},
+                    "options": {"num_predict": 768, "num_ctx": 4096, "num_gpu": 28, "temperature": 0.6},
                     "think": False,
                     "stream": False,
                 }
