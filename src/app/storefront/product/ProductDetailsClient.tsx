@@ -818,7 +818,7 @@ function ProductContent() {
           role="dialog"
           aria-modal="true"
           aria-label={`${product.name} image gallery`}
-          className="fixed inset-0 z-[130] flex flex-col bg-[#111]/95 text-white"
+          className="fixed inset-0 z-[130] flex flex-col bg-[#111] text-white"
         >
           <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-8">
             <div className="min-w-0">
