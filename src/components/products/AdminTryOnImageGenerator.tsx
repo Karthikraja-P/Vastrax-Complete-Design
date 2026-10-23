@@ -16,6 +16,7 @@ interface Props {
   productName: string;
   images: GalleryImage[];
   onSelectSetImage: (id: string) => void;
+  onSelectBottomImage: (id: string) => void;
   onAddImage: (file: File, modelName: string) => void;
 }
 
@@ -29,9 +30,10 @@ function garmentType(name: string): "tops" | "bottoms" | "one-pieces" {
   return "tops";
 }
 
-export default function AdminTryOnImageGenerator({ productName, images, onSelectSetImage, onAddImage }: Props) {
+export default function AdminTryOnImageGenerator({ productName, images, onSelectSetImage, onSelectBottomImage, onAddImage }: Props) {
   const twoPieceSet = isTwoPieceSet(productName);
   const selected = images.find((image) => image.tryonRole === "set");
+  const bottom = images.find((image) => image.tryonRole === "bottom");
   const [personFile, setPersonFile] = useState<File | null>(null);
   const [result, setResult] = useState<{ file: File; url: string } | null>(null);
   const [processing, setProcessing] = useState(false);
@@ -46,16 +48,20 @@ export default function AdminTryOnImageGenerator({ productName, images, onSelect
     setResult(null);
     setError(null);
     try {
-      let sourceFile = selected.file;
-      if (!sourceFile.size) {
-        const imageResponse = await fetch(selected.preview);
+      const asFile = async (image: GalleryImage) => {
+        if (image.file.size) return image.file;
+        const imageResponse = await fetch(image.preview);
         if (!imageResponse.ok) throw new Error("Could not load the selected product photo.");
         const blob = await imageResponse.blob();
-        sourceFile = new File([blob], "product-photo", { type: blob.type || "image/webp" });
-      }
+        return new File([blob], "product-photo", { type: blob.type || "image/webp" });
+      };
+      const sourceFile = await asFile(selected);
       const form = new FormData();
       form.append("person_image", personFile);
-      if (twoPieceSet) form.append("set_image", sourceFile);
+      if (twoPieceSet && bottom) {
+        form.append("garment_image", sourceFile);
+        form.append("bottom_image", await asFile(bottom));
+      } else if (twoPieceSet) form.append("set_image", sourceFile);
       else {
         form.append("garment_image", sourceFile);
         form.append("garment_type", garmentType(productName));
@@ -114,6 +120,19 @@ export default function AdminTryOnImageGenerator({ productName, images, onSelect
         </div>
       )}
       {selected && <p className="text-xs text-muted-foreground">Select a photo showing the full top and bottom together, then save the product. This photo will also be used in the customer fitting room.</p>}
+      {twoPieceSet && selected && <div className="space-y-2">
+        <p className="text-xs font-medium text-foreground">Full-length bottom photo</p>
+        <p className="text-xs text-muted-foreground">For ankle-length trousers or skirts, choose their separate full-length gallery photo. It guides the second fitting pass while the complete set photo remains the Step 2 outfit image.</p>
+        <div className="flex gap-3 overflow-x-auto pb-2">
+          {images.filter((image) => image.id !== selected.id).map((image, index) => (
+            <button key={image.id} type="button" onClick={() => { onSelectBottomImage(image.id); setResult(null); }} aria-pressed={bottom?.id === image.id}
+              className={`w-24 shrink-0 rounded-lg border p-1 text-left ${bottom?.id === image.id ? "border-accent ring-2 ring-accent/30" : "border-border"}`}>
+              <Image src={image.preview} alt={`Bottom garment option ${index + 1}`} width={96} height={112} unoptimized className="h-28 w-full rounded bg-white object-contain" />
+              <span className="mt-1 block text-[10px] text-foreground">{bottom?.id === image.id ? "Bottom source" : `Photo ${index + 1}`}</span>
+            </button>
+          ))}
+        </div>
+      </div>}
       <label className="block text-xs font-medium text-foreground">Person photo
         <input type="file" accept="image/jpeg,image/png,image/webp" className="mt-2 block w-full text-xs text-foreground" onChange={(event) => { setPersonFile(event.target.files?.[0] || null); setResult(null); }} />
       </label>

@@ -238,6 +238,13 @@ function EditProductContent() {
     })));
   };
 
+  const handleSelectBottomImage = (id: string) => {
+    setImages((current) => current.map((image) => ({
+      ...image,
+      tryonRole: image.id === id ? "bottom" : image.tryonRole === "bottom" ? "gallery" : image.tryonRole,
+    })));
+  };
+
   const handleRemoveImage = (id: string) => {
     setImages((prev) => {
       const img = prev.find((i) => i.id === id);
@@ -998,6 +1005,7 @@ function EditProductContent() {
                 productName={name}
                 images={images}
                 onSelectSetImage={handleSelectSetImage}
+                onSelectBottomImage={handleSelectBottomImage}
                 onAddImage={handleGeneratedImage}
               />
 

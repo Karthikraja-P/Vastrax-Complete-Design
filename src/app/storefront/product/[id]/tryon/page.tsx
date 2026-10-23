@@ -182,6 +182,7 @@ export default function VirtualTryOnPage() {
   const availableTops = products.filter(p => getFashnCategory(String(p.category_name || p.category || p.category_id || ""), p.name || "") === "tops" && String(p.id) !== String(product.id));
   const setImageOptions = getGarmentImageOptions(product);
   const selectedSetImage = setImageOptions.find((image) => image.role === "set");
+  const selectedBottomImage = setImageOptions.find((image) => image.role === "bottom");
   const isCombo = twoPieceSet || (isBottoms && selectedTop !== null);
 
   const startTryOnPipeline = async () => {
@@ -201,7 +202,7 @@ export default function VirtualTryOnPage() {
       let res;
       const targetGarmentImg = getGarmentImage(product);
       if (twoPieceSet) {
-        res = await tryonApi.submitCombo(personFile, selectedSetImage!.url, selectedSetImage!.url, product.id);
+        res = await tryonApi.submitCombo(personFile, selectedSetImage!.url, selectedBottomImage?.url || selectedSetImage!.url, product.id);
       } else if (isCombo) {
         const topImg = getGarmentImage(selectedTop);
         res = await tryonApi.submitCombo(personFile, topImg, targetGarmentImg, product.id);
