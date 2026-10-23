@@ -823,7 +823,7 @@ function ProductContent() {
           <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-8">
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold">{product.name}</p>
-              <p className="text-xs text-white/60">Image {activeImageIndex + 1} of {galleryImages.length} · Tap image to zoom</p>
+              <p className="text-xs text-white/60">Image {activeImageIndex + 1} of {galleryImages.length}</p>
             </div>
             <button type="button" onClick={() => setIsGalleryOpen(false)} aria-label="Close image gallery" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/15 transition hover:bg-white/25 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white">
               <X className="h-5 w-5" />
@@ -850,7 +850,7 @@ function ProductContent() {
                 setZoomOrigin(`${((event.clientX - bounds.left) / bounds.width) * 100}% ${((event.clientY - bounds.top) / bounds.height) * 100}%`);
               }}
               aria-label={isZoomed ? "Zoom out of product image" : "Zoom into product image"}
-              className={`h-full w-full overflow-hidden rounded-lg bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-white ${isZoomed ? "cursor-zoom-out" : "cursor-zoom-in"}`}
+              className={`h-full w-full overflow-hidden bg-transparent focus-visible:outline focus-visible:outline-2 focus-visible:outline-white ${isZoomed ? "cursor-zoom-out" : "cursor-pointer"}`}
             >
               <Image
                 src={galleryImages[activeImageIndex] || product.image}
