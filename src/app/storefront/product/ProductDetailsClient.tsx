@@ -819,15 +819,15 @@ function ProductContent() {
           role="dialog"
           aria-modal="true"
           aria-label={`${product.name} image gallery`}
-          className="fixed inset-0 z-[130] flex flex-col bg-[#111] text-white"
+          className="fixed inset-0 z-[130] flex flex-col bg-background text-foreground"
         >
           <div className="relative mx-auto flex min-h-0 w-full max-w-7xl flex-1 items-center justify-center px-12 sm:px-20">
             {galleryImages.length > 1 && (
               <>
-                <button type="button" onClick={() => { setZoomScale(1); setActiveImageIndex((index) => (index - 1 + galleryImages.length) % galleryImages.length); }} aria-label="Previous image" className="absolute left-2 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-white/15 hover:bg-white/25 sm:left-5">
+                <button type="button" onClick={() => { setZoomScale(1); setActiveImageIndex((index) => (index - 1 + galleryImages.length) % galleryImages.length); }} aria-label="Previous image" className="absolute left-2 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-surface/85 text-foreground shadow-sm hover:bg-surface sm:left-5">
                   <ChevronLeft className="h-6 w-6" />
                 </button>
-                <button type="button" onClick={() => { setZoomScale(1); setActiveImageIndex((index) => (index + 1) % galleryImages.length); }} aria-label="Next image" className="absolute right-2 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-white/15 hover:bg-white/25 sm:right-5">
+                <button type="button" onClick={() => { setZoomScale(1); setActiveImageIndex((index) => (index + 1) % galleryImages.length); }} aria-label="Next image" className="absolute right-2 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-surface/85 text-foreground shadow-sm hover:bg-surface sm:right-5">
                   <ChevronRight className="h-6 w-6" />
                 </button>
               </>
