@@ -60,7 +60,7 @@ def test_admin_preview_runs_model_and_returns_gallery_usable_url(client, monkeyp
     monkeypatch.setattr(settings, "upload_dir", str(upload_dir))
     monkeypatch.setattr(settings, "results_dir", str(results_dir))
 
-    def fake_run_fashn(person_image_path, garment_image_path, garment_type, results_dir):
+    def fake_run_fashn(person_image_path, garment_image_path, garment_type, results_dir, **kwargs):
         assert Path(person_image_path).is_file()
         assert Path(garment_image_path).is_file()
         assert garment_type == "tops"
@@ -90,7 +90,7 @@ def test_admin_preview_combines_top_and_bottom_on_selected_model(client, monkeyp
     monkeypatch.setattr(settings, "results_dir", str(results_dir))
     calls = []
 
-    def fake_run_fashn(person_image_path, garment_image_path, garment_type, results_dir):
+    def fake_run_fashn(person_image_path, garment_image_path, garment_type, results_dir, **kwargs):
         assert Path(person_image_path).is_file()
         assert Path(garment_image_path).is_file()
         calls.append((Path(person_image_path), Path(garment_image_path), garment_type))
@@ -126,7 +126,7 @@ def test_admin_preview_uses_one_complete_set_reference_for_both_passes(client, m
     monkeypatch.setattr(settings, "results_dir", str(results_dir))
     calls = []
 
-    def fake_run_fashn(person_image_path, garment_image_path, garment_type, results_dir):
+    def fake_run_fashn(person_image_path, garment_image_path, garment_type, results_dir, **kwargs):
         assert Path(person_image_path).is_file()
         assert Path(garment_image_path).is_file()
         calls.append((Path(person_image_path), Path(garment_image_path), garment_type))
@@ -159,7 +159,7 @@ def test_admin_preview_uses_uploaded_person_instead_of_template(client, monkeypa
     monkeypatch.setattr(settings, "results_dir", str(results_dir))
     calls = []
 
-    def fake_run_fashn(person_image_path, garment_image_path, garment_type, results_dir):
+    def fake_run_fashn(person_image_path, garment_image_path, garment_type, results_dir, **kwargs):
         calls.append((Path(person_image_path).name, garment_type))
         assert Path(person_image_path).is_file()
         assert Path(garment_image_path).is_file()

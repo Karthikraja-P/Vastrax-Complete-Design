@@ -34,6 +34,7 @@ interface TryOnGarment {
   price?: number | string;
   price_selling?: number;
   colour?: string;
+  hem_length?: "knee" | "midi" | "ankle" | "floor" | null;
   image?: string;
   images?: ProductItem["images"];
 }
@@ -371,6 +372,11 @@ export default function VirtualTryOnPage() {
               <Image width={1200} height={900} unoptimized src={String(productImgUrl || "/product-placeholder.svg")} alt={twoPieceSet ? `${product.name || "Product"} complete set` : String(product.name || "Product")} className="w-20 h-24 object-contain rounded-lg border border-border bg-[#f8f7f4] p-1" />
               <div>
                 <h4 className="text-sm font-semibold text-foreground">{product.name}</h4>
+                {product.hem_length && (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Actual skirt length: {{ knee: "Knee length", midi: "Midi length", ankle: "Ankle length", floor: "Floor length" }[product.hem_length]}. AI preview may vary; use the product photos as the accurate reference.
+                  </p>
+                )}
                 {!twoPieceSet && (
                   <span className="text-[9px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-800 text-muted-foreground mt-1 inline-block">
                     {fashnType}

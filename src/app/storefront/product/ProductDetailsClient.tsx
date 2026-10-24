@@ -72,6 +72,7 @@ function ProductContent() {
     fabric: string;
     colour: string;
     occasion: string;
+    hemLength?: string;
     image: string;
     images: string[];
     rating: number;
@@ -92,6 +93,7 @@ function ProductContent() {
     fabric: "",
     colour: "",
     occasion: "",
+    hemLength: "",
     image: "/product-placeholder.svg",
     images: ["/product-placeholder.svg"],
     rating: 0,
@@ -184,6 +186,7 @@ function ProductContent() {
             fabric: item.fabric || "",
             colour: item.colour || "Default",
             occasion: item.occasion || "",
+            hemLength: item.hem_length || "",
             image: img,
             images: allImgs,
             rating: Number(item.rating || item.rating_average || 0),
@@ -225,6 +228,7 @@ function ProductContent() {
           fabric: item.fabric || "",
           colour: item.colour || "Default",
           occasion: item.occasion || "",
+          hemLength: item.hem_length || "",
           image: img,
           images: allImgs,
           rating: Number(item.rating_average || item.rating || 0),
@@ -589,6 +593,7 @@ function ProductContent() {
                     <dt className="text-muted-foreground">Fabric</dt><dd className="font-medium text-foreground">{product.fabric || "Not specified"}</dd>
                     <dt className="text-muted-foreground">Colour</dt><dd className="font-medium text-foreground">{product.colour || "Not specified"}</dd>
                     <dt className="text-muted-foreground">Occasion</dt><dd className="font-medium text-foreground">{product.occasion || "Not specified"}</dd>
+                    {product.hemLength && <><dt className="text-muted-foreground">Skirt length</dt><dd className="font-medium text-foreground">{({ knee: "Knee length", midi: "Midi length", ankle: "Ankle length", floor: "Floor length" } as Record<string, string>)[product.hemLength] || product.hemLength}</dd></>}
                     <dt className="text-muted-foreground">Category</dt><dd className="font-medium text-foreground">{product.categoryName || "Not specified"}</dd>
                   </dl>
                 </section>

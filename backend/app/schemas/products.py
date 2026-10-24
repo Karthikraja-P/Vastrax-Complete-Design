@@ -48,6 +48,7 @@ class ProductCreate(BaseModel):
     fabric: Optional[str] = None
     colour: Optional[str] = None
     occasion: Optional[str] = None
+    hem_length: Optional[Literal["knee", "midi", "ankle", "floor"]] = None
     gender: Optional[str] = "Women"
     size_chart: Optional[Any] = None
     price_mrp: Decimal
@@ -68,6 +69,7 @@ class ProductUpdate(BaseModel):
     fabric: Optional[str] = None
     colour: Optional[str] = None
     occasion: Optional[str] = None
+    hem_length: Optional[Literal["knee", "midi", "ankle", "floor"]] = None
     gender: Optional[str] = None
     size_chart: Optional[Any] = None
     price_mrp: Optional[Decimal] = None
@@ -89,6 +91,7 @@ class ProductResponse(BaseModel):
     fabric: str | None
     colour: str | None
     occasion: str | None
+    hem_length: Literal["knee", "midi", "ankle", "floor"] | None = None
     gender: str | None = "Women"
     size_chart: Any | None = None
     price_mrp: Decimal

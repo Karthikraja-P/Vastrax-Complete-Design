@@ -47,6 +47,17 @@ function isTwoPieceProductName(value: string): boolean {
   return /\bcoord(?:inate)?\b|\bco[- ]?ord\b|\btwo[- ]?piece\b|\b2[- ]?piece\b|\bset\b|skirt\s*(?:and|&)\s*top|top\s*(?:and|&)\s*skirt/i.test(value);
 }
 
+function isSkirtProductName(value: string): boolean {
+  return /\bskirt\b|\blehenga\b/i.test(value);
+}
+
+const hemLengthOptions = [
+  { value: "knee", label: "Knee length" },
+  { value: "midi", label: "Midi length" },
+  { value: "ankle", label: "Ankle length" },
+  { value: "floor", label: "Floor length" },
+] as const;
+
 function inferTryOnRole(filename: string): "top" | "bottom" | "gallery" {
   if (/\b(bottom|skirt|pant|trouser|palazzo)\b/i.test(filename)) return "bottom";
   if (/\b(top|blouse|shirt)\b/i.test(filename)) return "top";
@@ -85,6 +96,7 @@ function EditProductContent() {
   const [fabric, setFabric] = useState("");
   const [colour, setColour] = useState("");
   const [occasion, setOccasion] = useState("");
+  const [hemLength, setHemLength] = useState("");
   const [modelPath, setModelPath] = useState("");
   const [isUploadingGlb, setIsUploadingGlb] = useState(false);
   const glbInputRef = useRef<HTMLInputElement>(null);
@@ -130,6 +142,7 @@ function EditProductContent() {
             setPriceSelling(String(hasOffer ? comparisonPrice : currentPrice || ""));
             setPriceMrp(hasOffer ? String(currentPrice) : "");
             setOccasion(prod.occasion || "");
+            setHemLength(prod.hem_length || "");
             setFabric(prod.fabric || "");
             setColour(prod.colour || "");
             setModelPath(prod.model_path || "");
@@ -459,6 +472,7 @@ function EditProductContent() {
         fabric: fabric.trim() || undefined,
         colour: colour.trim() || undefined,
         occasion: occasion.trim() || undefined,
+        hem_length: isSkirtProductName(name) ? hemLength || null : null,
         model_path: modelPath.trim(),
         price_selling: offerPrice ?? regularPrice,
         price_mrp: regularPrice,
@@ -673,6 +687,20 @@ function EditProductContent() {
                       <option value="Party / Night out">Party / Night out</option>
                     </select>
                   </div>
+                {isSkirtProductName(name) && (
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-1.5">Skirt length</label>
+                    <select
+                      value={hemLength}
+                      onChange={(e) => setHemLength(e.target.value)}
+                      className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent focus:ring-1 focus:ring-accent outline-none transition-all appearance-none text-foreground"
+                    >
+                      <option value="">Select actual garment length</option>
+                      {hemLengthOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                    </select>
+                    <p className="mt-1.5 text-xs text-muted-foreground">This records the garment’s actual hem length for staff and shoppers. Use a Bottom photo showing the full hem. Self-hosted FASHN does not receive this as a text prompt.</p>
+                  </div>
+                )}
                 <div>
                   <label className="block text-sm font-medium text-foreground mb-1.5">
                     Description
@@ -1032,6 +1060,7 @@ function EditProductContent() {
                 productName={name}
                 images={images}
                 onSelectTopImage={handleSelectTopImage}
+                hemLength={hemLength}
                 onAddImage={handleGeneratedImage}
               />
 

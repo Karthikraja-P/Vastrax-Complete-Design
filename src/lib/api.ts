@@ -182,6 +182,7 @@ export interface ProductItem {
   fabric?: string;
   colour?: string;
   occasion?: string;
+  hem_length?: "knee" | "midi" | "ankle" | "floor" | null;
   model_path?: string;
   model3dUrl?: string;
   price: number;

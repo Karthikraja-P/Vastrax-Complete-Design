@@ -11,6 +11,9 @@ ADDITIVE_COLUMNS = {
     "product_images": {
         "tryon_role": "VARCHAR(20)",
     },
+    "products": {
+        "hem_length": "VARCHAR(20)",
+    },
     "categories": {
         "description": "TEXT",
         "is_active": "BOOLEAN NOT NULL DEFAULT 1",

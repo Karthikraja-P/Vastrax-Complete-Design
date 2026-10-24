@@ -27,6 +27,7 @@ class Product(Base):
     fabric: Mapped[str | None] = mapped_column(String(100), nullable=True)
     colour: Mapped[str | None] = mapped_column(String(100), nullable=True)
     occasion: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    hem_length: Mapped[str | None] = mapped_column(String(20), nullable=True)
     price_mrp: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     price_selling: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     model_path: Mapped[str | None] = mapped_column(String(255), nullable=True)  # relative URL e.g., /models/3d/{product_id}.glb

@@ -15,6 +15,7 @@ interface GalleryImage {
 interface Props {
   productName: string;
   images: GalleryImage[];
+  hemLength?: string;
   onSelectTopImage: (id: string) => void;
   onAddImage: (file: File, modelName: string) => void;
 }
@@ -29,7 +30,7 @@ function garmentType(name: string): "tops" | "bottoms" | "one-pieces" {
   return "tops";
 }
 
-export default function AdminTryOnImageGenerator({ productName, images, onSelectTopImage, onAddImage }: Props) {
+export default function AdminTryOnImageGenerator({ productName, images, hemLength, onSelectTopImage, onAddImage }: Props) {
   const twoPieceSet = isTwoPieceSet(productName);
   const selected = images.find((image) => image.tryonRole === "top") || (!twoPieceSet ? images[0] : undefined);
   const bottom = images.find((image) => image.tryonRole === "bottom");
@@ -106,6 +107,12 @@ export default function AdminTryOnImageGenerator({ productName, images, onSelect
         <h3 className="text-sm font-semibold text-foreground">Virtual Try-On</h3>
         <p className="mt-1 text-xs text-muted-foreground">{twoPieceSet ? "Choose separate Top and Bottom photos. FASHN applies each garment in sequence; a complete-set photo can stay in the gallery." : "Choose the product photo to preview on a person."}</p>
       </div>
+      {/\bskirt\b|\blehenga\b/i.test(productName) && (
+        <p className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-muted-foreground">
+          {hemLength ? <>Recorded hem length: <strong className="text-foreground">{({ knee: "Knee length", midi: "Midi length", ankle: "Ankle length", floor: "Floor length" } as Record<string, string>)[hemLength] || hemLength}</strong>. </> : null}
+          Check that the Bottom photo shows the whole hem. This length is workflow guidance only; self-hosted FASHN may generate a different hem length.
+        </p>
+      )}
       {images.length === 0 ? (
         <p className="text-xs text-muted-foreground">Upload product photos above first.</p>
       ) : twoPieceSet ? (

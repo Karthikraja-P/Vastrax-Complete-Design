@@ -114,6 +114,7 @@ class ProductService:
             fabric=payload.fabric,
             colour=payload.colour,
             occasion=payload.occasion,
+            hem_length=payload.hem_length,
             gender=payload.gender or "Women",
             size_chart=payload.size_chart,
             price_mrp=payload.price_mrp,
@@ -164,6 +165,9 @@ class ProductService:
                     except (ValueError, TypeError):
                         pass
                 setattr(product, field, value)
+
+        if "hem_length" in payload.model_fields_set:
+            product.hem_length = payload.hem_length
 
         if payload.model_path is not None:
             product.model_path = payload.model_path
