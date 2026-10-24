@@ -158,6 +158,7 @@ async def generate_admin_tryon_preview(
                 garment_image_path=top_path,
                 garment_type="tops" if bottom_path else garment_type,
                 results_dir=preview_results_dir,
+                garment_photo_type="flat-lay" if bottom_path else None,
             )
             if bottom_path:
                 if not result_path or not os.path.isfile(result_path):
@@ -168,6 +169,7 @@ async def generate_admin_tryon_preview(
                     garment_image_path=bottom_path,
                     garment_type="bottoms",
                     results_dir=preview_results_dir,
+                    garment_photo_type="flat-lay",
                 )
         if not result_path or not os.path.isfile(result_path):
             raise InternalError("Virtual try-on did not produce a preview image")

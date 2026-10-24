@@ -151,7 +151,6 @@ export default function AddProductPage() {
   };
 
   const handleSelectTopImage = (id: string) => handleSelectTryOnImage(id, "top");
-  const handleSelectBottomImage = (id: string) => handleSelectTryOnImage(id, "bottom");
 
   const handleRemoveImage = (id: string) => {
     setImages((prev) => {
@@ -979,7 +978,6 @@ export default function AddProductPage() {
                 productName={name}
                 images={images}
                 onSelectTopImage={handleSelectTopImage}
-                onSelectBottomImage={handleSelectBottomImage}
                 onAddImage={handleGeneratedImage}
               />
 

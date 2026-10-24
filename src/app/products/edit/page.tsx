@@ -239,7 +239,6 @@ function EditProductContent() {
   };
 
   const handleSelectTopImage = (id: string) => handleSelectTryOnImage(id, "top");
-  const handleSelectBottomImage = (id: string) => handleSelectTryOnImage(id, "bottom");
 
   const handleRemoveImage = (id: string) => {
     setImages((prev) => {
@@ -1033,7 +1032,6 @@ function EditProductContent() {
                 productName={name}
                 images={images}
                 onSelectTopImage={handleSelectTopImage}
-                onSelectBottomImage={handleSelectBottomImage}
                 onAddImage={handleGeneratedImage}
               />
 

@@ -16,7 +16,6 @@ interface Props {
   productName: string;
   images: GalleryImage[];
   onSelectTopImage: (id: string) => void;
-  onSelectBottomImage: (id: string) => void;
   onAddImage: (file: File, modelName: string) => void;
 }
 
@@ -30,7 +29,7 @@ function garmentType(name: string): "tops" | "bottoms" | "one-pieces" {
   return "tops";
 }
 
-export default function AdminTryOnImageGenerator({ productName, images, onSelectTopImage, onSelectBottomImage, onAddImage }: Props) {
+export default function AdminTryOnImageGenerator({ productName, images, onSelectTopImage, onAddImage }: Props) {
   const twoPieceSet = isTwoPieceSet(productName);
   const selected = images.find((image) => image.tryonRole === "top") || (!twoPieceSet ? images[0] : undefined);
   const bottom = images.find((image) => image.tryonRole === "bottom");
@@ -109,31 +108,26 @@ export default function AdminTryOnImageGenerator({ productName, images, onSelect
       </div>
       {images.length === 0 ? (
         <p className="text-xs text-muted-foreground">Upload product photos above first.</p>
+      ) : twoPieceSet ? (
+        <div className="grid grid-cols-2 gap-3">
+          {[{ label: "Top photo", image: selected }, { label: "Bottom photo", image: bottom }].map(({ label, image }) => (
+            <div key={label} className="rounded-lg border border-border p-2">
+              <p className="mb-2 text-[10px] font-semibold uppercase text-muted-foreground">{label}</p>
+              {image ? <Image src={image.preview} alt={label} width={144} height={168} unoptimized className="h-40 w-full rounded object-contain bg-white" /> : <div className="flex h-40 items-center justify-center rounded bg-surface text-center text-xs text-muted-foreground">Choose this role on its Product Images card</div>}
+            </div>
+          ))}
+        </div>
       ) : (
         <div className="flex gap-3 overflow-x-auto pb-2">
           {images.map((image, index) => (
             <button key={image.id} type="button" onClick={() => { onSelectTopImage(image.id); setResult(null); }} aria-pressed={selected?.id === image.id}
               className={`w-24 shrink-0 rounded-lg border p-1 text-left ${selected?.id === image.id ? "border-accent ring-2 ring-accent/30" : "border-border"}`}>
               <Image src={image.preview} alt={`Product gallery photo ${index + 1}`} width={96} height={112} unoptimized className="h-28 w-full rounded object-contain bg-white" />
-              <span className="mt-1 block text-[10px] text-foreground">{selected?.id === image.id ? "Top source" : `Photo ${index + 1}`}</span>
+              <span className="mt-1 block text-[10px] text-foreground">{selected?.id === image.id ? "Try-on source" : `Photo ${index + 1}`}</span>
             </button>
           ))}
         </div>
       )}
-      {twoPieceSet && selected && <p className="text-xs text-muted-foreground">Top selected. Now select a separate matching bottom photo below.</p>}
-      {twoPieceSet && <div className="space-y-2">
-        <p className="text-xs font-medium text-foreground">Bottom garment photo</p>
-        <p className="text-xs text-muted-foreground">Choose a clear photo of the actual matching bottom garment. This is sent to FASHN as the bottoms pass.</p>
-        <div className="flex gap-3 overflow-x-auto pb-2">
-          {images.filter((image) => image.id !== selected?.id).map((image, index) => (
-            <button key={image.id} type="button" onClick={() => { onSelectBottomImage(image.id); setResult(null); }} aria-pressed={bottom?.id === image.id}
-              className={`w-24 shrink-0 rounded-lg border p-1 text-left ${bottom?.id === image.id ? "border-accent ring-2 ring-accent/30" : "border-border"}`}>
-              <Image src={image.preview} alt={`Bottom garment option ${index + 1}`} width={96} height={112} unoptimized className="h-28 w-full rounded bg-white object-contain" />
-              <span className="mt-1 block text-[10px] text-foreground">{bottom?.id === image.id ? "Bottom source" : `Photo ${index + 1}`}</span>
-            </button>
-          ))}
-        </div>
-      </div>}
       <label className="block text-xs font-medium text-foreground">Person photo
         <input type="file" accept="image/jpeg,image/png,image/webp" className="mt-2 block w-full text-xs text-foreground" onChange={(event) => { setPersonFile(event.target.files?.[0] || null); setResult(null); }} />
       </label>

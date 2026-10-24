@@ -268,6 +268,7 @@ class TryonService:
                     garment_image_path=top_local,
                     garment_type="tops",
                     results_dir=settings.upload_dir,
+                    garment_photo_type="flat-lay",
                 )
                 result_path = await asyncio.to_thread(
                     run_fashn,
@@ -275,6 +276,7 @@ class TryonService:
                     garment_image_path=bottom_local,
                     garment_type="bottoms",
                     results_dir=settings.results_dir,
+                    garment_photo_type="flat-lay",
                 )
             result_url = f"/results/{os.path.basename(result_path)}"
             self._log_session(user, product_id, "done", result_url)
