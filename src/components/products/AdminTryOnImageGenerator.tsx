@@ -15,7 +15,7 @@ interface GalleryImage {
 interface Props {
   productName: string;
   images: GalleryImage[];
-  onSelectSetImage: (id: string) => void;
+  onSelectTopImage: (id: string) => void;
   onSelectBottomImage: (id: string) => void;
   onAddImage: (file: File, modelName: string) => void;
 }
@@ -30,9 +30,9 @@ function garmentType(name: string): "tops" | "bottoms" | "one-pieces" {
   return "tops";
 }
 
-export default function AdminTryOnImageGenerator({ productName, images, onSelectSetImage, onSelectBottomImage, onAddImage }: Props) {
+export default function AdminTryOnImageGenerator({ productName, images, onSelectTopImage, onSelectBottomImage, onAddImage }: Props) {
   const twoPieceSet = isTwoPieceSet(productName);
-  const selected = images.find((image) => image.tryonRole === "set");
+  const selected = images.find((image) => image.tryonRole === "top") || (!twoPieceSet ? images[0] : undefined);
   const bottom = images.find((image) => image.tryonRole === "bottom");
   const [personFile, setPersonFile] = useState<File | null>(null);
   const [result, setResult] = useState<{ file: File; url: string } | null>(null);
@@ -43,7 +43,7 @@ export default function AdminTryOnImageGenerator({ productName, images, onSelect
   useEffect(() => () => { if (result) URL.revokeObjectURL(result.url); }, [result]);
 
   const tryOn = async () => {
-    if (!personFile || !selected) return;
+    if (!personFile || !selected || (twoPieceSet && !bottom)) return;
     setProcessing(true);
     setResult(null);
     setError(null);
@@ -58,10 +58,11 @@ export default function AdminTryOnImageGenerator({ productName, images, onSelect
       const sourceFile = await asFile(selected);
       const form = new FormData();
       form.append("person_image", personFile);
-      if (twoPieceSet && bottom) {
+      if (twoPieceSet) {
         form.append("garment_image", sourceFile);
-        form.append("bottom_image", await asFile(bottom));
-      } else if (twoPieceSet) form.append("set_image", sourceFile);
+        form.append("bottom_image", await asFile(bottom!));
+        form.append("garment_type", "tops");
+      }
       else {
         form.append("garment_image", sourceFile);
         form.append("garment_type", garmentType(productName));
@@ -104,27 +105,27 @@ export default function AdminTryOnImageGenerator({ productName, images, onSelect
     <section className="space-y-4 rounded-xl border border-border bg-background p-5">
       <div>
         <h3 className="text-sm font-semibold text-foreground">Virtual Try-On</h3>
-        <p className="mt-1 text-xs text-muted-foreground">Choose the actual complete outfit photo from this product’s gallery, then upload a person photo to test the fit. The result is a preview until you add it.</p>
+        <p className="mt-1 text-xs text-muted-foreground">{twoPieceSet ? "Choose separate Top and Bottom photos. FASHN applies each garment in sequence; a complete-set photo can stay in the gallery." : "Choose the product photo to preview on a person."}</p>
       </div>
       {images.length === 0 ? (
         <p className="text-xs text-muted-foreground">Upload product photos above first.</p>
       ) : (
         <div className="flex gap-3 overflow-x-auto pb-2">
           {images.map((image, index) => (
-            <button key={image.id} type="button" onClick={() => { onSelectSetImage(image.id); setResult(null); }} aria-pressed={selected?.id === image.id}
+            <button key={image.id} type="button" onClick={() => { onSelectTopImage(image.id); setResult(null); }} aria-pressed={selected?.id === image.id}
               className={`w-24 shrink-0 rounded-lg border p-1 text-left ${selected?.id === image.id ? "border-accent ring-2 ring-accent/30" : "border-border"}`}>
               <Image src={image.preview} alt={`Product gallery photo ${index + 1}`} width={96} height={112} unoptimized className="h-28 w-full rounded object-contain bg-white" />
-              <span className="mt-1 block text-[10px] text-foreground">{selected?.id === image.id ? "Try-on source" : `Photo ${index + 1}`}</span>
+              <span className="mt-1 block text-[10px] text-foreground">{selected?.id === image.id ? "Top source" : `Photo ${index + 1}`}</span>
             </button>
           ))}
         </div>
       )}
-      {selected && <p className="text-xs text-muted-foreground">Select a photo showing the full top and bottom together, then save the product. This photo will also be used in the customer fitting room.</p>}
-      {twoPieceSet && selected && <div className="space-y-2">
-        <p className="text-xs font-medium text-foreground">Full-length bottom photo</p>
-        <p className="text-xs text-muted-foreground">For ankle-length trousers or skirts, choose their separate full-length gallery photo. It guides the second fitting pass while the complete set photo remains the Step 2 outfit image.</p>
+      {twoPieceSet && selected && <p className="text-xs text-muted-foreground">Top selected. Now select a separate matching bottom photo below.</p>}
+      {twoPieceSet && <div className="space-y-2">
+        <p className="text-xs font-medium text-foreground">Bottom garment photo</p>
+        <p className="text-xs text-muted-foreground">Choose a clear photo of the actual matching bottom garment. This is sent to FASHN as the bottoms pass.</p>
         <div className="flex gap-3 overflow-x-auto pb-2">
-          {images.filter((image) => image.id !== selected.id).map((image, index) => (
+          {images.filter((image) => image.id !== selected?.id).map((image, index) => (
             <button key={image.id} type="button" onClick={() => { onSelectBottomImage(image.id); setResult(null); }} aria-pressed={bottom?.id === image.id}
               className={`w-24 shrink-0 rounded-lg border p-1 text-left ${bottom?.id === image.id ? "border-accent ring-2 ring-accent/30" : "border-border"}`}>
               <Image src={image.preview} alt={`Bottom garment option ${index + 1}`} width={96} height={112} unoptimized className="h-28 w-full rounded bg-white object-contain" />
@@ -137,7 +138,7 @@ export default function AdminTryOnImageGenerator({ productName, images, onSelect
         <input type="file" accept="image/jpeg,image/png,image/webp" className="mt-2 block w-full text-xs text-foreground" onChange={(event) => { setPersonFile(event.target.files?.[0] || null); setResult(null); }} />
       </label>
       {personFile && <p className="text-xs text-muted-foreground">Selected: {personFile.name}</p>}
-      <button type="button" onClick={tryOn} disabled={!selected || !personFile || processing} className="inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">
+      <button type="button" onClick={tryOn} disabled={!selected || (twoPieceSet && !bottom) || !personFile || processing} className="inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">
         {processing && <Loader2 className="h-4 w-4 animate-spin" />}{processing ? "Trying on…" : "Try on this outfit"}
       </button>
       {error && <p role="alert" className="text-xs text-red-600">{error}</p>}

@@ -231,19 +231,15 @@ function EditProductContent() {
     showToast(`Try-on image added for ${modelName}`);
   };
 
-  const handleSelectSetImage = (id: string) => {
-    setImages((current) => current.map((image) => ({
-      ...image,
-      tryonRole: image.id === id ? "set" : image.tryonRole === "set" ? "gallery" : image.tryonRole,
-    })));
+  const handleSelectTryOnImage = (id: string, role: "top" | "bottom") => {
+    setImages((current) => current.map((image) => {
+      if (image.id === id) return { ...image, tryonRole: image.tryonRole === role ? "gallery" : role };
+      return image.tryonRole === role ? { ...image, tryonRole: "gallery" } : image;
+    }));
   };
 
-  const handleSelectBottomImage = (id: string) => {
-    setImages((current) => current.map((image) => ({
-      ...image,
-      tryonRole: image.id === id ? "bottom" : image.tryonRole === "bottom" ? "gallery" : image.tryonRole,
-    })));
-  };
+  const handleSelectTopImage = (id: string) => handleSelectTryOnImage(id, "top");
+  const handleSelectBottomImage = (id: string) => handleSelectTryOnImage(id, "bottom");
 
   const handleRemoveImage = (id: string) => {
     setImages((prev) => {
@@ -430,6 +426,12 @@ function EditProductContent() {
     if (invalidStockSize) {
       showToast(`Enter a whole number of 0 or more for size ${invalidStockSize.size}.`);
       setActiveTab("basic");
+      return;
+    }
+
+    if (isTwoPieceProductName(name) && (!images.some((image) => image.tryonRole === "top") || !images.some((image) => image.tryonRole === "bottom"))) {
+      showToast("For a two-piece set, mark one separate product photo as Top and another as Bottom.");
+      setActiveTab("images");
       return;
     }
 
@@ -883,7 +885,7 @@ function EditProductContent() {
                       <p className="text-xs text-muted-foreground">
                         Drag cards or use arrow buttons to alter garment display order. <span className="text-accent font-medium">#1 is the primary storefront cover photo.</span>
                       </p>
-                      {isTwoPieceProductName(name) && <p className="mt-1 text-[11px] text-muted-foreground">For accurate set try-on, tag the actual matching top and bottom once. Other views stay in the gallery.</p>}
+                      {isTwoPieceProductName(name) && <p className="mt-1 text-[11px] text-muted-foreground">Tag one photo as Top and a separate photo as Bottom. FASHN applies them in sequence; other photos remain gallery images.</p>}
                     </div>
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
@@ -973,6 +975,32 @@ function EditProductContent() {
                           <GripVertical className="w-8 h-8 text-white drop-shadow-md" />
                         </div>
 
+                        {isTwoPieceProductName(name) && (
+                          <div className="absolute bottom-10 inset-x-2 z-20 flex gap-1 pointer-events-auto">
+                            {(["top", "bottom", "gallery"] as const).map((role) => (
+                              <button
+                                key={role}
+                                type="button"
+                                aria-pressed={role !== "gallery" && img.tryonRole === role}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  if (role === "gallery") {
+                                    setImages((current) => current.map((image) => image.id === img.id ? { ...image, tryonRole: "gallery" } : image));
+                                  } else {
+                                    handleSelectTryOnImage(img.id, role);
+                                  }
+                                }}
+                                className={cn(
+                                  "flex-1 rounded px-1 py-1 text-[9px] font-semibold uppercase shadow-sm",
+                                  img.tryonRole === role ? "bg-accent text-white" : "bg-black/75 text-white hover:bg-black"
+                                )}
+                              >
+                                {role === "gallery" ? "Gallery" : role}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+
                         {/* File info footer */}
                         <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent px-2.5 py-1.5 pointer-events-none">
                           <p className="text-[10px] text-white font-medium truncate">
@@ -1004,7 +1032,7 @@ function EditProductContent() {
               <AdminTryOnImageGenerator
                 productName={name}
                 images={images}
-                onSelectSetImage={handleSelectSetImage}
+                onSelectTopImage={handleSelectTopImage}
                 onSelectBottomImage={handleSelectBottomImage}
                 onAddImage={handleGeneratedImage}
               />

@@ -181,16 +181,16 @@ export default function VirtualTryOnPage() {
   const isBottoms = !twoPieceSet && fashnType === "bottoms";
   const availableTops = products.filter(p => getFashnCategory(String(p.category_name || p.category || p.category_id || ""), p.name || "") === "tops" && String(p.id) !== String(product.id));
   const setImageOptions = getGarmentImageOptions(product);
-  const selectedSetImage = setImageOptions.find((image) => image.role === "set");
+  const selectedTopImage = setImageOptions.find((image) => image.role === "top");
   const selectedBottomImage = setImageOptions.find((image) => image.role === "bottom");
   const isCombo = twoPieceSet || (isBottoms && selectedTop !== null);
 
   const startTryOnPipeline = async () => {
     if (!personFile || !product) return;
 
-    if (twoPieceSet && !selectedSetImage) {
+    if (twoPieceSet && (!selectedTopImage || !selectedBottomImage)) {
       setStatusType("error");
-      setStatusText("A complete set photo has not been selected for this product yet.");
+      setStatusText("This set needs separate Top and Bottom photos in the product gallery before try-on can run.");
       return;
     }
     setIsProcessing(true);
@@ -202,7 +202,7 @@ export default function VirtualTryOnPage() {
       let res;
       const targetGarmentImg = getGarmentImage(product);
       if (twoPieceSet) {
-        res = await tryonApi.submitCombo(personFile, selectedSetImage!.url, selectedBottomImage?.url || selectedSetImage!.url, product.id);
+        res = await tryonApi.submitCombo(personFile, selectedTopImage!.url, selectedBottomImage!.url, product.id);
       } else if (isCombo) {
         const topImg = getGarmentImage(selectedTop);
         res = await tryonApi.submitCombo(personFile, topImg, targetGarmentImg, product.id);
@@ -272,7 +272,7 @@ export default function VirtualTryOnPage() {
     ? "Upload a full-body photo. We apply the product’s top and matching skirt/bottom as the two pieces of this set; no extra trouser garment is selected."
     : PHOTO_TIPS[fashnType as keyof typeof PHOTO_TIPS] || PHOTO_TIPS.tops;
   const tipLabel = twoPieceSet ? "Two-Piece Set Try-On Guide" : TIP_LABEL[fashnType as keyof typeof TIP_LABEL];
-  const productImgUrl = twoPieceSet ? selectedSetImage?.url : getGarmentImage(product);
+  const productImgUrl = getGarmentImage(product);
 
   return (
     <div className="min-h-screen bg-background text-foreground pb-20">
@@ -377,7 +377,7 @@ export default function VirtualTryOnPage() {
                   </span>
                 )}
                 <p className="text-sm font-bold text-[#e07a3f] mt-1">₹{(product.price_selling || product.price)?.toLocaleString()}</p>
-                {twoPieceSet && !selectedSetImage && <p className="mt-2 text-xs text-red-500">Complete set photo unavailable for try-on.</p>}
+                {twoPieceSet && (!selectedTopImage || !selectedBottomImage) && <p className="mt-2 text-xs text-red-500">Separate Top and Bottom photos are required for try-on.</p>}
               </div>
             </div>
           </div>
@@ -427,7 +427,7 @@ export default function VirtualTryOnPage() {
           {/* Action Button */}
           <button
             onClick={startTryOnPipeline}
-            disabled={isProcessing || !personFile || (twoPieceSet && !selectedSetImage)}
+            disabled={isProcessing || !personFile || (twoPieceSet && (!selectedTopImage || !selectedBottomImage))}
             className="w-full py-4 bg-gradient-to-r from-[#e07a3f] to-[#b95625] hover:from-[#b95625] hover:to-[#9b4a23] text-white font-bold text-xs uppercase tracking-wider rounded-xl flex items-center justify-center gap-2 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all"
           >
             Generate
