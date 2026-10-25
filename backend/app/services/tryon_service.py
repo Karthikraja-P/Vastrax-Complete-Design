@@ -17,6 +17,27 @@ from app.utils.file_utils import resolve_garment, try_remove
 logger = get_logger(__name__)
 
 
+def _normalize_two_piece_person_image(image_path: str) -> None:
+    """Center-crop square try-on photos to FASHN's portrait framing.
+
+    FASHN's person parser can miss lower-body garments when a full-length model
+    is packed into a square canvas. Keep the full height and trim only the side
+    margins, leaving already-portrait photos untouched.
+    """
+    from PIL import Image, ImageOps
+
+    with Image.open(image_path) as source:
+        image = ImageOps.exif_transpose(source).convert("RGB")
+        width, height = image.size
+        aspect_ratio = width / height
+        if not 0.9 <= aspect_ratio <= 1.1:
+            return
+
+        target_width = min(width, round(height * 0.75))
+        left = (width - target_width) // 2
+        image.crop((left, 0, left + target_width, height)).save(image_path)
+
+
 class TryonService:
     def __init__(self, db: Session | None = None) -> None:
         self.db = db
@@ -249,6 +270,8 @@ class TryonService:
             person_path = os.path.join(settings.upload_dir, f"person_{uuid.uuid4().hex[:8]}{ext}")
             with open(person_path, "wb") as fh:
                 shutil.copyfileobj(person_image.file, fh)
+
+            _normalize_two_piece_person_image(person_path)
 
             top_local, top_is_tmp = resolve_garment(top_path)
             bottom_local, bottom_is_tmp = resolve_garment(bottom_path)

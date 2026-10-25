@@ -4,6 +4,31 @@ import pytest
 
 from app.core.config import settings
 from app.services.fashn_service import run_fashn
+from app.services.tryon_service import _normalize_two_piece_person_image
+
+
+def test_two_piece_person_normalization_crops_square_to_portrait_and_preserves_full_height(tmp_path):
+    from PIL import Image
+
+    person = tmp_path / "square-person.png"
+    Image.new("RGB", (576, 576), "white").save(person)
+
+    _normalize_two_piece_person_image(str(person))
+
+    with Image.open(person) as normalized:
+        assert normalized.size == (432, 576)
+
+
+def test_two_piece_person_normalization_leaves_portrait_photo_unchanged(tmp_path):
+    from PIL import Image
+
+    person = tmp_path / "portrait-person.png"
+    Image.new("RGB", (576, 768), "white").save(person)
+
+    _normalize_two_piece_person_image(str(person))
+
+    with Image.open(person) as normalized:
+        assert normalized.size == (576, 768)
 
 
 def test_production_does_not_return_composite_when_fashn_is_unavailable(monkeypatch):
