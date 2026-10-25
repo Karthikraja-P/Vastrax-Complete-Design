@@ -507,9 +507,10 @@ function ProductContent() {
                   </button>
                   <Link
                     href={"/storefront/product/" + encodeURIComponent(product.id) + "/tryon"}
-                    className="absolute bottom-5 left-1/2 z-30 -translate-x-1/2 inline-flex items-center gap-2 rounded-full bg-white/95 px-4 py-2.5 text-sm font-semibold text-foreground shadow-md transition-colors hover:bg-white"
+                    aria-label="Open Virtual Try-On"
+                    className="absolute bottom-5 left-1/2 z-30 -translate-x-1/2 inline-flex min-h-12 items-center gap-2 rounded-full border-2 border-white/90 bg-[#783b27] px-5 py-3 text-base font-bold text-white shadow-xl ring-1 ring-black/10 transition-colors hover:bg-[#5e2c1c] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
                   >
-                    <Sparkles className="h-4 w-4 text-accent" />
+                    <Sparkles aria-hidden="true" className="h-5 w-5 text-white" />
                     Virtual Try-On
                   </Link>
                   {/* Product photo stays unobstructed; use the thumbnail below for 3D. */}
@@ -535,7 +536,7 @@ function ProductContent() {
                         setIsGalleryOpen(true);
                       }}
                       aria-label={`Enlarge image ${activeImageIndex + 1} of ${product.name}`}
-                      className="h-full w-full cursor-zoom-in rounded-2xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                      className="h-full w-full cursor-pointer rounded-2xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
                     >
                       <Image width={1200} height={900} unoptimized
                         src={product.images?.[activeImageIndex] || product.image}
@@ -839,7 +840,13 @@ function ProductContent() {
             )}
             <button
               type="button"
-              onClick={() => setZoomScale((value) => value === 1 ? 2.5 : 1)}
+              onClick={(event) => {
+                setZoomScale((value) => event.detail > 1 ? 2.5 : value === 1 ? 2.5 : 1);
+              }}
+              onDoubleClick={(event) => {
+                event.preventDefault();
+                setZoomScale(2.5);
+              }}
               onWheel={(event) => {
                 event.preventDefault();
                 setZoomScale((value) => Math.min(4, Math.max(1, value + (event.deltaY < 0 ? 0.35 : -0.35))));
@@ -849,7 +856,7 @@ function ProductContent() {
                 const bounds = event.currentTarget.getBoundingClientRect();
                 setZoomOrigin(`${((event.clientX - bounds.left) / bounds.width) * 100}% ${((event.clientY - bounds.top) / bounds.height) * 100}%`);
               }}
-              aria-label={`Product image, ${zoomScale === 1 ? "click to zoom in" : `${zoomScale.toFixed(1)} times zoom`}`}
+              aria-label={`Product image. ${zoomScale === 1 ? "Double-click or double-tap to zoom in" : `${zoomScale.toFixed(1)} times zoom; click to zoom out`}`}
               className={`h-full w-full overflow-hidden bg-transparent ${zoomScale > 1 ? "cursor-zoom-out" : "cursor-pointer"}`}
             >
               <Image
