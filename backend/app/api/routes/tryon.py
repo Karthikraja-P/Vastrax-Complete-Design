@@ -152,24 +152,40 @@ async def generate_admin_tryon_preview(
         from app.services.fashn_service import run_fashn
 
         async with gpu_queue.acquire("tryon_admin_preview"):
-            result_path = await asyncio.to_thread(
-                run_fashn,
-                person_image_path=person_path,
-                garment_image_path=top_path,
-                garment_type="tops" if bottom_path else garment_type,
-                results_dir=preview_results_dir,
-                garment_photo_type="flat-lay" if bottom_path else None,
-            )
             if bottom_path:
-                if not result_path or not os.path.isfile(result_path):
-                    raise InternalError("Virtual try-on did not produce the top preview")
+                # The catalog editor uses the same two-pass flow as storefront try-on:
+                # fit the bottom first (so long skirts can replace source trousers),
+                # then fit the top. Square uploaded model photos need portrait framing
+                # or FASHN may silently leave the original lower garment unchanged.
+                from app.services.tryon_service import _normalize_two_piece_person_image
+
+                _normalize_two_piece_person_image(person_path)
                 result_path = await asyncio.to_thread(
                     run_fashn,
-                    person_image_path=result_path,
+                    person_image_path=person_path,
                     garment_image_path=bottom_path,
                     garment_type="bottoms",
                     results_dir=preview_results_dir,
                     garment_photo_type="flat-lay",
+                    segmentation_free=True,
+                )
+                if not result_path or not os.path.isfile(result_path):
+                    raise InternalError("Virtual try-on did not produce the bottom preview")
+                result_path = await asyncio.to_thread(
+                    run_fashn,
+                    person_image_path=result_path,
+                    garment_image_path=top_path,
+                    garment_type="tops",
+                    results_dir=preview_results_dir,
+                    garment_photo_type="flat-lay",
+                )
+            else:
+                result_path = await asyncio.to_thread(
+                    run_fashn,
+                    person_image_path=person_path,
+                    garment_image_path=top_path,
+                    garment_type=garment_type,
+                    results_dir=preview_results_dir,
                 )
         if not result_path or not os.path.isfile(result_path):
             raise InternalError("Virtual try-on did not produce a preview image")

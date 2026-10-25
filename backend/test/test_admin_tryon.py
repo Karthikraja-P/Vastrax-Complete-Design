@@ -24,6 +24,12 @@ def _png_bytes():
     return buffer.getvalue()
 
 
+def _square_png_bytes():
+    buffer = BytesIO()
+    Image.new("RGB", (96, 96), (224, 128, 168)).save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
 def _admin_headers():
     db = SessionLocal()
     user = User(email=f"admin-tryon-{uuid.uuid4().hex}@example.test", hashed_password="unused", role="admin", is_active=True)
@@ -112,7 +118,7 @@ def test_admin_preview_combines_top_and_bottom_on_selected_model(client, monkeyp
 
     assert response.status_code == 200, response.text
     assert response.content == b"preview-2"
-    assert [call[2] for call in calls] == ["tops", "bottoms"]
+    assert [call[2] for call in calls] == ["bottoms", "tops"]
     assert calls[0][0].name == "aanya-wavy.webp"
     assert calls[1][0].name == "generated-1.png"
     assert list(upload_dir.iterdir()) == []
@@ -144,7 +150,7 @@ def test_admin_preview_uses_one_complete_set_reference_for_both_passes(client, m
     )
 
     assert response.status_code == 200, response.text
-    assert [call[2] for call in calls] == ["tops", "bottoms"]
+    assert [call[2] for call in calls] == ["bottoms", "tops"]
     assert calls[0][1] == calls[1][1]
     assert calls[0][0].name == "meera-curls.webp"
     assert calls[1][0].name == "generated-1.png"
@@ -160,9 +166,12 @@ def test_admin_preview_uses_uploaded_person_instead_of_template(client, monkeypa
     calls = []
 
     def fake_run_fashn(person_image_path, garment_image_path, garment_type, results_dir, **kwargs):
-        calls.append((Path(person_image_path).name, garment_type))
+        calls.append((Path(person_image_path).name, garment_type, kwargs))
         assert Path(person_image_path).is_file()
         assert Path(garment_image_path).is_file()
+        if len(calls) == 1:
+            with Image.open(person_image_path) as normalized:
+                assert normalized.size == (72, 96)
         result = Path(results_dir) / f"generated-{len(calls)}.png"
         result.parent.mkdir(parents=True, exist_ok=True)
         result.write_bytes(b"preview")
@@ -173,13 +182,14 @@ def test_admin_preview_uses_uploaded_person_instead_of_template(client, monkeypa
         "/api/v1/try-on/admin-preview",
         headers=_admin_headers(),
         files=[
-            ("person_image", ("person.png", _png_bytes(), "image/png")),
+            ("person_image", ("person.png", _square_png_bytes(), "image/png")),
             ("set_image", ("complete-set.png", _png_bytes(), "image/png")),
         ],
     )
 
     assert response.status_code == 200, response.text
     assert calls[0][0].startswith("admin-tryon-person-")
-    assert [category for _, category in calls] == ["tops", "bottoms"]
+    assert [category for _, category, _ in calls] == ["bottoms", "tops"]
+    assert calls[0][2]["segmentation_free"] is True
     assert list(upload_dir.iterdir()) == []
     assert list(results_dir.iterdir()) == []
