@@ -51,6 +51,13 @@ def run_fashn(
     else:
         category = detect_category(garment_image_path)
 
+    # Long skirts often need to extend beyond the silhouette of the person's
+    # original trousers. FASHN's segmentation-free mode allows that expansion;
+    # keep existing top/one-piece behavior unless a caller explicitly overrides.
+    segmentation_free_enabled = (
+        segmentation_free if segmentation_free is not None else category == "bottoms"
+    )
+
     # 1. Check Remote GPU Server (e.g. http://192.168.1.3:8001)
     remote_url = getattr(settings, "fashn_tryon_url", "").rstrip("/")
     if remote_url:
@@ -61,7 +68,7 @@ def run_fashn(
                 data = {
                     "garment_path": garment_image_path,
                     "garment_type": category,
-                    "segmentation_free": str(segmentation_free).lower() if segmentation_free is not None else "false",
+                    "segmentation_free": str(segmentation_free_enabled).lower(),
                 }
                 if garment_photo_type in {"model", "flat-lay"}:
                     data["garment_photo_type"] = garment_photo_type
@@ -130,7 +137,7 @@ def run_fashn(
         ]
         if garment_photo_type in {"model", "flat-lay"}:
             cmd.extend(["--garment-photo-type", garment_photo_type])
-        if segmentation_free is False:
+        if not segmentation_free_enabled:
             cmd.append("--no-segmentation-free")
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
         if result.returncode == 0 and os.path.exists(settings.fashn_output):

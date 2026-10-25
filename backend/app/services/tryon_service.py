@@ -262,19 +262,23 @@ class TryonService:
             import asyncio
 
             async with gpu_queue.acquire(f"tryon_combo_{uuid.uuid4().hex[:6]}"):
+                # Fit bottoms first so long skirts can expand past the source outfit's
+                # trouser silhouette. Fit the top second to avoid leaving old lower-body
+                # pixels visible at the waist in the final image.
                 intermediate = await asyncio.to_thread(
                     run_fashn,
                     person_image_path=person_path,
-                    garment_image_path=top_local,
-                    garment_type="tops",
+                    garment_image_path=bottom_local,
+                    garment_type="bottoms",
                     results_dir=settings.upload_dir,
                     garment_photo_type="flat-lay",
+                    segmentation_free=True,
                 )
                 result_path = await asyncio.to_thread(
                     run_fashn,
                     person_image_path=intermediate,
-                    garment_image_path=bottom_local,
-                    garment_type="bottoms",
+                    garment_image_path=top_local,
+                    garment_type="tops",
                     results_dir=settings.results_dir,
                     garment_photo_type="flat-lay",
                 )
