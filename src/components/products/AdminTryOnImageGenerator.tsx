@@ -170,8 +170,10 @@ export default function AdminTryOnImageGenerator({ productName, images, hemLengt
       <div>
         <p className="mb-2 text-xs font-medium text-foreground">Choose a model or upload your own</p>
         {/\bskirt\b/i.test(productName) && models.some((model) => model.id === "skirt-storefront-reference") && (
-          <p className="mb-3 rounded-lg border border-accent/30 bg-accent/5 p-3 text-xs text-muted-foreground">
-            The storefront skirt reference is preselected. It uses the same person photo as the successful ankle-length skirt try-on; you can still choose another model.
+          <p className="mb-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-muted-foreground">
+            {personFile || selectedModelId !== "skirt-storefront-reference"
+              ? <>A different person photo is selected. In testing, FASHN shortened this skirt on the other model photos. Select <strong className="text-foreground">Storefront skirt reference</strong> for the tested ankle-length result. FASHN cannot guarantee hem length on other models.</>
+              : <>The storefront skirt reference is selected. It uses the same green-top person photo as the successful ankle-length storefront result.</>}
           </p>
         )}
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
