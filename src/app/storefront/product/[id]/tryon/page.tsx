@@ -184,6 +184,7 @@ export default function VirtualTryOnPage() {
   const setImageOptions = getGarmentImageOptions(product);
   const selectedTopImage = setImageOptions.find((image) => image.role === "top");
   const selectedBottomImage = setImageOptions.find((image) => image.role === "bottom");
+  const bottomPieceLabel = /skirt/i.test(product.name || product.title || "") ? "Skirt" : "Bottom";
   const isCombo = twoPieceSet || (isBottoms && selectedTop !== null);
 
   const startTryOnPipeline = async () => {
@@ -369,7 +370,28 @@ export default function VirtualTryOnPage() {
             )}
 
             <div className="flex gap-4 items-center">
-              <Image width={1200} height={900} unoptimized src={String(productImgUrl || "/product-placeholder.svg")} alt={twoPieceSet ? `${product.name || "Product"} complete set` : String(product.name || "Product")} className="w-20 h-24 object-contain rounded-lg border border-border bg-[#f8f7f4] p-1" />
+              {twoPieceSet ? (
+                <div className="grid shrink-0 grid-cols-2 gap-2">
+                  {[
+                    { label: "Top", image: selectedTopImage },
+                    { label: bottomPieceLabel, image: selectedBottomImage },
+                  ].map(({ label, image }) => (
+                    <div key={label} className="w-[4.5rem] text-center">
+                      <Image
+                        width={1200}
+                        height={900}
+                        unoptimized
+                        src={String(image?.url || "/product-placeholder.svg")}
+                        alt={String(product.name || "Product") + " " + label.toLowerCase() + " garment"}
+                        className="h-24 w-full rounded-lg border border-border bg-[#f8f7f4] p-1 object-contain"
+                      />
+                      <span className="mt-1 block text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <Image width={1200} height={900} unoptimized src={String(productImgUrl || "/product-placeholder.svg")} alt={String(product.name || "Product")} className="w-20 h-24 object-contain rounded-lg border border-border bg-[#f8f7f4] p-1" />
+              )}
               <div>
                 <h4 className="text-sm font-semibold text-foreground">{product.name}</h4>
                 {product.hem_length && (
