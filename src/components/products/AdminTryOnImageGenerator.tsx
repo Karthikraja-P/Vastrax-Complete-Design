@@ -12,6 +12,13 @@ interface GalleryImage {
   tryonRole?: "top" | "bottom" | "gallery" | "set";
 }
 
+interface AdminTryOnModel {
+  id: string;
+  name: string;
+  description: string;
+  image_url: string;
+}
+
 interface Props {
   productName: string;
   images: GalleryImage[];
@@ -35,6 +42,9 @@ export default function AdminTryOnImageGenerator({ productName, images, hemLengt
   const selected = images.find((image) => image.tryonRole === "top") || (!twoPieceSet ? images[0] : undefined);
   const bottom = images.find((image) => image.tryonRole === "bottom");
   const [personFile, setPersonFile] = useState<File | null>(null);
+  const [models, setModels] = useState<AdminTryOnModel[]>([]);
+  const [selectedModelId, setSelectedModelId] = useState("aanya");
+  const [modelsError, setModelsError] = useState<string | null>(null);
   const [result, setResult] = useState<{ file: File; url: string } | null>(null);
   const [processing, setProcessing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -42,8 +52,27 @@ export default function AdminTryOnImageGenerator({ productName, images, hemLengt
 
   useEffect(() => () => { if (result) URL.revokeObjectURL(result.url); }, [result]);
 
+  useEffect(() => {
+    let active = true;
+    fetch("/api/v1/try-on/admin-models", { cache: "no-store" })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Could not load the model library.");
+        return response.json() as Promise<AdminTryOnModel[]>;
+      })
+      .then((availableModels) => {
+        if (!active) return;
+        setModels(availableModels);
+        setSelectedModelId((current) => availableModels.some((model) => model.id === current) ? current : availableModels[0]?.id || "");
+        setModelsError(null);
+      })
+      .catch((caught) => {
+        if (active) setModelsError(caught instanceof Error ? caught.message : "Could not load the model library.");
+      });
+    return () => { active = false; };
+  }, []);
+
   const tryOn = async () => {
-    if (!personFile || !selected || (twoPieceSet && !bottom)) return;
+    if ((!personFile && !selectedModelId) || !selected || (twoPieceSet && !bottom)) return;
     setProcessing(true);
     setResult(null);
     setError(null);
@@ -57,7 +86,8 @@ export default function AdminTryOnImageGenerator({ productName, images, hemLengt
       };
       const sourceFile = await asFile(selected);
       const form = new FormData();
-      form.append("person_image", personFile);
+      if (personFile) form.append("person_image", personFile);
+      else form.append("model_id", selectedModelId);
       if (twoPieceSet) {
         form.append("garment_image", sourceFile);
         form.append("bottom_image", await asFile(bottom!));
@@ -135,11 +165,33 @@ export default function AdminTryOnImageGenerator({ productName, images, hemLengt
           ))}
         </div>
       )}
-      <label className="block text-xs font-medium text-foreground">Person photo
+      <div>
+        <p className="mb-2 text-xs font-medium text-foreground">Choose a model</p>
+        <div className="grid grid-cols-3 gap-3">
+          {models.map((model) => (
+            <button
+              key={model.id}
+              type="button"
+              onClick={() => { setSelectedModelId(model.id); setPersonFile(null); setResult(null); }}
+              aria-pressed={!personFile && selectedModelId === model.id}
+              className={[
+                "rounded-lg border p-2 text-left transition-colors",
+                !personFile && selectedModelId === model.id ? "border-accent ring-2 ring-accent/30" : "border-border hover:border-accent/60",
+              ].join(" ")}
+            >
+              <Image src={model.image_url} alt={model.name} width={144} height={168} unoptimized className="h-32 w-full rounded object-cover object-top" />
+              <span className="mt-1 block text-xs font-semibold text-foreground">{model.name}</span>
+              <span className="mt-0.5 block text-[9px] leading-snug text-muted-foreground">{model.description}</span>
+            </button>
+          ))}
+        </div>
+        {modelsError && <p className="mt-2 text-xs text-amber-700">{modelsError} You can upload your own photo below.</p>}
+      </div>
+      <label className="block text-xs font-medium text-foreground">Or upload your own person photo (optional)
         <input type="file" accept="image/jpeg,image/png,image/webp" className="mt-2 block w-full text-xs text-foreground" onChange={(event) => { setPersonFile(event.target.files?.[0] || null); setResult(null); }} />
       </label>
-      {personFile && <p className="text-xs text-muted-foreground">Selected: {personFile.name}</p>}
-      <button type="button" onClick={tryOn} disabled={!selected || (twoPieceSet && !bottom) || !personFile || processing} className="inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">
+      {personFile && <p className="text-xs text-muted-foreground">Selected: {personFile.name} (will be used instead of the model above)</p>}
+      <button type="button" onClick={tryOn} disabled={!selected || (twoPieceSet && !bottom) || (!personFile && !selectedModelId) || processing} className="inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">
         {processing && <Loader2 className="h-4 w-4 animate-spin" />}{processing ? "Trying on…" : "Try on this outfit"}
       </button>
       {error && <p role="alert" className="text-xs text-red-600">{error}</p>}
