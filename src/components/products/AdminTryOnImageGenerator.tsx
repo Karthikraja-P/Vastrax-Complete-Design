@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useEffect, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, Upload } from "lucide-react";
 import { getSession } from "next-auth/react";
 
 interface GalleryImage {
@@ -166,8 +166,8 @@ export default function AdminTryOnImageGenerator({ productName, images, hemLengt
         </div>
       )}
       <div>
-        <p className="mb-2 text-xs font-medium text-foreground">Choose a model</p>
-        <div className="grid grid-cols-3 gap-3">
+        <p className="mb-2 text-xs font-medium text-foreground">Choose a model or upload your own</p>
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           {models.map((model) => (
             <button
               key={model.id}
@@ -184,13 +184,30 @@ export default function AdminTryOnImageGenerator({ productName, images, hemLengt
               <span className="mt-0.5 block text-[9px] leading-snug text-muted-foreground">{model.description}</span>
             </button>
           ))}
+          <label className={[
+            "flex min-h-48 cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed p-3 text-center transition-colors",
+            personFile ? "border-accent bg-accent/5" : "border-border hover:border-accent/60",
+          ].join(" ")}>
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              aria-label="Upload your own model photo"
+              className="sr-only"
+              onChange={(event) => {
+                const file = event.target.files?.[0] || null;
+                setPersonFile(file);
+                if (file) setSelectedModelId("");
+                setResult(null);
+              }}
+            />
+            <Upload className="mb-2 h-6 w-6 text-accent" />
+            <span className="text-xs font-semibold text-foreground">{personFile ? "Photo uploaded" : "Upload your photo"}</span>
+            <span className="mt-1 break-all text-[9px] leading-snug text-muted-foreground">{personFile ? personFile.name : "JPG, PNG or WEBP · max 10 MB"}</span>
+          </label>
         </div>
-        {modelsError && <p className="mt-2 text-xs text-amber-700">{modelsError} You can upload your own photo below.</p>}
+        {modelsError && <p className="mt-2 text-xs text-amber-700">{modelsError} The upload choice remains available.</p>}
+        {personFile && <p className="mt-2 text-xs text-muted-foreground">Your uploaded photo is selected for this preview.</p>}
       </div>
-      <label className="block text-xs font-medium text-foreground">Or upload your own person photo (optional)
-        <input type="file" accept="image/jpeg,image/png,image/webp" className="mt-2 block w-full text-xs text-foreground" onChange={(event) => { setPersonFile(event.target.files?.[0] || null); setResult(null); }} />
-      </label>
-      {personFile && <p className="text-xs text-muted-foreground">Selected: {personFile.name} (will be used instead of the model above)</p>}
       <button type="button" onClick={tryOn} disabled={!selected || (twoPieceSet && !bottom) || (!personFile && !selectedModelId) || processing} className="inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">
         {processing && <Loader2 className="h-4 w-4 animate-spin" />}{processing ? "Trying on…" : "Try on this outfit"}
       </button>
