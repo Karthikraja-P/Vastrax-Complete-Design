@@ -262,8 +262,9 @@ class TryonService:
         person_path: str | None = None
         top_local: str | None = None
         bottom_local: str | None = None
+        full_look_local: str | None = None
         intermediate: str | None = None
-        top_is_tmp = bottom_is_tmp = False
+        top_is_tmp = bottom_is_tmp = full_look_is_tmp = False
 
         try:
             ext = os.path.splitext(person_image.filename or "person")[1] or ".jpg"
@@ -281,36 +282,61 @@ class TryonService:
             if not os.path.exists(bottom_local):
                 raise NotFoundError(f"Bottom garment not found: {bottom_path}")
 
+            full_look_reference = None
+            if product_id and self.db:
+                product = self.db.query(Product).filter(Product.id == str(product_id)).first()
+                full_look_reference = next(
+                    (image for image in (product.images if product else []) if image.tryon_role == "set"),
+                    None,
+                )
+            if full_look_reference:
+                full_look_local, full_look_is_tmp = resolve_garment(full_look_reference.s3_url)
+                if not os.path.exists(full_look_local):
+                    raise NotFoundError(f"Full outfit reference not found: {full_look_reference.s3_url}")
+
             from app.core.gpu_queue import gpu_queue
             import asyncio
 
             async with gpu_queue.acquire(f"tryon_combo_{uuid.uuid4().hex[:6]}"):
-                # Fit bottoms first so long skirts can expand past the source outfit's
-                # trouser silhouette. Fit the top second to avoid leaving old lower-body
-                # pixels visible at the waist in the final image.
-                intermediate = await asyncio.to_thread(
-                    run_fashn,
-                    person_image_path=person_path,
-                    garment_image_path=bottom_local,
-                    garment_type="bottoms",
-                    results_dir=settings.upload_dir,
-                    garment_photo_type="flat-lay",
-                    segmentation_free=True,
-                )
-                result_path = await asyncio.to_thread(
-                    run_fashn,
-                    person_image_path=intermediate,
-                    garment_image_path=top_local,
-                    garment_type="tops",
-                    results_dir=settings.results_dir,
-                    garment_photo_type="flat-lay",
-                )
+                if full_look_local:
+                    # A complete modeled outfit preserves the real set silhouette and
+                    # hem. FASHN transfers that reference onto the uploaded person in one pass.
+                    result_path = await asyncio.to_thread(
+                        run_fashn,
+                        person_image_path=person_path,
+                        garment_image_path=full_look_local,
+                        garment_type="one-pieces",
+                        results_dir=settings.results_dir,
+                        garment_photo_type="model",
+                        segmentation_free=True,
+                    )
+                    category_used = "adaptive full-look reference"
+                else:
+                    # Without a full-look reference, retain the two-pass separate garment flow.
+                    intermediate = await asyncio.to_thread(
+                        run_fashn,
+                        person_image_path=person_path,
+                        garment_image_path=bottom_local,
+                        garment_type="bottoms",
+                        results_dir=settings.upload_dir,
+                        garment_photo_type="flat-lay",
+                        segmentation_free=True,
+                    )
+                    result_path = await asyncio.to_thread(
+                        run_fashn,
+                        person_image_path=intermediate,
+                        garment_image_path=top_local,
+                        garment_type="tops",
+                        results_dir=settings.results_dir,
+                        garment_photo_type="flat-lay",
+                    )
+                    category_used = "combo (tops + bottoms)"
             result_url = f"/results/{os.path.basename(result_path)}"
             self._log_session(user, product_id, "done", result_url)
             return {
                 "status": "success",
                 "result_url": result_url,
-                "category_used": "combo (tops + bottoms)",
+                "category_used": category_used,
                 "model": "FASHN VTON 1.5",
             }
         except (NotFoundError, BadRequestError):
@@ -328,3 +354,5 @@ class TryonService:
                 try_remove(top_local)
             if bottom_is_tmp:
                 try_remove(bottom_local)
+            if full_look_is_tmp:
+                try_remove(full_look_local)

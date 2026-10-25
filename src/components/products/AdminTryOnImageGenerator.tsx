@@ -41,11 +41,10 @@ export default function AdminTryOnImageGenerator({ productName, images, hemLengt
   const twoPieceSet = isTwoPieceSet(productName);
   const selected = images.find((image) => image.tryonRole === "top") || (!twoPieceSet ? images[0] : undefined);
   const bottom = images.find((image) => image.tryonRole === "bottom");
+  const fullLook = images.find((image) => image.tryonRole === "set");
   const [personFile, setPersonFile] = useState<File | null>(null);
   const [models, setModels] = useState<AdminTryOnModel[]>([]);
-  const [selectedModelId, setSelectedModelId] = useState(
-    /\bskirt\b/i.test(productName) ? "skirt-storefront-reference" : "aanya",
-  );
+  const [selectedModelId, setSelectedModelId] = useState("aanya");
   const [modelsError, setModelsError] = useState<string | null>(null);
   const [result, setResult] = useState<{ file: File; url: string } | null>(null);
   const [processing, setProcessing] = useState(false);
@@ -74,7 +73,7 @@ export default function AdminTryOnImageGenerator({ productName, images, hemLengt
   }, []);
 
   const tryOn = async () => {
-    if ((!personFile && !selectedModelId) || !selected || (twoPieceSet && !bottom)) return;
+    if ((!personFile && !selectedModelId) || (!selected && !(twoPieceSet && fullLook)) || (twoPieceSet && !fullLook && (!selected || !bottom))) return;
     setProcessing(true);
     setResult(null);
     setError(null);
@@ -86,17 +85,21 @@ export default function AdminTryOnImageGenerator({ productName, images, hemLengt
         const blob = await imageResponse.blob();
         return new File([blob], "product-photo", { type: blob.type || "image/webp" });
       };
-      const sourceFile = await asFile(selected);
+      const sourceFile = selected ? await asFile(selected) : null;
       const form = new FormData();
       if (personFile) form.append("person_image", personFile);
       else form.append("model_id", selectedModelId);
-      if (twoPieceSet) {
-        form.append("garment_image", sourceFile);
+      if (twoPieceSet && fullLook) {
+        form.append("set_image", await asFile(fullLook));
+        form.append("full_look_reference", "true");
+        form.append("garment_type", "one-pieces");
+      } else if (twoPieceSet) {
+        form.append("garment_image", sourceFile!);
         form.append("bottom_image", await asFile(bottom!));
         form.append("garment_type", "tops");
       }
       else {
-        form.append("garment_image", sourceFile);
+        form.append("garment_image", sourceFile!);
         form.append("garment_type", garmentType(productName));
       }
       let token = localStorage.getItem("vastrax_token");
@@ -137,22 +140,22 @@ export default function AdminTryOnImageGenerator({ productName, images, hemLengt
     <section className="space-y-4 rounded-xl border border-border bg-background p-5">
       <div>
         <h3 className="text-sm font-semibold text-foreground">Virtual Try-On</h3>
-        <p className="mt-1 text-xs text-muted-foreground">{twoPieceSet ? "Choose separate Top and Bottom photos. FASHN applies each garment in sequence; a complete-set photo can stay in the gallery." : "Choose the product photo to preview on a person."}</p>
+        <p className="mt-1 text-xs text-muted-foreground">{twoPieceSet ? "Assign a full modeled outfit photo as Full Look to adapt the whole set to the selected model or uploaded photo. Otherwise, use separate Top and Bottom photos." : "Choose the product photo to preview on a person."}</p>
       </div>
-      {/\bskirt\b|\blehenga\b/i.test(productName) && (
-        <p className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-muted-foreground">
+      {fullLook && /\bskirt\b|\blehenga\b/i.test(productName) && (
+        <p className="rounded-lg border border-accent/30 bg-accent/5 p-3 text-xs text-muted-foreground">
           {hemLength ? <>Recorded hem length: <strong className="text-foreground">{({ knee: "Knee length", midi: "Midi length", ankle: "Ankle length", floor: "Floor length" } as Record<string, string>)[hemLength] || hemLength}</strong>. </> : null}
-          Check that the Bottom photo shows the whole hem. This length is workflow guidance only; self-hosted FASHN may generate a different hem length.
+          The selected full-look product photo guides this silhouette on the model or photo you choose.
         </p>
       )}
       {images.length === 0 ? (
         <p className="text-xs text-muted-foreground">Upload product photos above first.</p>
       ) : twoPieceSet ? (
-        <div className="grid grid-cols-2 gap-3">
-          {[{ label: "Top photo", image: selected }, { label: "Bottom photo", image: bottom }].map(({ label, image }) => (
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+          {[{ label: "Top photo", image: selected }, { label: "Bottom photo", image: bottom }, { label: "Full Look reference (optional)", image: fullLook }].map(({ label, image }) => (
             <div key={label} className="rounded-lg border border-border p-2">
               <p className="mb-2 text-[10px] font-semibold uppercase text-muted-foreground">{label}</p>
-              {image ? <Image src={image.preview} alt={label} width={144} height={168} unoptimized className="h-40 w-full rounded object-contain bg-white" /> : <div className="flex h-40 items-center justify-center rounded bg-surface text-center text-xs text-muted-foreground">Choose this role on its Product Images card</div>}
+              {image ? <Image src={image.preview} alt={label} width={144} height={168} unoptimized className="h-40 w-full rounded object-contain bg-white" /> : <div className="flex h-40 items-center justify-center rounded bg-surface text-center text-xs text-muted-foreground">Assign this role on the Product Images card</div>}
             </div>
           ))}
         </div>
@@ -169,11 +172,9 @@ export default function AdminTryOnImageGenerator({ productName, images, hemLengt
       )}
       <div>
         <p className="mb-2 text-xs font-medium text-foreground">Choose a model or upload your own</p>
-        {/\bskirt\b/i.test(productName) && models.some((model) => model.id === "skirt-storefront-reference") && (
-          <p className="mb-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-muted-foreground">
-            {personFile || selectedModelId !== "skirt-storefront-reference"
-              ? <>A different person photo is selected. In testing, FASHN shortened this skirt on the other model photos. Select <strong className="text-foreground">Storefront skirt reference</strong> for the tested ankle-length result. FASHN cannot guarantee hem length on other models.</>
-              : <>The storefront skirt reference is selected. It uses the same green-top person photo as the successful ankle-length storefront result.</>}
+        {twoPieceSet && fullLook && (
+          <p className="mb-3 rounded-lg border border-accent/30 bg-accent/5 p-3 text-xs text-muted-foreground">
+            Full Look reference is active. The selected model or uploaded photo is the person target; this complete outfit photo guides the set silhouette and skirt hem in one fitting pass.
           </p>
         )}
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -217,7 +218,7 @@ export default function AdminTryOnImageGenerator({ productName, images, hemLengt
         {modelsError && <p className="mt-2 text-xs text-amber-700">{modelsError} The upload choice remains available.</p>}
         {personFile && <p className="mt-2 text-xs text-muted-foreground">Your uploaded photo is selected for this preview.</p>}
       </div>
-      <button type="button" onClick={tryOn} disabled={!selected || (twoPieceSet && !bottom) || (!personFile && !selectedModelId) || processing} className="inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">
+      <button type="button" onClick={tryOn} disabled={(!selected && !(twoPieceSet && fullLook)) || (twoPieceSet && !fullLook && !bottom) || (!personFile && !selectedModelId) || processing} className="inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">
         {processing && <Loader2 className="h-4 w-4 animate-spin" />}{processing ? "Trying on…" : "Try on this outfit"}
       </button>
       {error && <p role="alert" className="text-xs text-red-600">{error}</p>}

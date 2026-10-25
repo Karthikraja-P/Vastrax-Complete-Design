@@ -44,7 +44,7 @@ def test_admin_model_library_exposes_three_neutral_model_templates(client):
     response = client.get("/api/v1/try-on/admin-models")
     assert response.status_code == 200
     models = response.json()
-    assert [model["id"] for model in models] == ["aanya", "meera", "kavya"]
+    assert [model["id"] for model in models][:3] == ["aanya", "meera", "kavya"]
     for model in models:
         image = client.get(model["image_url"])
         assert image.status_code == 200
@@ -154,6 +154,43 @@ def test_admin_preview_uses_one_complete_set_reference_for_both_passes(client, m
     assert calls[0][1] == calls[1][1]
     assert calls[0][0].name == "meera-curls.webp"
     assert calls[1][0].name == "generated-1.png"
+    assert list(upload_dir.iterdir()) == []
+    assert list(results_dir.iterdir()) == []
+
+
+
+
+def test_admin_preview_uses_adaptive_full_look_reference_in_one_pass(client, monkeypatch, tmp_path):
+    upload_dir = tmp_path / "uploads"
+    results_dir = tmp_path / "results"
+    monkeypatch.setattr(settings, "upload_dir", str(upload_dir))
+    monkeypatch.setattr(settings, "results_dir", str(results_dir))
+    calls = []
+
+    def fake_run_fashn(person_image_path, garment_image_path, garment_type, results_dir, **kwargs):
+        assert Path(person_image_path).is_file()
+        assert Path(garment_image_path).is_file()
+        calls.append((Path(person_image_path).name, Path(garment_image_path).name, garment_type, kwargs))
+        result = Path(results_dir) / "adaptive-preview.png"
+        result.parent.mkdir(parents=True, exist_ok=True)
+        result.write_bytes(b"adaptive-preview")
+        return str(result)
+
+    monkeypatch.setattr("app.services.fashn_service.run_fashn", fake_run_fashn)
+    response = client.post(
+        "/api/v1/try-on/admin-preview",
+        headers=_admin_headers(),
+        data={"model_id": "kavya", "full_look_reference": "true", "garment_type": "one-pieces"},
+        files={"set_image": ("full-look.png", _png_bytes(), "image/png")},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.content == b"adaptive-preview"
+    assert len(calls) == 1
+    assert calls[0][0] == "kavya-braid.webp"
+    assert calls[0][2] == "one-pieces"
+    assert calls[0][3]["garment_photo_type"] == "model"
+    assert calls[0][3]["segmentation_free"] is True
     assert list(upload_dir.iterdir()) == []
     assert list(results_dir.iterdir()) == []
 

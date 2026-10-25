@@ -244,7 +244,7 @@ function EditProductContent() {
     showToast(`Try-on image added for ${modelName}`);
   };
 
-  const handleSelectTryOnImage = (id: string, role: "top" | "bottom") => {
+  const handleSelectTryOnImage = (id: string, role: "top" | "bottom" | "set") => {
     setImages((current) => current.map((image) => {
       if (image.id === id) return { ...image, tryonRole: image.tryonRole === role ? "gallery" : role };
       return image.tryonRole === role ? { ...image, tryonRole: "gallery" } : image;
@@ -1004,7 +1004,7 @@ function EditProductContent() {
 
                         {isTwoPieceProductName(name) && (
                           <div className="absolute bottom-10 inset-x-2 z-20 flex gap-1 pointer-events-auto">
-                            {(["top", "bottom", "gallery"] as const).map((role) => (
+                            {(["top", "bottom", "set", "gallery"] as const).map((role) => (
                               <button
                                 key={role}
                                 type="button"
@@ -1022,7 +1022,7 @@ function EditProductContent() {
                                   img.tryonRole === role ? "bg-accent text-white" : "bg-black/75 text-white hover:bg-black"
                                 )}
                               >
-                                {role === "gallery" ? "Gallery" : role}
+                                {role === "gallery" ? "Gallery" : role === "set" ? "Full Look" : role}
                               </button>
                             ))}
                           </div>

@@ -36,8 +36,8 @@ ADMIN_TRYON_MODELS = {
         "filename": "kavya-braid.webp",
     },
     "skirt-storefront-reference": {
-        "name": "Storefront skirt reference",
-        "description": "Person photo used for the successful ankle-length skirt try-on",
+        "name": "Green-top model",
+        "description": "Green-top person photo; can be selected as the try-on model",
         "filename": "skirt-and-top-model.webp",
         "product_photo": True,
     },
@@ -90,6 +90,7 @@ async def generate_admin_tryon_preview(
     garment_image: UploadFile | None = File(None),
     bottom_image: UploadFile | None = File(None),
     set_image: UploadFile | None = File(None),
+    full_look_reference: bool = Form(False),
     _: User = Depends(require_admin),
 ):
     """Preview a product on an uploaded person photo or a curated model."""
@@ -106,6 +107,8 @@ async def generate_admin_tryon_preview(
         raise BadRequestError("Choose a supported garment type")
     if set_image and (garment_image or bottom_image):
         raise BadRequestError("Choose either one complete set photo or separate garment photos")
+    if full_look_reference and not set_image:
+        raise BadRequestError("Choose a full-look reference photo")
     if not set_image and not garment_image:
         raise BadRequestError("Choose a product photo or a complete set photo")
     if bottom_image and garment_type != "tops":
@@ -136,9 +139,8 @@ async def generate_admin_tryon_preview(
     bottom_extension: str | None = None
     if bottom_image and not set_mode:
         bottom_content, bottom_extension = await read_image(bottom_image, "bottom")
-    elif set_mode:
-        # A complete catalog image contains both pieces; reuse it as the source for
-        # the top and bottom passes so the model wears the selected matching set.
+    elif set_mode and not full_look_reference:
+        # Legacy complete-set mode applies the image in separate top and bottom passes.
         bottom_content, bottom_extension = top_content, top_extension
     person_content, person_extension = await read_image(person_image, "person") if person_image else (None, None)
 
@@ -157,12 +159,25 @@ async def generate_admin_tryon_preview(
 
         top_path = save_temp(top_content, top_extension, "admin-tryon-set-" if set_mode else "admin-tryon-top-")
         person_path = save_temp(person_content, person_extension, "admin-tryon-person-") if person_content and person_extension else str(model_path)
-        bottom_path = top_path if set_mode else (save_temp(bottom_content, bottom_extension, "admin-tryon-bottom-") if bottom_content and bottom_extension else None)
+        bottom_path = top_path if set_mode and not full_look_reference else (save_temp(bottom_content, bottom_extension, "admin-tryon-bottom-") if bottom_content and bottom_extension else None)
         from app.core.gpu_queue import gpu_queue
         from app.services.fashn_service import run_fashn
 
         async with gpu_queue.acquire("tryon_admin_preview"):
-            if bottom_path:
+            if full_look_reference:
+                from app.services.tryon_service import _normalize_two_piece_person_image
+
+                _normalize_two_piece_person_image(person_path)
+                result_path = await asyncio.to_thread(
+                    run_fashn,
+                    person_image_path=person_path,
+                    garment_image_path=top_path,
+                    garment_type="one-pieces",
+                    results_dir=preview_results_dir,
+                    garment_photo_type="model",
+                    segmentation_free=True,
+                )
+            elif bottom_path:
                 # The catalog editor uses the same two-pass flow as storefront try-on:
                 # fit the bottom first (so long skirts can replace source trousers),
                 # then fit the top. Square uploaded model photos need portrait framing

@@ -184,13 +184,14 @@ export default function VirtualTryOnPage() {
   const setImageOptions = getGarmentImageOptions(product);
   const selectedTopImage = setImageOptions.find((image) => image.role === "top");
   const selectedBottomImage = setImageOptions.find((image) => image.role === "bottom");
+  const selectedFullLookImage = setImageOptions.find((image) => image.role === "set");
   const bottomPieceLabel = /skirt/i.test(product.name || product.title || "") ? "Skirt" : "Bottom";
   const isCombo = twoPieceSet || (isBottoms && selectedTop !== null);
 
   const startTryOnPipeline = async () => {
     if (!personFile || !product) return;
 
-    if (twoPieceSet && (!selectedTopImage || !selectedBottomImage)) {
+    if (twoPieceSet && !selectedFullLookImage && (!selectedTopImage || !selectedBottomImage)) {
       setStatusType("error");
       setStatusText("This set needs separate Top and Bottom photos in the product gallery before try-on can run.");
       return;
@@ -198,7 +199,7 @@ export default function VirtualTryOnPage() {
     setIsProcessing(true);
     setTryOnComplete(false);
     setStatusType("processing");
-    setStatusText(isCombo ? "The virtual fitting room is processing both garments on the GPU. This can take a few minutes when the GPU is busy." : "The virtual fitting room is processing your photo on the GPU. This can take a few minutes when the GPU is busy.");
+    setStatusText(selectedFullLookImage ? "The virtual fitting room is adapting the complete outfit to your photo on the GPU. This can take a few minutes when the GPU is busy." : isCombo ? "The virtual fitting room is processing both garments on the GPU. This can take a few minutes when the GPU is busy." : "The virtual fitting room is processing your photo on the GPU. This can take a few minutes when the GPU is busy.");
 
     try {
       let res;
@@ -216,7 +217,7 @@ export default function VirtualTryOnPage() {
         setTryOnResultUrl(res.result_image_url);
         setTryOnComplete(true);
         setStatusType("success");
-        setStatusText(`Done! ${isCombo ? "Full outfit draped" : "Garment draped"}.`);
+        setStatusText(`Done! ${selectedFullLookImage ? "Full outfit adapted to your photo" : isCombo ? "Full outfit draped" : "Garment draped"}.`);
       } else {
         throw new Error("Try-on response failed.");
       }
@@ -370,7 +371,12 @@ export default function VirtualTryOnPage() {
             )}
 
             <div className="flex gap-4 items-center">
-              {twoPieceSet ? (
+              {twoPieceSet && selectedFullLookImage ? (
+                <div className="w-[4.5rem] shrink-0 text-center">
+                  <Image width={1200} height={900} unoptimized src={selectedFullLookImage.url} alt="Complete outfit reference" className="h-24 w-full rounded-lg border border-border bg-[#f8f7f4] p-1 object-contain" />
+                  <span className="mt-1 block text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">Full look</span>
+                </div>
+              ) : twoPieceSet ? (
                 <div className="grid shrink-0 grid-cols-2 gap-2">
                   {[
                     { label: "Top", image: selectedTopImage },
@@ -396,7 +402,7 @@ export default function VirtualTryOnPage() {
                 <h4 className="text-sm font-semibold text-foreground">{product.name}</h4>
                 {product.hem_length && (
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Actual skirt length: {{ knee: "Knee length", midi: "Midi length", ankle: "Ankle length", floor: "Floor length" }[product.hem_length]}. AI preview may vary; use the product photos as the accurate reference.
+                    Actual skirt length: {{ knee: "Knee length", midi: "Midi length", ankle: "Ankle length", floor: "Floor length" }[product.hem_length]}.{selectedFullLookImage ? " The complete outfit reference guides the skirt silhouette on your photo." : " AI preview may vary; use the product photos as the accurate reference."}
                   </p>
                 )}
                 {!twoPieceSet && (
@@ -405,7 +411,7 @@ export default function VirtualTryOnPage() {
                   </span>
                 )}
                 <p className="text-sm font-bold text-[#e07a3f] mt-1">₹{(product.price_selling || product.price)?.toLocaleString()}</p>
-                {twoPieceSet && (!selectedTopImage || !selectedBottomImage) && <p className="mt-2 text-xs text-red-500">Separate Top and Bottom photos are required for try-on.</p>}
+                {twoPieceSet && !selectedFullLookImage && (!selectedTopImage || !selectedBottomImage) && <p className="mt-2 text-xs text-red-500">Separate Top and Bottom photos or a Full Look reference are required for try-on.</p>}
               </div>
             </div>
           </div>
@@ -455,7 +461,7 @@ export default function VirtualTryOnPage() {
           {/* Action Button */}
           <button
             onClick={startTryOnPipeline}
-            disabled={isProcessing || !personFile || (twoPieceSet && (!selectedTopImage || !selectedBottomImage))}
+            disabled={isProcessing || !personFile || (twoPieceSet && !selectedFullLookImage && (!selectedTopImage || !selectedBottomImage))}
             className="w-full py-4 bg-gradient-to-r from-[#e07a3f] to-[#b95625] hover:from-[#b95625] hover:to-[#9b4a23] text-white font-bold text-xs uppercase tracking-wider rounded-xl flex items-center justify-center gap-2 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all"
           >
             Generate
