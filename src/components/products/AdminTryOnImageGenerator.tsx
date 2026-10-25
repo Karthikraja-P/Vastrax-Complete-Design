@@ -43,7 +43,9 @@ export default function AdminTryOnImageGenerator({ productName, images, hemLengt
   const bottom = images.find((image) => image.tryonRole === "bottom");
   const [personFile, setPersonFile] = useState<File | null>(null);
   const [models, setModels] = useState<AdminTryOnModel[]>([]);
-  const [selectedModelId, setSelectedModelId] = useState("aanya");
+  const [selectedModelId, setSelectedModelId] = useState(
+    /\bskirt\b/i.test(productName) ? "skirt-storefront-reference" : "aanya",
+  );
   const [modelsError, setModelsError] = useState<string | null>(null);
   const [result, setResult] = useState<{ file: File; url: string } | null>(null);
   const [processing, setProcessing] = useState(false);
@@ -167,6 +169,11 @@ export default function AdminTryOnImageGenerator({ productName, images, hemLengt
       )}
       <div>
         <p className="mb-2 text-xs font-medium text-foreground">Choose a model or upload your own</p>
+        {/\bskirt\b/i.test(productName) && models.some((model) => model.id === "skirt-storefront-reference") && (
+          <p className="mb-3 rounded-lg border border-accent/30 bg-accent/5 p-3 text-xs text-muted-foreground">
+            The storefront skirt reference is preselected. It uses the same person photo as the successful ankle-length skirt try-on; you can still choose another model.
+          </p>
+        )}
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           {models.map((model) => (
             <button

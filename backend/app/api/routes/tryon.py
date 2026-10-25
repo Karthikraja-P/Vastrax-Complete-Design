@@ -35,6 +35,12 @@ ADMIN_TRYON_MODELS = {
         "description": "Long braid · golden-brown complexion · curvy build",
         "filename": "kavya-braid.webp",
     },
+    "skirt-storefront-reference": {
+        "name": "Storefront skirt reference",
+        "description": "Person photo used for the successful ankle-length skirt try-on",
+        "filename": "skirt-and-top-model.webp",
+        "product_photo": True,
+    },
 }
 
 
@@ -43,6 +49,9 @@ def _admin_model_path(model_id: str) -> Path:
     if not model:
         from app.core.exceptions import NotFoundError
         raise NotFoundError("Choose a model from the available model list")
+    if model.get("product_photo"):
+        from app.core.config import settings
+        return Path(settings.upload_dir) / "products" / model["filename"]
     return Path(__file__).resolve().parents[2] / "assets" / "admin_tryon_models" / model["filename"]
 
 
@@ -56,6 +65,7 @@ def list_admin_tryon_models():
             "image_url": f"/api/v1/try-on/admin-models/{model_id}/image",
         }
         for model_id, model in ADMIN_TRYON_MODELS.items()
+        if _admin_model_path(model_id).is_file()
     ]
 
 
