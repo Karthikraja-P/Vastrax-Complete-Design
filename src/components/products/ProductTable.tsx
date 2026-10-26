@@ -2,7 +2,7 @@
 import Image from "next/image";
 
 import { useState, useEffect } from "react";
-import { MoreHorizontal, Edit, Trash, Shirt, Loader2, Box } from "lucide-react";
+import { MoreHorizontal, Edit, Trash, Loader2, Box } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { productsApi, ProductItem } from "@/lib/api";
@@ -114,9 +114,6 @@ export function ProductTable() {
                         >
                           <Link href="/products/edit" className="flex items-center px-4 py-2 text-sm text-foreground hover:bg-surface-hover hover:text-accent transition-colors">
                             <Edit className="w-4 h-4 mr-3" /> Edit
-                          </Link>
-                          <Link href={`/storefront/product/${product.id}/tryon`} className="flex items-center px-4 py-2 text-sm text-foreground hover:bg-surface-hover hover:text-accent transition-colors">
-                            <Shirt className="w-4 h-4 mr-3" /> Virtual Try-On
                           </Link>
                           <div className="h-px bg-border my-1" />
                           <button

@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import { 
   Home, ChevronRight, Plus, Package, Check, EyeOff, AlertTriangle, Star, 
   ChevronDown, RotateCcw, Edit2, Trash2,
-  AlertCircle, Loader2, Sparkles
+  AlertCircle, Loader2
 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
@@ -459,12 +459,6 @@ export default function ProductsPage() {
                                 className="w-full flex items-center gap-2.5 px-3.5 py-2 text-xs font-medium text-foreground hover:bg-surface-hover hover:text-accent transition-colors"
                               >
                                 <Edit2 className="w-3.5 h-3.5 text-muted-foreground" /> Edit Product
-                              </Link>
-                              <Link 
-                                href={`/storefront/product/${product.id}/tryon`} 
-                                className="w-full flex items-center gap-2.5 px-3.5 py-2 text-xs font-medium text-foreground hover:bg-surface-hover hover:text-accent transition-colors"
-                              >
-                                <Sparkles className="w-3.5 h-3.5 text-accent" /> Try-On
                               </Link>
                               <div className="h-px bg-border/40 my-1" />
                               <button 
