@@ -595,11 +595,29 @@ export default function VirtualTryOnPage() {
               <span className="text-[9px] font-bold uppercase tracking-widest text-[#e07a3f] mb-1 block">AI Photo Guidelines</span>
               <h2 className="text-xl font-serif text-foreground">{tipLabel}</h2>
             </div>
-            <div className="p-6 bg-surface">
-              <div className="flex gap-3 items-start mb-6">
+            <div className="p-6 bg-surface max-h-[70vh] overflow-y-auto">
+              <div className="flex gap-3 items-start mb-5">
                 <Sparkles className="w-5 h-5 text-[#e07a3f] shrink-0 mt-0.5" />
                 <p className="text-sm text-muted-foreground leading-relaxed">{tips}</p>
               </div>
+              <p className="text-xs font-semibold text-foreground mb-3">For a clearer preview:</p>
+              <ul className="space-y-3 mb-5">
+                {[
+                  "Use a clear, full-length portrait with your head and both feet visible.",
+                  "Face the camera or turn only slightly; a strong side pose can make the outfit appear narrower.",
+                  "Stand naturally with your arms slightly away from your body and keep your hands clear of your waist and outfit.",
+                  "Choose even lighting and a simple background. Avoid filters, shadows across your body, and motion blur.",
+                  "Wear simple, close-fitting clothes so your body outline is visible; avoid coats or loose layers.",
+                ].map((instruction) => (
+                  <li key={instruction} className="flex gap-2 text-xs text-muted-foreground leading-relaxed">
+                    <Check className="w-4 h-4 text-[#e07a3f] shrink-0 mt-0.5" />
+                    <span>{instruction}</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="text-xs text-muted-foreground leading-relaxed border-t border-border pt-4 mb-5">
+                Try-on is a visual preview, not a size or fit measurement. Results can vary with the photo and garment.
+              </p>
               <div className="flex gap-3">
                 <button onClick={() => setShowTipsModal(false)} className="flex-1 py-3 border border-border text-foreground text-xs font-bold uppercase rounded-lg hover:bg-background transition-colors">
                   Cancel
