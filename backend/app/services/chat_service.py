@@ -2,16 +2,21 @@
 import json
 import logging
 import os
+import re
 import httpx
 
 logger = logging.getLogger(__name__)
 
 
 _STYLING_RULES = """
-STYLING & FIT GUIDANCE:
-- Tailor advice to preferences or measurements the shopper actually supplied. Never infer complexion, body shape, fit, or undertones from a product name or colour.
-- If sizing matters, refer shoppers to the actual product Size Chart; use the inventory tool before claiming a size is in stock.
-- Suggest the AI Fitting Room for a product only as an optional preview, without promising an exact physical fit.
+SHOPPER HELP — ORDERS, SIZE, TRY-ON, AND STYLE:
+- You are the VastraX store assistant as well as a stylist. Help with order updates, product discovery, size charts, virtual try-on, and practical outfit advice.
+- For “where is my order?”, “check my orders”, or order tracking without an order number, use the verified recent-order account context below and call list_my_orders if more detail is needed. For a supplied order number, call get_order_status. Never claim you cannot access the shopper's orders page; the secure account lookup can check their signed-in account. If they are not signed in, explain that they must sign in to the account that placed the order. Do not invent shipping, payment, courier, or delivery updates. The shopper can also open My Account → Orders & Shipment at /storefront/account. If the verified lookup returns zero orders, say none are listed for the signed-in account and suggest checking that they signed in with the account used to place the order.
+- For current product availability or recommendations, use search_products when needed and recommend only published items in the live catalog. Include the [PRODUCT:id] tag for each product you recommend.
+- For sizing, use the actual size chart and configured sizes included in the catalog. Use check_inventory before claiming a size is in stock. Do not claim the chart predicts exact fit; invite the shopper to compare their measurements with the chart.
+- For virtual try-on, explain that it is a visual preview, not a fit measurement. Give practical photo guidance when useful: use a clear, well-lit, full-length photo, stand mostly facing the camera with arms slightly away from the body, keep the outfit visible, and avoid other people or objects covering the person. Link them to the product's Virtual Try-On page when relevant.
+- Give natural, useful general style advice when asked. You may discuss visual styling effects (for example, vertical stripes can create a longer visual line) as optional styling ideas, never as guaranteed effects or assumptions about the shopper's body. Personalize only from preferences or measurements the shopper actually shared; do not infer complexion, body shape, or fit from an image or product name.
+- Speak like a thoughtful human in a relaxed conversation. Avoid canned disclaimers, sales pressure, and repeating the same follow-up question. Keep answers concise and ask at most one focused question.
 """
 
 _SYSTEM_PROMPT_TEMPLATE = """{admin_instructions}
@@ -55,15 +60,21 @@ def _get_catalog_context(db=None) -> str:
                     desc = p.description or ""
                     lines.append(f"{i}. ID: {p.id} | Name: {p.name} | Category: {cat_name} | Occasion: {occasion}")
                     lines.append(f"   Fabric: {fabric} | Colour: {colour} | Price: {price}")
+                    sizes = ", ".join(v.size for v in p.variants) or "not specified"
+                    lines.append(f"   Configured sizes: {sizes}")
+                    if p.size_chart:
+                        chart = json.dumps(p.size_chart, ensure_ascii=False, separators=(",", ":"), default=str)
+                        lines.append(f"   Size chart: {chart[:1600]}")
                     if desc:
                         lines.append(f"   Description: {desc}")
+                    lines.append(f"   Product page: /storefront/product?id={p.id} | Virtual try-on: /storefront/product/{p.id}/tryon")
                 return "\n".join(lines)
         except Exception as e:
             logger.warning("Could not load products from database: %s", e)
     return "LIVE BOUTIQUE CATALOG: No published products are currently available."
 
 
-def _build_system_prompt(profile: dict, db=None, context_url: str = None, cart_items: list = None) -> str:
+def _build_system_prompt(profile: dict, db=None, context_url: str = None, cart_items: list = None, order_context: str = "") -> str:
     from app.api.routes.settings import load_app_settings
     app_settings = load_app_settings(db)
     admin_instructions = getattr(app_settings, "stylistSystemPrompt", "You are Vastra, the personal style advisor for VastraX boutique.")
@@ -75,6 +86,9 @@ def _build_system_prompt(profile: dict, db=None, context_url: str = None, cart_i
     else:
         ctx = "No profile yet — gather naturally."
         
+    if order_context:
+        ctx += f"\n\nVERIFIED ACCOUNT ORDER LOOKUP:\n{order_context}\nUse this data only to answer the signed-in shopper's order question; state the recorded status and tracking details plainly."
+
     if context_url:
         ctx += f"\n\nCURRENT PAGE: User is currently on this page/product URL: {context_url}. If this is a product page, proactively use this context to provide relevant styling advice for this specific item."
         
@@ -182,6 +196,18 @@ def _sanitize_client_messages(messages: list) -> list:
     ]
 
 
+def _order_lookup_context(messages: list, db, user_id: str | None) -> str:
+    """Load verified recent-order data when the latest shopper turn asks about their orders."""
+    if not messages or db is None:
+        return ""
+    latest = next((m.get("content", "") for m in reversed(messages) if m.get("role") == "user"), "")
+    if not re.search(r"\b(?:my orders?|where(?:'s| is) my order|check (?:my )?orders?|track (?:my )?order|order status|orders page)\b", latest, re.IGNORECASE):
+        return ""
+    from app.services.chat_tools import execute_tool
+    result = execute_tool("list_my_orders", {}, db=db, user_id=user_id)
+    return json.dumps(result, ensure_ascii=False, separators=(",", ":"), default=str)
+
+
 # ── Public entry point ────────────────────────────────────────────────────────
 
 def chat(
@@ -206,7 +232,10 @@ def chat(
     url = os.getenv("STYLIST_BASE_URL", "").strip() or settings.stylist_base_url
     if not model or not url:
         raise ServiceUnavailableError("Stylist is not configured")
-    system_prompt = _build_system_prompt(profile, db=db, context_url=context_url, cart_items=cart_items)
+    order_context = _order_lookup_context(messages, db, user_id)
+    system_prompt = _build_system_prompt(
+        profile, db=db, context_url=context_url, cart_items=cart_items, order_context=order_context
+    )
     return _call_qwen(
         messages=messages,
         system_prompt=system_prompt,

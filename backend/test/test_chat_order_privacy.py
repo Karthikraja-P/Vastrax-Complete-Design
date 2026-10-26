@@ -1,5 +1,6 @@
 """Chat order tools must only serve the authenticated owner (or an admin)."""
 
+import json
 import pytest
 from decimal import Decimal
 from sqlalchemy import create_engine
@@ -60,6 +61,38 @@ def test_other_signed_in_user_denied_even_with_victim_email(db, tool):
     res = _run(db, tool, {"order_id": ORDER_ID, "email": VICTIM_EMAIL}, user_id="other")
     assert res.get("authorized") is False
     assert ADDRESS not in str(res)
+
+
+def test_list_my_orders_only_returns_authenticated_callers_orders(db):
+    owned = _run(db, "list_my_orders", {}, "owner")
+    assert owned["authenticated"] is True
+    assert {order["order_id"] for order in owned["orders"]} == {ORDER_ID, ORDER_ID + "9"}
+    assert ADDRESS not in str(owned)
+
+    anonymous = _run(db, "list_my_orders", {})
+    assert anonymous["authenticated"] is False
+    assert ORDER_ID not in str(anonymous)
+
+    other = _run(db, "list_my_orders", {}, "other")
+    assert other["orders"] == []
+
+
+def test_order_lookup_context_is_loaded_only_for_authenticated_account_questions(db):
+    owner_context = chat_service._order_lookup_context(
+        [{"role": "user", "content": "Can you check my orders page?"}], db, "owner"
+    )
+    owner_data = json.loads(owner_context)
+    assert owner_data["authenticated"] is True
+    assert {order["order_id"] for order in owner_data["orders"]} == {ORDER_ID, ORDER_ID + "9"}
+
+    anonymous_context = chat_service._order_lookup_context(
+        [{"role": "user", "content": "Where is my order?"}], db, None
+    )
+    assert json.loads(anonymous_context)["authenticated"] is False
+
+    assert chat_service._order_lookup_context(
+        [{"role": "user", "content": "Suggest a festive look"}], db, "owner"
+    ) == ""
 
 
 def test_owner_allowed(db):

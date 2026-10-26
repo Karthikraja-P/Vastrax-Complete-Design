@@ -94,6 +94,14 @@ CHAT_TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "list_my_orders",
+            "description": "List the authenticated shopper's own five most recent orders when they ask where an order is, ask to check their orders page, or do not provide an order number. This tool takes no arguments. Never use it to look up another person's orders.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "get_order_status",
             "description": "Retrieve the current delivery, fulfillment, and shipping status of an order. Requires order ID and customer authorization.",
             "parameters": {
@@ -256,6 +264,8 @@ def execute_tool(
             return _get_product_details(db, **args)
         elif tool_name == "check_inventory":
             return _check_inventory(db, **args)
+        elif tool_name == "list_my_orders":
+            return _list_my_orders(db, user_id=user_id)
         elif tool_name == "get_order_status":
             return _get_order_status(db, user_id=user_id, **args)
         elif tool_name == "get_order_details":
@@ -403,6 +413,39 @@ def _resolve_authorized_order(db: Session, order_id: str, user_id: Optional[str]
         return order
 
     return None
+
+
+def _list_my_orders(db: Session, user_id: Optional[str] = None) -> Dict[str, Any]:
+    """Return a compact, private summary of only the authenticated user's recent orders."""
+    if not user_id:
+        return {
+            "authenticated": False,
+            "message": "The shopper must sign in to the account used to place the order before order details can be checked.",
+        }
+    orders = (
+        db.query(Order)
+        .filter(Order.user_id == user_id)
+        .order_by(Order.placed_at.desc())
+        .limit(5)
+        .all()
+    )
+    return {
+        "authenticated": True,
+        "count": len(orders),
+        "orders": [
+            {
+                "order_id": order.id,
+                "status": order.status,
+                "payment_status": order.payment_status,
+                "shipping_status": order.shipping_status,
+                "courier": order.shipping_courier,
+                "tracking_awb": order.shipping_awb,
+                "placed_at": order.placed_at.isoformat(),
+                "total_amount": f"₹{order.total_amount:,.2f}",
+            }
+            for order in orders
+        ],
+    }
 
 
 def _get_order_status(db: Session, order_id: str, user_id: Optional[str] = None) -> Dict[str, Any]:

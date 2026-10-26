@@ -601,7 +601,7 @@ export function StylistDrawer({ isOpen: externalIsOpen, onClose: externalOnClose
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     placeholder="Ask your stylist anything about fit, color, or occasions..."
-                    className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
+                    className="min-w-0 flex-1 appearance-none rounded-none border-0 bg-transparent p-0 text-sm text-foreground shadow-none outline-none ring-0 placeholder:text-muted-foreground focus:border-0 focus:outline-none focus:ring-0"
                   />
                   <button 
                     type="submit"
