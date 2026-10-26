@@ -15,6 +15,7 @@ import { generateThreeDModel } from "@/lib/threeDGeneration";
 import PhotoUploadCard from "@/components/products/PhotoUploadCard";
 import { SizeChartEditor } from "@/components/products/SizeChartEditor";
 import AdminTryOnImageGenerator from "@/components/products/AdminTryOnImageGenerator";
+import { generateProductCode } from "@/lib/product-code";
 
 function cn(...inputs: (string | undefined | null | false)[]) {
   return twMerge(clsx(inputs));
@@ -70,7 +71,6 @@ export default function AddProductPage() {
   // Basic Info
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [sku, setSku] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [gender, setGender] = useState("Women");
   const [sizeChart, setSizeChart] = useState<SizeChart>({
@@ -110,6 +110,11 @@ export default function AddProductPage() {
   const frontRef = useRef<HTMLInputElement>(null);
   const sideRef = useRef<HTMLInputElement>(null);
   const backRef = useRef<HTMLInputElement>(null);
+
+  const selectedCategoryName = categories.find((category) => String(category.id) === categoryId)?.name || "";
+  const generatedProductCodes = sizeChart.rows
+    .map((row) => generateProductCode({ category: selectedCategoryName, style: name, colour, size: row.size }))
+    .filter(Boolean);
 
   useEffect(() => {
     categoriesApi.list().then((data) => {
@@ -328,11 +333,6 @@ export default function AddProductPage() {
       setActiveTab("basic");
       return;
     }
-    if (!sku.trim()) {
-      showToast("Enter a Product Code before saving.");
-      setActiveTab("basic");
-      return;
-    }
     if (!description.trim()) {
       showToast("Enter a product description before saving.");
       setActiveTab("basic");
@@ -364,6 +364,11 @@ export default function AddProductPage() {
 
     if (!sizeChart.rows.some((row) => row.size.trim())) {
       showToast("Select at least one available size before saving.");
+      setActiveTab("basic");
+      return;
+    }
+    if (generatedProductCodes.length !== sizeChart.rows.filter((row) => row.size.trim()).length) {
+      showToast("Product codes could not be generated. Check the category, style name, colour and sizes.");
       setActiveTab("basic");
       return;
     }
@@ -435,7 +440,7 @@ export default function AddProductPage() {
         variants: sizeChart.rows
           .filter((row) => row.size.trim())
           .map((row) => ({
-            sku: `${sku.trim().toUpperCase()}-${row.size.trim().toUpperCase().replace(/\s+/g, "")}`,
+            sku: generateProductCode({ category: selectedCategoryName, style: name, colour, size: row.size }),
             size: row.size.trim(),
             stock_qty: Math.max(0, Number.parseInt(stockBySize[row.size] || "0", 10) || 0),
           })),
@@ -553,22 +558,19 @@ export default function AddProductPage() {
                     placeholder="e.g. Classic Silk Shirt"
                     className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent focus:ring-1 focus:ring-accent outline-none transition-all text-foreground"
                   />
+                  <p className="mt-1.5 text-xs text-muted-foreground">This required style name is used as the Style/Collection part of each generated product code.</p>
                 </div>
                 <div className="grid grid-cols-3 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-1.5">
-                      Product Code <span className="font-bold text-red-500 text-base">*</span>
+                      Generated Product Codes <span className="font-bold text-red-500 text-base">*</span>
                     </label>
-                    <input
-                      type="text"
-                      required
-                      aria-required="true"
-                      value={sku}
-                      onChange={(e) => setSku(e.target.value.toUpperCase())}
-                      placeholder="VTX-W-CO-001"
-                      className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent focus:ring-1 focus:ring-accent outline-none transition-all text-foreground"
-                    />
-                    <p className="mt-1.5 text-xs text-muted-foreground">Use one unique base code per style; size codes are added automatically, e.g. VTX-W-CO-001-S.</p>
+                    <div aria-live="polite" className="min-h-10 max-h-24 overflow-y-auto rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground">
+                      {generatedProductCodes.length
+                        ? generatedProductCodes.map((code) => <div key={code} className="font-mono">{code}</div>)
+                        : <span className="text-muted-foreground">Choose a category, enter a style name and colour, then select sizes.</span>}
+                    </div>
+                    <p className="mt-1.5 text-xs text-muted-foreground">Category → Style/Collection → Colour → Size. Style/Collection uses the product name.</p>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-1.5">
