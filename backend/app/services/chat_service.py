@@ -64,8 +64,8 @@ def _get_catalog_context(db=None) -> str:
 
 
 def _build_system_prompt(profile: dict, db=None, context_url: str = None, cart_items: list = None) -> str:
-    from app.api.routes.settings import get_app_settings
-    app_settings = get_app_settings()
+    from app.api.routes.settings import load_app_settings
+    app_settings = load_app_settings(db)
     admin_instructions = getattr(app_settings, "stylistSystemPrompt", "You are Vastra, the personal style advisor for VastraX boutique.")
     active_offers = (app_settings.get("activeOffers", "") if isinstance(app_settings, dict) else getattr(app_settings, "activeOffers", "")) or "No verified offers are currently listed."
 

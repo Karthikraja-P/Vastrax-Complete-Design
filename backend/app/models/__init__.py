@@ -49,3 +49,4 @@ from .payment_refund import PaymentRefund
 from .erp_posting_config import ERPPostingConfig
 
 from .marketing_campaign import CRMCampaign, CRMCampaignDelivery, CRMMarketingUnsubscribeToken
+from .store_settings import StoreSettings

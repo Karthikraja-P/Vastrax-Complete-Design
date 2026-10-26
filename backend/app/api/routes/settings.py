@@ -1,7 +1,10 @@
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
-from typing import Optional
+from sqlalchemy.orm import Session
+
+from app.db.database import get_db
 from app.middleware.auth import require_admin
+from app.models.store_settings import StoreSettings
 from app.models.user import User
 
 router = APIRouter(prefix="/settings", tags=["settings"])
@@ -29,28 +32,45 @@ class AppSettingsSchema(BaseModel):
     )
     activeOffers: str = ""
 
-# In-memory store or DB-backed settings
-_current_settings = AppSettingsSchema()
-
 PUBLIC_FIELDS = {"storeName", "supportEmail", "supportPhone", "currency", "timezone", "announcementText", "enableGuestCheckout", "maintenanceMode", "activeOffers"}
 
 
+def load_app_settings(db: Session | None) -> AppSettingsSchema:
+    if db is None:
+        return AppSettingsSchema()
+    row = db.get(StoreSettings, "default")
+    if row is None:
+        return AppSettingsSchema()
+    return AppSettingsSchema.model_validate_json(row.settings_json)
+
+
+def save_app_settings(db: Session, settings: AppSettingsSchema) -> None:
+    row = db.get(StoreSettings, "default")
+    settings_json = settings.model_dump_json()
+    if row is None:
+        row = StoreSettings(id="default", settings_json=settings_json)
+        db.add(row)
+    else:
+        row.settings_json = settings_json
+    db.commit()
+
+
 @router.get("/app")
-def get_app_settings():
+def get_app_settings(db: Session = Depends(get_db)):
     """Public storefront flags only; the stylist prompt stays private."""
-    return _current_settings.model_dump(include=PUBLIC_FIELDS)
+    return load_app_settings(db).model_dump(include=PUBLIC_FIELDS)
 
 
 @router.get("/app/admin")
-def get_app_settings_admin(admin: User = Depends(require_admin)):
-    return _current_settings
+def get_app_settings_admin(admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    return load_app_settings(db)
 
 @router.put("/app")
 def update_app_settings(
     body: AppSettingsSchema,
-    admin: User = Depends(require_admin)
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
 ):
     """Update global store configuration (admin only)."""
-    global _current_settings
-    _current_settings = body
-    return {"success": True, "settings": _current_settings}
+    save_app_settings(db, body)
+    return {"success": True, "settings": body}
