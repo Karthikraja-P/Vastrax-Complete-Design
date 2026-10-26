@@ -633,7 +633,7 @@ function EditProductContent() {
                         ? generatedProductCodes.map((code) => <div key={code} className="font-mono">{code}</div>)
                         : <span className="text-muted-foreground">Choose a category, enter a style name and colour, then select sizes.</span>}
                     </div>
-                    <p className="mt-1.5 text-xs text-muted-foreground">Category → Style/Collection → Colour → Size. Style/Collection uses the product name.</p>
+                    <p className="mt-1.5 text-xs text-muted-foreground">Naming: VTX–Category–Style/Collection–Colour–Size. The style/collection part comes from the product name; for example, VTX-COORDSET-BEIGECOORD-BEIGE-S.</p>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-1.5">
