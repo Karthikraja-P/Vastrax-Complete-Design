@@ -22,6 +22,7 @@ const PRODUCT_GALLERY_BEIGE_BACKGROUNDS = new Set([
   "0fb052894cb0d0d636b2b6b098547dc9129ccd03027766e8f17ae4d73f4ca539.webp",
   "9ddc1d1cdb43267450bbbec003dceb0c4fc468de9221731eb1730ae4af6fbc87.webp",
   "52c1b37ec5298f7d74f819b026f5ccb64c59a20f08706a9bbcd336bb4f7290c6.webp",
+  "8dee7e1b171a52235a21d2f7b2f5240c55734ba53975ddd161089a269b5d027d.webp",
   "4cd351791364950c009ee4fd8a54085700bbdbf570be61a473488fd5b993c646.webp",
   "8ab390e9f4e4d0fddd38d0eb227e880ae28c21a6ff86ab0fa4379d25250cf5d9.webp",
   "9fd4c31c48e01974715239b244fd8fb8622bfad8352baaf05e974fdb4e35c8e4.webp",
@@ -31,6 +32,7 @@ const PRODUCT_GALLERY_BEIGE_BACKGROUNDS = new Set([
   "55664b986733d169b5ef96f78da2512ac7f12b98320d768abbc99fdc67ca43d6.webp",
   "e1366e8dd7c94462fcc515f5ca136d182ad4cae740b7c20fdddc4fde71ad1f1d.webp",
   "064018e4f0f324029db6766db25f2859961608cc7771d046c53874e95819b39b.webp",
+  "0bd0f4739f7164f68842025ec2966bd840b8d9b3d7b6c51654b0c2866e41413c.webp",
 ]);
 
 export function storefrontProductGalleryImage(source: string): string {
