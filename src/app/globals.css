@@ -292,7 +292,7 @@
   overflow: hidden;
   border: 1px solid var(--vx-line);
   border-radius: 20px;
-  background: var(--vx-stage);
+  background: #ece8e5;
 }
 
 .vx-look-image {
@@ -441,7 +441,7 @@
 
 .vx-product-stage {
   aspect-ratio: 0.82;
-  background: #fff;
+  background: #ece8e5;
 }
 
 .vx-product-image {

@@ -4,12 +4,19 @@ const PRODUCT_CUTOUTS: Record<string, string> = {
   "vtx-f2b3a9a5": "/storefront/product-cutouts/skirt-and-top-cutout.webp",
 };
 
+// Use the retouched full-look image for Green Skirt and Top on storefront cards.
+// The uploaded source has a sleeve artifact; this generated gallery asset has
+// the corrected sleeveless top and a neutral beige background.
+const PRODUCT_CARD_IMAGES: Record<string, string> = {
+  "vtx-f2b3a9a5": "/storefront/product-beige-background/0bd0f4739f7164f68842025ec2966bd840b8d9b3d7b6c51654b0c2866e41413c.webp",
+};
+
 export function storefrontProductImage(id: string | number, fallback?: string): string {
-  return fallback || PRODUCT_CUTOUTS[String(id)] || "/product-placeholder.svg";
+  return PRODUCT_CARD_IMAGES[String(id)] || fallback || PRODUCT_CUTOUTS[String(id)] || "/product-placeholder.svg";
 }
 
 export function storefrontCollectionImage(id: string | number, fallback?: string): string {
-  return PRODUCT_CUTOUTS[String(id)] || fallback || "/product-placeholder.svg";
+  return PRODUCT_CARD_IMAGES[String(id)] || PRODUCT_CUTOUTS[String(id)] || fallback || "/product-placeholder.svg";
 }
 
 const PRODUCT_GALLERY_BEIGE_BACKGROUNDS = new Set([
