@@ -20,7 +20,7 @@ import { isSizeChart, SizeChart, WOMENS_SIZE_CHART } from "@/lib/sizeChart";
 import { showToast } from "@/lib/toast";
 import StorefrontMobileControls from "@/components/layout/StorefrontMobileControls";
 import { useFavorites } from "@/hooks/useFavorites";
-import { storefrontProductImage } from "@/lib/storefront-images";
+import { storefrontProductGalleryImage, storefrontProductImage } from "@/lib/storefront-images";
 
 function resolveSizeChart(value: unknown, gender?: string): SizeChart | undefined {
   if (isSizeChart(value)) {
@@ -174,7 +174,8 @@ function ProductContent() {
           const galleryImages = item.images?.length
             ? item.images.map((image) => typeof image === "string" ? image : image.s3_url || uploadedImage)
             : [];
-          const allImgs = [img, ...galleryImages.filter((image) => image !== img)];
+          const allImgs = [img, ...galleryImages.filter((image) => image !== img)]
+            .map((image) => storefrontProductGalleryImage(image));
           const modelUrl = getProductSpecificModelUrl(item.model_path || item.model3dUrl);
 
           setProduct({
@@ -187,7 +188,7 @@ function ProductContent() {
             colour: item.colour || "Default",
             occasion: item.occasion || "",
             hemLength: item.hem_length || "",
-            image: img,
+            image: storefrontProductGalleryImage(img),
             images: allImgs,
             rating: Number(item.rating || item.rating_average || 0),
             reviewsCount: Number(item.rating_count || item.reviewsCount || 0),
@@ -214,9 +215,9 @@ function ProductContent() {
         const catName = item.category_name || item.category || "Apparel";
         const firstImage = item.images?.[0];
         const img = item.image || (typeof firstImage === "string" ? firstImage : firstImage?.s3_url || "") || getFallbackImage();
-        const allImgs = item.images?.length
+        const allImgs = (item.images?.length
           ? item.images.map((image) => typeof image === "string" ? image : image.s3_url || img)
-          : [img];
+          : [img]).map((image) => storefrontProductGalleryImage(image));
         const modelUrl = getProductSpecificModelUrl(item.model_path || item.model3dUrl);
 
         setProduct({
@@ -229,7 +230,7 @@ function ProductContent() {
           colour: item.colour || "Default",
           occasion: item.occasion || "",
           hemLength: item.hem_length || "",
-          image: img,
+          image: storefrontProductGalleryImage(img),
           images: allImgs,
           rating: Number(item.rating_average || item.rating || 0),
           ratingCount: Number(item.rating_count || item.reviewsCount || 0),
@@ -477,7 +478,7 @@ function ProductContent() {
               {/* Left: Image Gallery & 3D Interactive Viewer */}
               <div className="w-full lg:w-[55%]">
                 <div
-                  className="bg-white dark:bg-white rounded-[2.5rem] aspect-square relative flex items-center justify-center p-4 sm:p-8 transition-colors duration-300 overflow-hidden"
+                  className="bg-[#f5f2ed] dark:bg-[#e9e5df] rounded-[2.5rem] aspect-square relative flex items-center justify-center p-4 sm:p-8 transition-colors duration-300 overflow-hidden"
                   onTouchStart={(event) => {
                     swipeHandled.current = false;
                     const touch = event.touches[0];
@@ -541,7 +542,7 @@ function ProductContent() {
                       <Image width={1200} height={900} unoptimized
                         src={product.images?.[activeImageIndex] || product.image}
                         alt={product.name}
-                        className="w-full h-full object-contain rounded-2xl bg-white p-2 md:p-4 animate-fade-in"
+                        className="w-full h-full object-contain rounded-2xl bg-transparent p-2 md:p-4 animate-fade-in"
                       />
                     </button>
                   )}
@@ -857,7 +858,7 @@ function ProductContent() {
                 setZoomOrigin(`${((event.clientX - bounds.left) / bounds.width) * 100}% ${((event.clientY - bounds.top) / bounds.height) * 100}%`);
               }}
               aria-label={`Product image. ${zoomScale === 1 ? "Double-click or double-tap to zoom in" : `${zoomScale.toFixed(1)} times zoom; click to zoom out`}`}
-              className={`h-full w-full overflow-hidden bg-transparent ${zoomScale > 1 ? "cursor-zoom-out" : "cursor-pointer"}`}
+              className={`h-full w-full overflow-hidden bg-[#f5f2ed] dark:bg-[#e9e5df] ${zoomScale > 1 ? "cursor-zoom-out" : "cursor-pointer"}`}
             >
               <Image
                 src={galleryImages[activeImageIndex] || product.image}
@@ -875,7 +876,7 @@ function ProductContent() {
             <div className="flex gap-2 overflow-x-auto pb-2" role="group" aria-label="All product images">
               {galleryImages.map((src, index) => (
                 <button key={`${src}-${index}`} type="button" onClick={() => { setActiveImageIndex(index); setZoomScale(1); }} aria-label={`View image ${index + 1}`} aria-pressed={activeImageIndex === index}
-                  className={`h-16 w-16 shrink-0 overflow-hidden bg-transparent transition sm:h-20 sm:w-20 ${activeImageIndex === index ? "opacity-100" : "opacity-55 hover:opacity-90"}`}>
+                  className={`h-16 w-16 shrink-0 overflow-hidden bg-[#f5f2ed] dark:bg-[#e9e5df] transition sm:h-20 sm:w-20 ${activeImageIndex === index ? "opacity-100" : "opacity-55 hover:opacity-90"}`}>
                   <Image src={src} alt={`${product.name} thumbnail ${index + 1}`} width={96} height={96} unoptimized className="h-full w-full object-contain" />
                 </button>
               ))}
