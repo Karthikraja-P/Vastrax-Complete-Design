@@ -116,7 +116,7 @@ export function InventoryCostingStatus() {
         offset += page.items.length;
         hasMore = page.has_more;
       }
-      const header = ["Variant ID", "Product", "Size", "SKU", "On hand units", "Units with receipt cost", "Unvalued units", "Verified opening unit cost (INR)", "Notes"];
+      const header = ["Variant ID", "Product", "Size", "Product Code", "On hand units", "Units with receipt cost", "Unvalued units", "Verified opening unit cost (INR)", "Notes"];
       const body = rows.map(row => [row.variant_id, row.product_name, row.size, row.sku || "", row.on_hand_units, row.recorded_cost_units, row.unvalued_units, "", ""]);
       const csv = [header, ...body].map(line => line.map(csvCell).join(",")).join("\r\n");
       const url = URL.createObjectURL(new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" }));
@@ -220,7 +220,7 @@ export function InventoryCostingStatus() {
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2"><h3 className="text-sm font-semibold text-foreground">In-stock sizes and recorded costs</h3><button type="button" disabled={loadingMore} onClick={() => void downloadOpeningCostTemplate()} className="rounded-lg border border-border px-3 py-2 text-xs text-foreground disabled:opacity-50">{loadingMore ? "Preparing..." : "Download opening-cost worksheet"}</button></div>
         <div className="overflow-x-auto rounded-xl border border-border">
           <table className="w-full min-w-[900px] text-left text-sm">
-            <thead className="text-xs text-muted-foreground"><tr><th className="p-3">Product</th><th className="p-3">Size</th><th className="p-3">SKU</th><th className="p-3">On hand</th><th className="p-3">With receipt cost</th><th className="p-3">Unvalued</th><th className="p-3">Opening unit cost (INR)</th></tr></thead>
+            <thead className="text-xs text-muted-foreground"><tr><th className="p-3">Product</th><th className="p-3">Size</th><th className="p-3">Product Code</th><th className="p-3">On hand</th><th className="p-3">With receipt cost</th><th className="p-3">Unvalued</th><th className="p-3">Opening unit cost (INR)</th></tr></thead>
             <tbody>{variants.map(row => <tr key={row.variant_id} className="border-t border-border"><td className="p-3 font-medium text-foreground">{row.product_name}</td><td className="p-3">{row.size}</td><td className="p-3">{row.sku || "-"}</td><td className="p-3">{row.on_hand_units}</td><td className="p-3">{row.recorded_cost_units}</td><td className="p-3">{row.unvalued_units}{row.overvalued_units > 0 ? ` (${row.overvalued_units} above stock)` : ""}</td><td className="p-3"><input type="number" min="0.01" step="0.01" inputMode="decimal" disabled={!row.unvalued_units} value={openingCosts[row.variant_id] || ""} onChange={event => setOpeningCosts(current => ({ ...current, [row.variant_id]: event.target.value }))} aria-label={`Opening unit cost for ${row.product_name} size ${row.size}`} className="w-36 rounded-lg border border-border bg-background px-2 py-1 disabled:opacity-40" placeholder={row.unvalued_units ? "Verified cost" : "Valued"} /></td></tr>)}{variants.length === 0 && <tr><td colSpan={7} className="p-4 text-sm text-muted-foreground">No variants currently have stock.</td></tr>}</tbody>
           </table>
         </div>

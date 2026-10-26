@@ -196,7 +196,12 @@ function EditProductContent() {
             setImages(imgs);
 
             if (prod.variants && prod.variants.length > 0) {
-              setSku(prod.variants[0].sku || "");
+              const firstVariant = prod.variants[0];
+              const firstVariantCode = firstVariant.sku || "";
+              const sizeSuffix = firstVariant.size ? `-${firstVariant.size.trim().toUpperCase().replace(/\s+/g, "")}` : "";
+              setSku(sizeSuffix && firstVariantCode.toUpperCase().endsWith(sizeSuffix)
+                ? firstVariantCode.slice(0, -sizeSuffix.length)
+                : firstVariantCode);
               setStockBySize(Object.fromEntries(prod.variants.map((variant) => [variant.size || "", String(variant.stock_qty ?? 0)])));
             } else {
               setSku(prod.sku || "VAST-" + String(prod.id).slice(0, 6).toUpperCase());
@@ -413,6 +418,11 @@ function EditProductContent() {
       setActiveTab("basic");
       return;
     }
+    if (!sku.trim()) {
+      showToast("Enter a Product Code before saving.");
+      setActiveTab("basic");
+      return;
+    }
     const regularPrice = Number.parseFloat(priceSelling);
     const offerPrice = priceMrp.trim() ? Number.parseFloat(priceMrp) : null;
     if (!priceSelling || !Number.isFinite(regularPrice) || regularPrice <= 0) {
@@ -486,7 +496,7 @@ function EditProductContent() {
         variants: sizeChart.rows
           .filter((row) => row.size.trim())
           .map((row) => ({
-            sku: (sku.trim() || "SKU-" + Date.now().toString().slice(-6)) + "-" + row.size.trim(),
+            sku: `${sku.trim().toUpperCase()}-${row.size.trim().toUpperCase().replace(/\s+/g, "")}`,
             size: row.size.trim(),
             stock_qty: Math.max(0, Number.parseInt(stockBySize[row.size] || "0", 10) || 0),
           })),
@@ -605,15 +615,18 @@ function EditProductContent() {
                 <div className="grid grid-cols-3 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-1.5">
-                      SKU
+                      Product Code <span className="font-bold text-red-500 text-base">*</span>
                     </label>
                     <input
                       type="text"
+                      required
+                      aria-required="true"
                       value={sku}
-                      onChange={(e) => setSku(e.target.value)}
-                      placeholder="SH-SLK-001"
+                      onChange={(e) => setSku(e.target.value.toUpperCase())}
+                      placeholder="VTX-W-CO-001"
                       className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent focus:ring-1 focus:ring-accent outline-none transition-all text-foreground"
                     />
+                    <p className="mt-1.5 text-xs text-muted-foreground">Keep the same base code for this style; size codes are added automatically, e.g. VTX-W-CO-001-S.</p>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-1.5">

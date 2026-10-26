@@ -328,6 +328,11 @@ export default function AddProductPage() {
       setActiveTab("basic");
       return;
     }
+    if (!sku.trim()) {
+      showToast("Enter a Product Code before saving.");
+      setActiveTab("basic");
+      return;
+    }
     if (!description.trim()) {
       showToast("Enter a product description before saving.");
       setActiveTab("basic");
@@ -430,7 +435,7 @@ export default function AddProductPage() {
         variants: sizeChart.rows
           .filter((row) => row.size.trim())
           .map((row) => ({
-            sku: (sku.trim() || "SKU-" + Date.now().toString().slice(-6)) + "-" + row.size.trim(),
+            sku: `${sku.trim().toUpperCase()}-${row.size.trim().toUpperCase().replace(/\s+/g, "")}`,
             size: row.size.trim(),
             stock_qty: Math.max(0, Number.parseInt(stockBySize[row.size] || "0", 10) || 0),
           })),
@@ -552,15 +557,18 @@ export default function AddProductPage() {
                 <div className="grid grid-cols-3 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-1.5">
-                      SKU <span className="text-xs font-normal text-muted-foreground">(Optional)</span>
+                      Product Code <span className="font-bold text-red-500 text-base">*</span>
                     </label>
                     <input
                       type="text"
+                      required
+                      aria-required="true"
                       value={sku}
-                      onChange={(e) => setSku(e.target.value)}
-                      placeholder="SH-SLK-001"
+                      onChange={(e) => setSku(e.target.value.toUpperCase())}
+                      placeholder="VTX-W-CO-001"
                       className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent focus:ring-1 focus:ring-accent outline-none transition-all text-foreground"
                     />
+                    <p className="mt-1.5 text-xs text-muted-foreground">Use one unique base code per style; size codes are added automatically, e.g. VTX-W-CO-001-S.</p>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-1.5">

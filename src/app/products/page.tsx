@@ -63,10 +63,16 @@ export default function ProductsPage() {
           if (!rawImg) {
             rawImg = "https://images.unsplash.com/photo-1572804013309-59a88b7e92f1?q=80&w=400&auto=format&fit=crop";
           }
+          const firstVariant = p.variants?.[0];
+          const variantCode = firstVariant?.sku || "";
+          const sizeSuffix = firstVariant?.size ? `-${firstVariant.size.trim().toUpperCase().replace(/\s+/g, "")}` : "";
+          const productCode = p.sku || (sizeSuffix && variantCode.toUpperCase().endsWith(sizeSuffix)
+            ? variantCode.slice(0, -sizeSuffix.length)
+            : variantCode) || `PRD-${String(p.id).slice(0, 8)}`;
           return {
             id: String(p.id),
             name: p.name || p.title || "Unnamed Piece",
-            sku: p.sku || (p.variants?.[0]?.sku) || `PRD-${String(p.id).slice(0, 8)}`,
+            sku: productCode,
             category: catMap.get(String(p.category_id || p.categoryId)) || (cats && cats.length > 0 ? cats[0].name : "Apparel"),
             gender: p.gender || "Women",
             price: `₹${typeof p.price_selling === 'number' ? p.price_selling.toFixed(2) : (typeof p.price === 'number' ? p.price.toFixed(2) : (p.price_selling || p.price || '0.00'))}`,
@@ -250,7 +256,7 @@ export default function ProductsPage() {
                   type="text" 
                   value={searchQuery}
                   onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
-                  placeholder="Search by name, SKU..." 
+                  placeholder="Search by name, Product Code..."
                   className="w-full px-4 py-2 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-accent text-foreground placeholder:text-muted-foreground/60"
                 />
               </div>
@@ -411,6 +417,7 @@ export default function ProductsPage() {
                               </span>
                             )}
                           </div>
+                          <p className="mt-1 font-mono text-[11px] text-muted-foreground">Product Code: {product.sku}</p>
                         </div>
                       </div>
                     </td>

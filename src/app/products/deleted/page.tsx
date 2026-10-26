@@ -230,7 +230,7 @@ export default function DeletedProductsPage() {
                   type="text" 
                   value={searchQuery}
                   onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
-                  placeholder="Search by product name, SKU, category..." 
+                  placeholder="Search by product name, Product Code, category..."
                   className="w-full px-4 py-2 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-accent text-foreground placeholder:text-muted-foreground/60"
                 />
               </div>
@@ -271,7 +271,7 @@ export default function DeletedProductsPage() {
             <thead className="bg-background/50 text-[10px] uppercase tracking-wider text-muted-foreground border-b border-border font-bold">
               <tr>
                 <th className="px-6 py-4">Product Info</th>
-                <th className="px-6 py-4">SKU</th>
+                <th className="px-6 py-4">Product Code</th>
                 <th className="px-6 py-4">Category</th>
                 <th className="px-6 py-4">Price</th>
                 <th className="px-6 py-4">Deleted Date</th>
