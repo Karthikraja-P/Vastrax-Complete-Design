@@ -594,6 +594,9 @@ function ProductContent() {
                   <p className="mb-5 max-w-md text-sm leading-relaxed text-foreground/70">
                     {product.description || "Description not available."}
                   </p>
+                  <p className="mb-5 max-w-md border-l-2 border-[#a84d25]/50 pl-3 text-xs leading-relaxed text-muted-foreground">
+                    Colour may vary slightly from the photos due to lighting and screen settings.
+                  </p>
                   <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">Specifications</h3>
                   <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
                     <dt className="text-muted-foreground">Fabric</dt><dd className="font-medium text-foreground">{product.fabric || "Not specified"}</dd>
