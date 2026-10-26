@@ -9,6 +9,7 @@ type BackendOrderItemRecord = OrderItemRecord & {
   customer_name?: string | null;
   customer_email?: string | null;
   payment_method?: string | null;
+  shipping_status?: string | null;
 };
 
 interface OrderRow {
@@ -22,6 +23,7 @@ interface OrderRow {
   progress: number;
   rawStatus: string;
   status: string;
+  shippingStatus: string;
   statusColor: string;
   paymentStatus: string;
   shippingAddress: string;
@@ -58,8 +60,10 @@ export default function OrdersPage() {
           const rawOrder = o as BackendOrderItemRecord;
           const orderDate = o.createdAt || rawOrder.placed_at;
           const rawStatus = String(o.status || "CONFIRMED").toUpperCase();
-          const progress = rawStatus === "DELIVERED" ? 100 : rawStatus === "SHIPPED" ? 80 : rawStatus === "PACKED" ? 55 : 25;
-          const statusDisplay = rawStatus.charAt(0) + rawStatus.slice(1).toLowerCase();
+          const shippingStatus = String(rawOrder.shipping_status || "").replaceAll("_", " ").trim();
+          const progress = shippingStatus.toUpperCase() === "DELIVERED" || rawStatus === "DELIVERED" ? 100 : shippingStatus.toUpperCase() === "OUT FOR DELIVERY" ? 90 : ["IN TRANSIT", "PICKED UP", "HANDED OVER TO COURIER"].includes(shippingStatus.toUpperCase()) ? 80 : rawStatus === "SHIPPED" ? 80 : rawStatus === "PACKED" ? 55 : 25;
+          const rawDisplay = rawStatus.charAt(0) + rawStatus.slice(1).toLowerCase();
+          const statusDisplay = shippingStatus ? shippingStatus.toLowerCase().replace(/\b\w/g, (letter) => letter.toUpperCase()) : rawDisplay;
           const statusColor = rawStatus === "DELIVERED" ? "text-emerald-500 border-emerald-500/30 bg-emerald-500/10" : 
                               rawStatus === "CANCELLED" ? "text-red-500 border-red-500/30 bg-red-500/10" : 
                               rawStatus === "SHIPPED" ? "text-blue-400 border-blue-400/30 bg-blue-400/10" : 
@@ -76,6 +80,7 @@ export default function OrdersPage() {
             progress,
             rawStatus,
             status: statusDisplay,
+            shippingStatus,
             statusColor,
             paymentStatus: rawOrder.payment_status || o.paymentStatus || "pending",
             paymentMethod: rawOrder.payment_method || "",

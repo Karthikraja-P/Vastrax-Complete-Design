@@ -10,6 +10,7 @@ import { CartDrawer } from "@/components/layout/CartDrawer";
 import { StylistDrawer } from "@/components/stylist/StylistDrawer";
 import { performSignOut } from "@/lib/auth-utils";
 import { fetchApi } from "@/lib/api";
+import { storefrontProductImage } from "@/lib/storefront-images";
 
 export const dynamic = "force-dynamic";
 
@@ -27,7 +28,8 @@ interface OrderItem {
   orderNumber: string;
   date: string;
   total: string;
-  status: "CONFIRMED" | "PROCESSING" | "SHIPPED" | "DELIVERED";
+  status: string;
+  shippingStatus?: string;
   items: {
     name: string;
     variant: string;
@@ -48,7 +50,23 @@ interface AccountAddress {
   is_default: boolean;
 }
 
-const mockCustomerOrders: OrderItem[] = [];
+interface AccountOrderResponse {
+  id: string;
+  placed_at: string;
+  total_amount: string | number;
+  status: string;
+  shipping_status?: string | null;
+  shipping_awb?: string | null;
+  shipping_address?: string | null;
+  items?: Array<{
+    product_id: string;
+    product_name?: string | null;
+    image_url?: string | null;
+    size?: string | null;
+    quantity: number;
+    unit_price: string | number;
+  }>;
+}
 
 export default function CustomerAccountPage() {
   return (
@@ -67,6 +85,9 @@ function CustomerAccountContent() {
   );
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isStylistOpen, setIsStylistOpen] = useState(false);
+  const [customerOrders, setCustomerOrders] = useState<OrderItem[]>([]);
+  const [isLoadingOrders, setIsLoadingOrders] = useState(true);
+  const [ordersError, setOrdersError] = useState("");
   
   useEffect(() => {
     const handleOpenStylist = () => setIsStylistOpen(true);
@@ -105,6 +126,52 @@ function CustomerAccountContent() {
     fetchApi<MarketingPreferences>("/users/me/marketing-consent")
       .then(setMarketing)
       .catch(() => setMarketingError("Unable to load marketing preferences."));
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    let loadingFirstResult = true;
+    let requestInFlight = false;
+    const loadOrders = () => {
+      if (requestInFlight || document.visibilityState === "hidden") return;
+      requestInFlight = true;
+      fetchApi<AccountOrderResponse[]>("/orders/my")
+        .then((orders) => {
+        if (!active) return;
+        setCustomerOrders((Array.isArray(orders) ? orders : []).map((order) => ({
+          id: order.id,
+          orderNumber: order.id,
+          date: new Date(order.placed_at).toLocaleDateString("en-IN", { year: "numeric", month: "short", day: "numeric" }),
+          total: `₹${Number(order.total_amount || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`,
+          status: String(order.status || "pending").toUpperCase(),
+          shippingStatus: order.shipping_status || "",
+          trackingNumber: order.shipping_awb || undefined,
+          shippingAddress: order.shipping_address || "Address unavailable",
+          items: (order.items || []).map((item) => ({
+            name: item.product_name || "VastraX product",
+            variant: `${item.size ? `Size ${item.size} · ` : ""}Qty ${item.quantity}`,
+            price: `₹${(Number(item.unit_price || 0) * item.quantity).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`,
+            image: storefrontProductImage(item.product_id, item.image_url || undefined),
+          })),
+        })));
+        setOrdersError("");
+      })
+        .catch(() => { if (active) setOrdersError("Unable to load your orders. Please refresh and try again."); })
+        .finally(() => {
+          requestInFlight = false;
+          if (active && loadingFirstResult) setIsLoadingOrders(false);
+          loadingFirstResult = false;
+        });
+    };
+    const refreshWhenVisible = () => { if (document.visibilityState === "visible") loadOrders(); };
+    loadOrders();
+    const interval = window.setInterval(loadOrders, 60_000);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
   }, []);
 
   const [addresses, setAddresses] = useState<AccountAddress[]>([]);
@@ -295,17 +362,24 @@ function CustomerAccountContent() {
     doc.save(`Invoice_${order.orderNumber}.pdf`);
   };
 
-  const getStatusBadge = (status: OrderItem["status"]) => {
-    switch (status) {
-      case "DELIVERED":
-        return <span className="px-3 py-1 text-xs font-semibold uppercase tracking-wider rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Delivered</span>;
-      case "SHIPPED":
-        return <span className="px-3 py-1 text-xs font-semibold uppercase tracking-wider rounded-full bg-accent/10 text-accent border border-accent/20">In Transit</span>;
-      case "PROCESSING":
-        return <span className="px-3 py-1 text-xs font-semibold uppercase tracking-wider rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20">Processing</span>;
-      default:
-        return <span className="px-3 py-1 text-xs font-semibold uppercase tracking-wider rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20">Confirmed</span>;
-    }
+  const getStatusBadge = (status: string, shippingStatus = "") => {
+    const orderState = status.toUpperCase();
+    const courierState = shippingStatus.toUpperCase().replaceAll("_", " ");
+    const label = courierState === "OUT FOR DELIVERY" ? "Out for Delivery"
+      : ["IN TRANSIT", "PICKED UP", "HANDED OVER TO COURIER"].includes(courierState) ? "In Transit"
+      : courierState.startsWith("RTO") ? "Returning to Seller"
+      : courierState === "DELIVERED" || orderState === "DELIVERED" ? "Delivered"
+      : courierState ? courierState.toLowerCase().replace(/\b\w/g, (letter) => letter.toUpperCase())
+      : orderState === "SHIPPED" ? "Shipped"
+      : orderState === "PACKED" ? "Packed"
+      : orderState === "CANCELLED" ? "Cancelled"
+      : orderState === "PENDING" ? "Processing"
+      : "Confirmed";
+    const style = label === "Delivered" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+      : label === "Cancelled" || label === "Returning to Seller" ? "bg-red-500/10 text-red-400 border-red-500/20"
+      : label === "Packed" || label === "Processing" ? "bg-blue-500/10 text-blue-400 border-blue-500/20"
+      : "bg-accent/10 text-accent border-accent/20";
+    return <span className={`px-3 py-1 text-xs font-semibold uppercase tracking-wider rounded-full border ${style}`}>{label}</span>;
   };
 
   return (
@@ -386,13 +460,23 @@ function CustomerAccountContent() {
                 </div>
 
                 <div className="space-y-6">
-                  {mockCustomerOrders.length === 0 ? (
+                  {ordersError && <p role="alert" className="rounded-xl border border-red-500/20 bg-red-500/5 px-4 py-3 text-sm text-red-400">{ordersError}</p>}
+                  {isLoadingOrders ? (
+                    <p className="py-8 text-center text-sm text-muted-foreground">Loading your orders…</p>
+                  ) : customerOrders.length === 0 && !ordersError ? (
                     <div className="rounded-2xl border border-border/80 bg-surface/60 px-6 py-12 text-center">
                       <Package className="mx-auto h-10 w-10 text-muted-foreground" />
                       <h3 className="mt-4 text-lg font-semibold text-foreground">No order yet</h3>
                       <p className="mt-2 text-sm text-muted-foreground">Your orders and shipment updates will appear here after you place an order.</p>
                     </div>
-                  ) : mockCustomerOrders.map((order) => (
+                  ) : customerOrders.map((order) => {
+                    const orderState = order.status.toUpperCase();
+                    const courierState = (order.shippingStatus || "").toUpperCase().replaceAll("_", " ");
+                    const delivered = courierState === "DELIVERED" || orderState === "DELIVERED";
+                    const outForDelivery = courierState === "OUT FOR DELIVERY";
+                    const inTransit = ["IN TRANSIT", "PICKED UP", "HANDED OVER TO COURIER", "SHIPPED", "IN TRANSIT OVERSEAS"].includes(courierState) || orderState === "SHIPPED" || delivered;
+                    const processing = ["PACKED", "SHIPPED", "DELIVERED"].includes(orderState) || Boolean(courierState);
+                    return (
                     <div 
                       key={order.id}
                       className="bg-surface/60 border border-border/80 rounded-2xl p-6 transition-all hover:border-border backdrop-blur-md shadow-lg"
@@ -402,7 +486,7 @@ function CustomerAccountContent() {
                         <div>
                           <div className="flex items-center gap-3">
                             <span className="text-base font-bold text-foreground">{order.orderNumber}</span>
-                            {getStatusBadge(order.status)}
+                            {getStatusBadge(order.status, order.shippingStatus)}
                           </div>
                           <p className="text-xs text-muted-foreground mt-1">Placed on {order.date} • Total: <span className="text-foreground font-semibold">{order.total}</span></p>
                         </div>
@@ -422,15 +506,15 @@ function CustomerAccountContent() {
                           <div 
                             className="absolute left-0 top-1/2 -translate-y-1/2 h-0.5 bg-accent -z-0 transition-all duration-500" 
                             style={{ 
-                              width: order.status === "DELIVERED" ? "100%" : order.status === "SHIPPED" ? "66%" : order.status === "PROCESSING" ? "33%" : "5%" 
+                              width: delivered ? "100%" : outForDelivery ? "83%" : inTransit ? "66%" : processing ? "33%" : "5%"
                             }} 
                           />
 
                           {[
-                            { step: "Confirmed", icon: CheckCircle2, done: true },
-                            { step: "Processing", icon: Clock, done: order.status !== "CONFIRMED" },
-                            { step: "In Transit", icon: Truck, done: order.status === "SHIPPED" || order.status === "DELIVERED" },
-                            { step: "Delivered", icon: Package, done: order.status === "DELIVERED" },
+                            { step: "Confirmed", icon: CheckCircle2, done: orderState !== "PENDING" },
+                            { step: "Processing", icon: Clock, done: processing },
+                            { step: "In Transit", icon: Truck, done: inTransit },
+                            { step: "Delivered", icon: Package, done: delivered },
                           ].map((s, idx) => (
                             <div key={idx} className="flex flex-col items-center gap-2 relative z-10">
                               <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs transition-colors ${
@@ -472,7 +556,7 @@ function CustomerAccountContent() {
                         </button>
                       </div>
                     </div>
-                  ))}
+                  ); })}
                 </div>
               </div>
             )}

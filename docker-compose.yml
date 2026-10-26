@@ -72,6 +72,7 @@ services:
       - SHIPROCKET_PASSWORD=${SHIPROCKET_PASSWORD:-}
       - PICKUP_PINCODE=${PICKUP_PINCODE:-625706}
       - SHIPROCKET_PICKUP_LOCATION=${SHIPROCKET_PICKUP_LOCATION:-Primary}
+      - SHIPROCKET_WEBHOOK_TOKEN=${SHIPROCKET_WEBHOOK_TOKEN:-}
     volumes:
       - ./backend/app:/app/app
       - ./backend/vastrax.db:/app/vastrax.db

@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     shiprocket_password: str = ""
     pickup_pincode: str = "625706"
     shiprocket_pickup_location: str = "Primary"
+    shiprocket_webhook_token: str = ""
 
     # App
     allowed_origins: str = "http://localhost:3000,https://vastrax.ai"

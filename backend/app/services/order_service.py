@@ -36,6 +36,13 @@ class OrderService:
 
     def _to_response(self, order: Order) -> OrderResponse:
         res = OrderResponse.model_validate(order)
+        for response_item, order_item in zip(res.items, order.items):
+            if order_item.product:
+                response_item.product_name = order_item.product.name
+                if order_item.product.images:
+                    response_item.image_url = order_item.product.images[0].s3_url
+            if order_item.variant:
+                response_item.size = order_item.variant.size
         if order.user:
             res.customer_name = order.user.full_name or order.user.email.split("@")[0]
             res.customer_email = order.user.email
