@@ -376,6 +376,11 @@ export default function AddProductPage() {
       setActiveTab("images");
       return;
     }
+    if (isTwoPieceProductName(name) && !images.some((image) => image.tryonRole === "set")) {
+      showToast("For a two-piece set, mark one complete outfit photo as Full Look so virtual try-on can apply both pieces together.");
+      setActiveTab("images");
+      return;
+    }
     if (!images.length) {
       showToast("Upload at least one product image before saving.");
       setActiveTab("images");

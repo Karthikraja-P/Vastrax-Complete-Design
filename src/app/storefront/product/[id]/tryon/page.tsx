@@ -185,15 +185,14 @@ export default function VirtualTryOnPage() {
   const selectedTopImage = setImageOptions.find((image) => image.role === "top");
   const selectedBottomImage = setImageOptions.find((image) => image.role === "bottom");
   const selectedFullLookImage = setImageOptions.find((image) => image.role === "set");
-  const bottomPieceLabel = /skirt/i.test(product.name || product.title || "") ? "Skirt" : "Bottom";
   const isCombo = twoPieceSet || (isBottoms && selectedTop !== null);
 
   const startTryOnPipeline = async () => {
     if (!personFile || !product) return;
 
-    if (twoPieceSet && !selectedFullLookImage && (!selectedTopImage || !selectedBottomImage)) {
+    if (twoPieceSet && !selectedFullLookImage) {
       setStatusType("error");
-      setStatusText("This set needs separate Top and Bottom photos in the product gallery before try-on can run.");
+      setStatusText("This outfit is not ready for virtual try-on yet. Please try again later.");
       return;
     }
     setIsProcessing(true);
@@ -205,7 +204,14 @@ export default function VirtualTryOnPage() {
       let res;
       const targetGarmentImg = getGarmentImage(product);
       if (twoPieceSet) {
-        res = await tryonApi.submitCombo(personFile, selectedTopImage!.url, selectedBottomImage!.url, product.id);
+        const setReference = selectedFullLookImage?.url;
+        if (!setReference) throw new Error("This outfit is not ready for virtual try-on yet.");
+        res = await tryonApi.submitCombo(
+          personFile,
+          selectedTopImage?.url || setReference,
+          selectedBottomImage?.url || setReference,
+          product.id,
+        );
       } else if (isCombo) {
         const topImg = getGarmentImage(selectedTop);
         res = await tryonApi.submitCombo(personFile, topImg, targetGarmentImg, product.id);
@@ -377,24 +383,7 @@ export default function VirtualTryOnPage() {
                   <span className="mt-1 block text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">Full look</span>
                 </div>
               ) : twoPieceSet ? (
-                <div className="grid shrink-0 grid-cols-2 gap-2">
-                  {[
-                    { label: "Top", image: selectedTopImage },
-                    { label: bottomPieceLabel, image: selectedBottomImage },
-                  ].map(({ label, image }) => (
-                    <div key={label} className="w-[4.5rem] text-center">
-                      <Image
-                        width={1200}
-                        height={900}
-                        unoptimized
-                        src={String(image?.url || "/product-placeholder.svg")}
-                        alt={String(product.name || "Product") + " " + label.toLowerCase() + " garment"}
-                        className="h-24 w-full rounded-lg border border-border bg-[#f8f7f4] p-1 object-contain"
-                      />
-                      <span className="mt-1 block text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</span>
-                    </div>
-                  ))}
-                </div>
+                <div className="w-24 text-center text-xs text-muted-foreground">Full outfit reference unavailable</div>
               ) : (
                 <Image width={1200} height={900} unoptimized src={String(productImgUrl || "/product-placeholder.svg")} alt={String(product.name || "Product")} className="w-20 h-24 object-contain rounded-lg border border-border bg-[#f8f7f4] p-1" />
               )}
@@ -411,7 +400,7 @@ export default function VirtualTryOnPage() {
                   </span>
                 )}
                 <p className="text-sm font-bold text-[#e07a3f] mt-1">₹{(product.price_selling || product.price)?.toLocaleString()}</p>
-                {twoPieceSet && !selectedFullLookImage && (!selectedTopImage || !selectedBottomImage) && <p className="mt-2 text-xs text-red-500">Separate Top and Bottom photos or a Full Look reference are required for try-on.</p>}
+                {twoPieceSet && !selectedFullLookImage && <p className="mt-2 text-xs text-red-500">This set needs a complete outfit photo marked Full Look before virtual try-on is available.</p>}
               </div>
             </div>
           </div>
@@ -461,7 +450,7 @@ export default function VirtualTryOnPage() {
           {/* Action Button */}
           <button
             onClick={startTryOnPipeline}
-            disabled={isProcessing || !personFile || (twoPieceSet && !selectedFullLookImage && (!selectedTopImage || !selectedBottomImage))}
+            disabled={isProcessing || !personFile || (twoPieceSet && !selectedFullLookImage)}
             className="w-full py-4 bg-gradient-to-r from-[#e07a3f] to-[#b95625] hover:from-[#b95625] hover:to-[#9b4a23] text-white font-bold text-xs uppercase tracking-wider rounded-xl flex items-center justify-center gap-2 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all"
           >
             Generate

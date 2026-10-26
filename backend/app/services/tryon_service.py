@@ -1,4 +1,5 @@
 import os
+import re
 import shutil
 import uuid
 
@@ -15,6 +16,11 @@ from app.schemas.tryon import TryonSessionResponse
 from app.utils.file_utils import resolve_garment, try_remove
 
 logger = get_logger(__name__)
+
+_TWO_PIECE_SET_NAME = re.compile(
+    r"\bcoord(?:inate)?\b|\bco[- ]?ord\b|\btwo[- ]?piece\b|\b2[- ]?piece\b|\bset\b|skirt\s*(?:and|&)\s*top|top\s*(?:and|&)\s*skirt",
+    re.IGNORECASE,
+)
 
 
 def _normalize_two_piece_person_image(image_path: str) -> None:
@@ -283,11 +289,16 @@ class TryonService:
                 raise NotFoundError(f"Bottom garment not found: {bottom_path}")
 
             full_look_reference = None
+            product = None
             if product_id and self.db:
                 product = self.db.query(Product).filter(Product.id == str(product_id)).first()
                 full_look_reference = next(
                     (image for image in (product.images if product else []) if image.tryon_role == "set"),
                     None,
+                )
+            if product and _TWO_PIECE_SET_NAME.search(product.name or "") and not full_look_reference:
+                raise BadRequestError(
+                    "This two-piece set needs a complete outfit photo marked Full Look before try-on can run."
                 )
             if full_look_reference:
                 full_look_local, full_look_is_tmp = resolve_garment(full_look_reference.s3_url)

@@ -446,6 +446,11 @@ function EditProductContent() {
       setActiveTab("images");
       return;
     }
+    if (isTwoPieceProductName(name) && !images.some((image) => image.tryonRole === "set")) {
+      showToast("For a two-piece set, mark one complete outfit photo as Full Look so virtual try-on can apply both pieces together.");
+      setActiveTab("images");
+      return;
+    }
 
     setSaving(true);
     try {

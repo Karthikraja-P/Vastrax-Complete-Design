@@ -73,7 +73,7 @@ export default function AdminTryOnImageGenerator({ productName, images, hemLengt
   }, []);
 
   const tryOn = async () => {
-    if ((!personFile && !selectedModelId) || (!selected && !(twoPieceSet && fullLook)) || (twoPieceSet && !fullLook && (!selected || !bottom))) return;
+    if ((!personFile && !selectedModelId) || (twoPieceSet && !fullLook) || (!twoPieceSet && !selected)) return;
     setProcessing(true);
     setResult(null);
     setError(null);
@@ -89,14 +89,11 @@ export default function AdminTryOnImageGenerator({ productName, images, hemLengt
       const form = new FormData();
       if (personFile) form.append("person_image", personFile);
       else form.append("model_id", selectedModelId);
-      if (twoPieceSet && fullLook) {
+      if (twoPieceSet) {
+        if (!fullLook) throw new Error("Assign a complete outfit photo as Full Look before generating a set preview.");
         form.append("set_image", await asFile(fullLook));
         form.append("full_look_reference", "true");
         form.append("garment_type", "one-pieces");
-      } else if (twoPieceSet) {
-        form.append("garment_image", sourceFile!);
-        form.append("bottom_image", await asFile(bottom!));
-        form.append("garment_type", "tops");
       }
       else {
         form.append("garment_image", sourceFile!);
@@ -140,7 +137,7 @@ export default function AdminTryOnImageGenerator({ productName, images, hemLengt
     <section className="space-y-4 rounded-xl border border-border bg-background p-5">
       <div>
         <h3 className="text-sm font-semibold text-foreground">Virtual Try-On</h3>
-        <p className="mt-1 text-xs text-muted-foreground">{twoPieceSet ? "Assign a full modeled outfit photo as Full Look to adapt the whole set to the selected model or uploaded photo. Otherwise, use separate Top and Bottom photos." : "Choose the product photo to preview on a person."}</p>
+        <p className="mt-1 text-xs text-muted-foreground">{twoPieceSet ? "Mark a complete modeled outfit photo as Full Look. Try-on applies the matching top and bottom together in one pass." : "Choose the product photo to preview on a person."}</p>
       </div>
       {fullLook && /\bskirt\b|\blehenga\b/i.test(productName) && (
         <p className="rounded-lg border border-accent/30 bg-accent/5 p-3 text-xs text-muted-foreground">
@@ -152,10 +149,10 @@ export default function AdminTryOnImageGenerator({ productName, images, hemLengt
         <p className="text-xs text-muted-foreground">Upload product photos above first.</p>
       ) : twoPieceSet ? (
         <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
-          {[{ label: "Top photo", image: selected }, { label: "Bottom photo", image: bottom }, { label: "Full Look reference (optional)", image: fullLook }].map(({ label, image }) => (
+          {[{ label: "Top photo", image: selected }, { label: "Bottom photo", image: bottom }, { label: "Full Look reference (required)", image: fullLook }].map(({ label, image }) => (
             <div key={label} className="rounded-lg border border-border p-2">
               <p className="mb-2 text-[10px] font-semibold uppercase text-muted-foreground">{label}</p>
-              {image ? <Image src={image.preview} alt={label} width={144} height={168} unoptimized className="h-40 w-full rounded object-contain bg-white" /> : <div className="flex h-40 items-center justify-center rounded bg-surface text-center text-xs text-muted-foreground">Assign this role on the Product Images card</div>}
+              {image ? <Image src={image.preview} alt={label} width={144} height={168} unoptimized className="h-40 w-full rounded object-contain bg-white" /> : <div className="flex h-40 items-center justify-center rounded bg-surface text-center text-xs text-muted-foreground">{label.includes("Full Look") ? "Required: mark the complete outfit photo as Full Look" : "Assign this role on the Product Images card"}</div>}
             </div>
           ))}
         </div>
@@ -218,7 +215,8 @@ export default function AdminTryOnImageGenerator({ productName, images, hemLengt
         {modelsError && <p className="mt-2 text-xs text-amber-700">{modelsError} The upload choice remains available.</p>}
         {personFile && <p className="mt-2 text-xs text-muted-foreground">Your uploaded photo is selected for this preview.</p>}
       </div>
-      <button type="button" onClick={tryOn} disabled={(!selected && !(twoPieceSet && fullLook)) || (twoPieceSet && !fullLook && !bottom) || (!personFile && !selectedModelId) || processing} className="inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">
+      {twoPieceSet && !fullLook && <p className="text-xs text-amber-700">Assign a complete outfit photo as Full Look in Product Images to enable a reliable set preview.</p>}
+      <button type="button" onClick={tryOn} disabled={(twoPieceSet && !fullLook) || (!twoPieceSet && !selected) || (!personFile && !selectedModelId) || processing} className="inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">
         {processing && <Loader2 className="h-4 w-4 animate-spin" />}{processing ? "Trying on…" : "Try on this outfit"}
       </button>
       {error && <p role="alert" className="text-xs text-red-600">{error}</p>}

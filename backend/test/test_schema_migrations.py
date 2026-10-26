@@ -82,3 +82,27 @@ def test_legacy_support_tickets_get_nullable_assignee_column():
         assert "assigned_to" in columns
         assert conn.execute(text("SELECT assigned_to FROM support_tickets WHERE id = 'OLD-TICKET'")).scalar_one() is None
     engine.dispose()
+
+
+def test_existing_two_piece_full_look_gallery_images_are_promoted_idempotently():
+    engine = create_engine("sqlite:///:memory:")
+    with engine.begin() as conn:
+        conn.execute(text("""CREATE TABLE product_images (
+            id VARCHAR(36) PRIMARY KEY,
+            s3_url VARCHAR(1000) NOT NULL,
+            tryon_role VARCHAR(20)
+        )"""))
+        conn.execute(text("""
+            INSERT INTO product_images (id, s3_url, tryon_role) VALUES
+            ('BEIGE-SET', '/user_uploads/products/fa1feea757faa71e0d27b3f0dd16b6dcabe198b201ff4ee475d5fd0346bacad0.webp', 'gallery'),
+            ('PINK-SET', '/user_uploads/products/9ddc1d1cdb43267450bbbec003dceb0c4fc468de9221731eb1730ae4af6fbc87.webp', 'gallery'),
+            ('BEIGE-TOP', '/user_uploads/products/9b483d39eebe78579e0cf5c6984a1a49a075cf88af62ec0349f4d3559571a546.webp', 'top')
+        """))
+
+    ensure_columns(engine)
+    ensure_columns(engine)
+
+    with engine.connect() as conn:
+        roles = dict(conn.execute(text("SELECT id, tryon_role FROM product_images")).all())
+        assert roles == {"BEIGE-SET": "set", "PINK-SET": "set", "BEIGE-TOP": "top"}
+    engine.dispose()

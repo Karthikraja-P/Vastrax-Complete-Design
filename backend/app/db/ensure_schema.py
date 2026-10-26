@@ -42,6 +42,14 @@ ADDITIVE_COLUMNS = {
     },
 }
 
+# Existing catalog photos showing the complete two-piece outfit were uploaded as
+# generic gallery images. Promote those known full-look references so storefront
+# try-on uses FASHN's single adaptive pass instead of a top-then-bottom overwrite.
+FULL_LOOK_ROLE_BACKFILLS = {
+    "/user_uploads/products/fa1feea757faa71e0d27b3f0dd16b6dcabe198b201ff4ee475d5fd0346bacad0.webp",
+    "/user_uploads/products/9ddc1d1cdb43267450bbbec003dceb0c4fc468de9221731eb1730ae4af6fbc87.webp",
+}
+
 
 def ensure_columns(engine: Engine) -> None:
     insp = inspect(engine)
@@ -57,6 +65,20 @@ def ensure_columns(engine: Engine) -> None:
                 log.info("Added column %s.%s", table, name)
                 if table == "erp_operating_expenses" and name == "journal_entry_id":
                     added_expense_journal_link = True
+    if insp.has_table("product_images"):
+        with engine.begin() as conn:
+            for image_path in FULL_LOOK_ROLE_BACKFILLS:
+                result = conn.execute(
+                    text("""
+                        UPDATE product_images
+                        SET tryon_role = 'set'
+                        WHERE s3_url = :image_path
+                          AND (tryon_role IS NULL OR tryon_role = 'gallery')
+                    """),
+                    {"image_path": image_path},
+                )
+                if result.rowcount:
+                    log.info("Promoted complete outfit image to Full Look reference: %s", image_path)
     if insp.has_table("erp_journal_entries"):
         with engine.begin() as conn:
             conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_erp_journal_source_key ON erp_journal_entries(source_key)"))
