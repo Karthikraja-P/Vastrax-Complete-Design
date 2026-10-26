@@ -441,7 +441,7 @@
 
 .vx-product-stage {
   aspect-ratio: 0.82;
-  background: var(--vx-stage);
+  background: #fff;
 }
 
 .vx-product-image {

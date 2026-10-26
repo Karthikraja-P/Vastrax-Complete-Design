@@ -7,3 +7,7 @@ const PRODUCT_CUTOUTS: Record<string, string> = {
 export function storefrontProductImage(id: string | number, fallback?: string): string {
   return fallback || PRODUCT_CUTOUTS[String(id)] || "/product-placeholder.svg";
 }
+
+export function storefrontCollectionImage(id: string | number, fallback?: string): string {
+  return PRODUCT_CUTOUTS[String(id)] || fallback || "/product-placeholder.svg";
+}

@@ -17,7 +17,7 @@ import { useCartItems } from "@/hooks/useCartItems";
 import { showToast } from "@/lib/toast";
 import { performSignOut } from "@/lib/auth-utils";
 import StorefrontMobileControls from "@/components/layout/StorefrontMobileControls";
-import { storefrontProductImage } from "@/lib/storefront-images";
+import { storefrontCollectionImage } from "@/lib/storefront-images";
 
 function CollectionsPageContent({ initialCategory, initialSort, initialSearch }: { initialCategory?: string; initialSort?: string; initialSearch?: string }) {
   const [isAuthOpen, setIsAuthOpen] = useState(false);
@@ -135,7 +135,7 @@ function CollectionsPageContent({ initialCategory, initialSort, initialSearch }:
             originalPrice,
             rating: Number(p.rating_average || p.rating || 0),
             ratingCount: Number(p.rating_count || 0),
-            image: storefrontProductImage(p.id, img),
+            image: storefrontCollectionImage(p.id, img),
             gender: p.gender || "",
             isNew: Boolean(p.isNew || p.is_featured),
             categoryId: rawCatId,
