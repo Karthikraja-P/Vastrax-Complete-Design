@@ -794,7 +794,7 @@ export const settingsApi = {
 };
 
 // -------------------------------------------------------------
-// 7. AI FASHION STYLIST CHAT API (OpenAI GPT-4o mini)
+// 7. AI FASHION STYLIST CHAT API (self-hosted Qwen3.5 9B, 4-bit)
 // -------------------------------------------------------------
 export interface ChatResponse {
   message: string;

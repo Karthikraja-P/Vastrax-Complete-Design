@@ -54,17 +54,14 @@ export default function SettingsPage() {
   const [autoArchiveOrders, setAutoArchiveOrders] = useState(false);
   const [maintenanceMode, setMaintenanceMode] = useState(false);
   const [stylistSystemPrompt, setStylistSystemPrompt] = useState(
-    "You are Vastra, the premier luxury personal style advisor and concierge for VASTRAX Haute Couture.\n" +
-    "Tone: Sophisticated, warm, and concise (2-4 sentences). Always ask ONE focused question at a time.\n" +
-    "Live Catalog Grounding: Recommend ONLY items currently in the VASTRAX boutique catalog.\n" +
-    "Interactive Product Cards: ALWAYS include [PRODUCT:id] when mentioning a garment to render live cards with Try On & Add to Bag.\n" +
-    "Fit & Size Guidance: Offer precise sizing guidance (XS-XXL) in inches and cm, directing shoppers to the product Size Chart.\n" +
-    "Virtual Try-On CTA: Invite shoppers to visualize outfits in the real-time AI Fitting Room via 'Try On'.\n" +
-    "Activity-Aware Chips: Provide contextual [CHIPS:Option1|Option2|Option3] matching user intent (styling chips for outfits, order chips only when discussing orders)."
+    "You are Vastra, a friendly, knowledgeable personal stylist for VASTRAX. Speak like a thoughtful human in a relaxed conversation, not a script or sales pitch.\n" +
+    "Use natural, warm language and answer the shopper's actual question first. Keep replies helpful and concise, usually 2-4 sentences; ask at most one relevant follow-up question, and only when it helps.\n" +
+    "Offer useful general fashion advice even when the shopper has not asked for a specific catalog item. For example, explain that vertical stripes can create a longer visual line, while noting that styling effects vary by garment, proportions, and personal taste. Give practical suggestions about colour pairing, layering, occasions, and coordinating separates when relevant.\n" +
+    "Never assume a shopper's body shape, complexion, budget, identity, or preferences. Do not make body-shaming comments or promise that an outfit will fit. For sizing, point to the actual product size chart and use inventory data before saying a size is available.\n" +
+    "When recommending products, use ONLY items in the live VASTRAX catalog and include [PRODUCT:id] for every recommended item so the store can show its product card. Never invent product details, prices, stock, or discounts. Mention promotions only when they appear in the verified active-offers context.\n" +
+    "Suggest Virtual Try-On as an optional visual preview, never as a fit guarantee. Keep quick replies relevant and put them at the end as [CHIPS:Option1|Option2|Option3]; only offer order or shipping actions when the shopper asks about an order."
   );
-  const [activeOffers, setActiveOffers] = useState(
-    "VASTRAX10 (10% off VIP invitation), VIP20 (20% patron discount), FREESHIP (Complimentary express delivery)."
-  );
+  const [activeOffers, setActiveOffers] = useState("");
   const [isSavingAppSettings, setIsSavingAppSettings] = useState(false);
   const [appSettingsSaved, setAppSettingsSaved] = useState(false);
 
@@ -632,19 +629,20 @@ export default function SettingsPage() {
                 <div className="space-y-4 pt-4 border-t border-border">
                   <div className="flex items-center justify-between">
                     <h3 className="text-sm font-semibold text-foreground uppercase tracking-wider flex items-center gap-2">
-                      <Sparkles className="w-4 h-4 text-accent" /> AI Stylist & Concierge (GPT-4o mini)
+                      <Sparkles className="w-4 h-4 text-accent" /> AI Stylist & Concierge (Self-hosted Qwen3.5 9B · 4-bit)
                     </h3>
                     <button
                       type="button"
                       onClick={() => {
                         setStylistSystemPrompt(
-                          "You are Vastra, the premier personal style advisor for VastraX Haute Couture boutique.\n" +
-                          "Tone: Sophisticated, welcoming, and concise (2-3 sentences per reply). Always ask ONE clear question at a time.\n" +
-                          "Guidance: Match silhouettes and colors based on customer skin tone, height, and occasion.\n" +
-                          "Sales & Offers: Mention our active promotions naturally when recommending outfits.\n" +
-                          "Encourage customers to click 'Try On' to preview outfits in the AI Fitting Room."
+                          "You are Vastra, a friendly, knowledgeable personal stylist for VASTRAX. Speak like a thoughtful human in a relaxed conversation, not a script or sales pitch.\n" +
+                          "Use natural, warm language and answer the shopper's actual question first. Keep replies helpful and concise, usually 2-4 sentences; ask at most one relevant follow-up question, and only when it helps.\n" +
+                          "Offer useful general fashion advice even when the shopper has not asked for a specific catalog item. For example, explain that vertical stripes can create a longer visual line, while noting that styling effects vary by garment, proportions, and personal taste. Give practical suggestions about colour pairing, layering, occasions, and coordinating separates when relevant.\n" +
+                          "Never assume a shopper's body shape, complexion, budget, identity, or preferences. Do not make body-shaming comments or promise that an outfit will fit. For sizing, point to the actual product size chart and use inventory data before saying a size is available.\n" +
+                          "When recommending products, use ONLY items in the live VASTRAX catalog and include [PRODUCT:id] for every recommended item so the store can show its product card. Never invent product details, prices, stock, or discounts. Mention promotions only when they appear in the verified active-offers context.\n" +
+                          "Suggest Virtual Try-On as an optional visual preview, never as a fit guarantee. Keep quick replies relevant and put them at the end as [CHIPS:Option1|Option2|Option3]; only offer order or shipping actions when the shopper asks about an order."
                         );
-                        setActiveOffers("Use code VASTRA10 for 10% off your first luxury order; Complimentary express shipping on orders over ₹2,500.");
+                        setActiveOffers("");
                       }}
                       className="text-xs text-accent hover:underline cursor-pointer"
                     >
@@ -656,7 +654,7 @@ export default function SettingsPage() {
                     <div className="space-y-1.5">
                       <label className="text-xs font-medium text-foreground flex items-center justify-between">
                         <span>Active Boutique Promotions & Offers</span>
-                        <span className="text-[11px] text-muted-foreground">Injected directly into chat context</span>
+                      <span className="text-[11px] text-muted-foreground">Only verified offers entered here are shared with the stylist</span>
                       </label>
                       <input 
                         type="text" 
