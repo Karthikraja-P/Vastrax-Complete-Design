@@ -8,7 +8,7 @@ const PRODUCT_CUTOUTS: Record<string, string> = {
 // The uploaded source has a sleeve artifact; this generated gallery asset has
 // the corrected sleeveless top and a neutral beige background.
 const PRODUCT_CARD_IMAGES: Record<string, string> = {
-  "vtx-f2b3a9a5": "/storefront/product-beige-background/0bd0f4739f7164f68842025ec2966bd840b8d9b3d7b6c51654b0c2866e41413c.webp",
+  "vtx-f2b3a9a5": "/storefront/product-beige-background/green-skirt-model-beige.webp",
 };
 
 export function storefrontProductImage(id: string | number, fallback?: string): string {
@@ -44,6 +44,9 @@ const PRODUCT_GALLERY_BEIGE_BACKGROUNDS = new Set([
 
 export function storefrontProductGalleryImage(source: string): string {
   const filename = source.split(/[?#]/, 1)[0].split("/").pop() || "";
+  if (filename === "0bd0f4739f7164f68842025ec2966bd840b8d9b3d7b6c51654b0c2866e41413c.webp") {
+    return "/storefront/product-beige-background/green-skirt-model-beige.webp";
+  }
   return PRODUCT_GALLERY_BEIGE_BACKGROUNDS.has(filename)
     ? `/storefront/product-beige-background/${filename}`
     : source;
