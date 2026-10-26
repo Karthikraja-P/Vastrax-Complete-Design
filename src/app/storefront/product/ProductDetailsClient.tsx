@@ -53,6 +53,7 @@ function ProductContent() {
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
   const [zoomScale, setZoomScale] = useState(1);
   const [zoomOrigin, setZoomOrigin] = useState("center center");
+  const lastGalleryTap = useRef(0);
   const touchStart = useRef<{ x: number; y: number } | null>(null);
   const swipeHandled = useRef(false);
   const [isSizeChartOpen, setIsSizeChartOpen] = useState(false);
@@ -124,7 +125,10 @@ function ProductContent() {
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setIsGalleryOpen(false);
+      if (event.key === "Escape") {
+        setIsGalleryOpen(false);
+        setZoomScale(1);
+      }
       if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
         event.preventDefault();
         setZoomScale(1);
@@ -822,12 +826,26 @@ function ProductContent() {
 
       {isGalleryOpen && (
         <div
-          onClick={(event) => { if (event.target === event.currentTarget) setIsGalleryOpen(false); }}
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              setIsGalleryOpen(false);
+              setZoomScale(1);
+            }
+          }}
           role="dialog"
           aria-modal="true"
           aria-label={`${product.name} image gallery`}
           className="fixed inset-0 z-[130] flex flex-col bg-background text-foreground"
         >
+          <button
+            type="button"
+            onClick={() => { setIsGalleryOpen(false); setZoomScale(1); }}
+            aria-label="Close product gallery"
+            title="Close gallery"
+            className="fixed right-4 top-4 z-20 flex h-11 w-11 items-center justify-center rounded-full bg-surface/90 text-foreground shadow-md backdrop-blur-sm hover:bg-surface"
+          >
+            <X className="h-5 w-5" />
+          </button>
           <div className="relative mx-auto flex min-h-0 w-full max-w-7xl flex-1 items-center justify-center px-12 sm:px-20">
             {galleryImages.length > 1 && (
               <>
@@ -841,12 +859,21 @@ function ProductContent() {
             )}
             <button
               type="button"
-              onClick={(event) => {
-                setZoomScale((value) => event.detail > 1 ? 2.5 : value === 1 ? 2.5 : 1);
-              }}
               onDoubleClick={(event) => {
                 event.preventDefault();
-                setZoomScale(2.5);
+                if (window.matchMedia("(hover: hover)").matches) {
+                  setZoomScale((value) => value === 1 ? 2.5 : 1);
+                }
+              }}
+              onTouchEnd={(event) => {
+                const now = Date.now();
+                if (now - lastGalleryTap.current < 320) {
+                  event.preventDefault();
+                  setZoomScale((value) => value === 1 ? 2.5 : 1);
+                  lastGalleryTap.current = 0;
+                } else {
+                  lastGalleryTap.current = now;
+                }
               }}
               onWheel={(event) => {
                 event.preventDefault();
@@ -857,8 +884,8 @@ function ProductContent() {
                 const bounds = event.currentTarget.getBoundingClientRect();
                 setZoomOrigin(`${((event.clientX - bounds.left) / bounds.width) * 100}% ${((event.clientY - bounds.top) / bounds.height) * 100}%`);
               }}
-              aria-label={`Product image. ${zoomScale === 1 ? "Double-click or double-tap to zoom in" : `${zoomScale.toFixed(1)} times zoom; click to zoom out`}`}
-              className={`h-full w-full overflow-hidden bg-[#f5f2ed] dark:bg-[#e9e5df] ${zoomScale > 1 ? "cursor-zoom-out" : "cursor-pointer"}`}
+              aria-label={`Product image. ${zoomScale === 1 ? "Double-click or double-tap to zoom in" : `${zoomScale.toFixed(1)} times zoom; double-click or double-tap to zoom out`}`}
+              className={`h-full w-full overflow-hidden bg-[#f5f2ed] dark:bg-[#e9e5df] ${zoomScale > 1 ? "cursor-move" : "cursor-default"}`}
             >
               <Image
                 src={galleryImages[activeImageIndex] || product.image}
