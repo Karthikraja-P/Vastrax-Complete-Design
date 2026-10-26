@@ -16,7 +16,7 @@ export function storefrontProductImage(id: string | number, fallback?: string): 
 }
 
 export function storefrontCollectionImage(id: string | number, fallback?: string): string {
-  return PRODUCT_CARD_IMAGES[String(id)] || PRODUCT_CUTOUTS[String(id)] || fallback || "/product-placeholder.svg";
+  return storefrontProductImage(id, fallback);
 }
 
 const PRODUCT_GALLERY_BEIGE_BACKGROUNDS = new Set([
