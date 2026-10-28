@@ -403,6 +403,11 @@ export default function AddProductPage() {
       setActiveTab("basic");
       return;
     }
+    if (new Set(generatedProductCodes).size !== generatedProductCodes.length) {
+      showToast("Each available size must generate a unique product code. Check the size list.");
+      setActiveTab("basic");
+      return;
+    }
     const invalidStockSize = sizeChart.rows.find((row) => {
       const quantity = stockBySize[row.size];
       return quantity === "" || !Number.isInteger(Number(quantity)) || Number(quantity) < 0;
@@ -598,7 +603,7 @@ export default function AddProductPage() {
                     placeholder="e.g. Classic Silk Shirt"
                     className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent focus:ring-1 focus:ring-accent outline-none transition-all text-foreground"
                   />
-                  <p className="mt-1.5 text-xs text-muted-foreground">This required style name is used as the Style/Collection part of each generated product code.</p>
+                  <p className="mt-1.5 text-xs text-muted-foreground">Used to create a compact style code; the full product name stays unchanged.</p>
                 </div>
                 <div className="grid grid-cols-3 gap-4">
                   <div>
@@ -610,7 +615,7 @@ export default function AddProductPage() {
                         ? generatedProductCodes.map((code) => <div key={code} className="font-mono">{code}</div>)
                         : <span className="text-muted-foreground">Choose a category, enter a style name and colour, then select sizes.</span>}
                     </div>
-                    <p className="mt-1.5 text-xs text-muted-foreground">Naming: VTX–Category–Style/Collection–Colour–Size. The style/collection part comes from the product name; for example, VTX-COORDSET-BEIGECOORD-BEIGE-S.</p>
+                    <p className="mt-1.5 text-xs text-muted-foreground">Short SKU format: VTX-category initials-style initials-colour code-size (for example, VTX-CS-PCS-PNK-S).</p>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-1.5">

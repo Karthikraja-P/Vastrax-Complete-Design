@@ -34,6 +34,13 @@ class ProductVariantCreate(BaseModel):
     size: str = Field(min_length=1)
     stock_qty: int = Field(default=0, ge=0)
 
+    @field_validator("sku", mode="before")
+    @classmethod
+    def normalize_sku(cls, value: object) -> object:
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError("Each size must have a generated product code.")
+        return value.strip().upper()
+
     @field_validator("size", mode="before")
     @classmethod
     def require_nonblank_size(cls, value: object) -> object:

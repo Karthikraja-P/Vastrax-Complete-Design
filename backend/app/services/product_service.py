@@ -3,9 +3,10 @@ from typing import Optional
 
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 
 from app.core.config import settings
-from app.core.exceptions import BadRequestError, ForbiddenError, InternalError, NotFoundError
+from app.core.exceptions import BadRequestError, ConflictError, ForbiddenError, InternalError, NotFoundError
 from fastapi import UploadFile
 import requests
 from app.core.logging import get_logger
@@ -25,6 +26,35 @@ logger = get_logger(__name__)
 class ProductService:
     def __init__(self, db: Session) -> None:
         self.db = db
+
+    def _validate_variant_skus(self, variants, exclude_product_id: str | None = None) -> list[str]:
+        skus = [variant.sku.strip().upper() for variant in variants]
+        if len(set(skus)) != len(skus):
+            raise ConflictError("Two sizes generated the same product code. Check the size list.")
+        query = self.db.query(ProductVariant.sku).filter(func.upper(ProductVariant.sku).in_(skus))
+        if exclude_product_id:
+            query = query.filter(ProductVariant.product_id != exclude_product_id)
+        existing = [sku for (sku,) in query.all()]
+        if existing:
+            raise ConflictError(
+                f"Generated product code {existing[0]} is already in use. Change the category, product name, or colour."
+            )
+        return skus
+
+    def _commit_product_changes(self, skus: list[str], exclude_product_id: str | None = None) -> None:
+        try:
+            self.db.commit()
+        except IntegrityError as exc:
+            self.db.rollback()
+            query = self.db.query(ProductVariant.sku).filter(func.upper(ProductVariant.sku).in_(skus))
+            if exclude_product_id:
+                query = query.filter(ProductVariant.product_id != exclude_product_id)
+            duplicate = query.first()
+            if duplicate:
+                raise ConflictError(
+                    f"Generated product code {duplicate[0]} is already in use. Change the category, product name, or colour."
+                ) from exc
+            raise
 
     def _resolve_category_id(self, cat_input: Optional[str]) -> str:
         if cat_input:
@@ -107,6 +137,7 @@ class ProductService:
         return self._to_response(product)
 
     def create_product(self, payload: ProductCreate) -> ProductResponse:
+        self._validate_variant_skus(payload.variants)
         cat_id = self._resolve_category_id(payload.category_id)
         product = Product(
             category_id=cat_id,
@@ -144,7 +175,7 @@ class ProductService:
             if var_data.stock_qty > 0:
                 self.db.add(StockMovement(product_id=product.id, variant_id=variant.id, quantity_delta=var_data.stock_qty, stock_before=0, stock_after=var_data.stock_qty, reason="opening_stock", created_by=None))
 
-        self.db.commit()
+        self._commit_product_changes([variant.sku for variant in payload.variants])
         self.db.refresh(product)
         logger.info("Product created: %s", product.id)
         return self._to_response(product)
@@ -157,6 +188,9 @@ class ProductService:
         ).first()
         if not product:
             raise NotFoundError("Product not found")
+
+        if payload.variants is not None:
+            self._validate_variant_skus(payload.variants, exclude_product_id=product.id)
 
         for field in ("name", "fabric", "colour", "occasion", "gender", "size_chart", "price_mrp",
                       "price_selling", "description", "is_featured", "is_published"):
@@ -237,7 +271,13 @@ class ProductService:
                 else:
                     self.db.delete(removed)
 
-        self.db.commit()
+        if payload.variants is not None:
+            self._commit_product_changes(
+                [variant.sku for variant in payload.variants],
+                exclude_product_id=product.id,
+            )
+        else:
+            self.db.commit()
         self.db.refresh(product)
         logger.info("Product updated: %s", product_id)
         return self._to_response(product)

@@ -6,7 +6,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 import app.main  # noqa: F401
-from app.core.exceptions import BadRequestError, ForbiddenError
+from app.core.exceptions import BadRequestError, ConflictError, ForbiddenError
 from app.db.base import Base
 from app.models.address import Address
 from app.models.category import Category
@@ -146,3 +146,25 @@ def test_product_details_and_style_can_be_saved_and_cleared(db):
     saved = db.get(Product, product.id)
     assert saved.product_details is None
     assert saved.how_to_style == "Pair with neutral sandals."
+
+
+def test_generated_variant_sku_conflicts_with_another_product(db):
+    product = _product(db)
+    other_product = Product(
+        id="p-2", category_id=product.category_id, name="Another product",
+        price_mrp=Decimal("100"), price_selling=Decimal("90"),
+    )
+    db.add(other_product)
+    db.flush()
+    db.add(ProductVariant(
+        id="other-size-s", product_id=other_product.id,
+        sku="VTX-CS-PCS-PNK-S", size="S", stock_qty=2,
+    ))
+    db.commit()
+
+    with pytest.raises(ConflictError, match="already in use"):
+        ProductService(db).update_product(product.id, ProductUpdate(variants=[
+            ProductVariantCreate(sku="vtx-cs-pcs-pnk-s", size="S", stock_qty=1),
+        ]))
+
+    assert db.query(ProductVariant).filter_by(product_id=product.id).count() == 0
