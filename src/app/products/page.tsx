@@ -325,7 +325,7 @@ export default function ProductsPage() {
                   onChange={(e) => { setSelectedStatus(e.target.value); setCurrentPage(1); }}
                   className="w-full px-4 py-2 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-accent text-foreground appearance-none cursor-pointer"
                 >
-                  <option value="">Select Status</option>
+                  <option value="">All Status</option>
                   <option value="active">Active</option>
                   <option value="draft">Draft</option>
                   <option value="out_of_stock">Out of Stock</option>
