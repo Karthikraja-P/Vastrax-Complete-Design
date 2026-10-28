@@ -6,11 +6,9 @@ import { ArrowLeft, Save, Sparkles, Image as ImageIcon, Box, Plus, X as XIcon, U
 import Link from "next/link";
 import { clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
-import { productsApi, categoriesApi, settingsApi, CategoryItem } from "@/lib/api";
+import { productsApi, categoriesApi, CategoryItem } from "@/lib/api";
 import { isSizeChart } from "@/lib/sizeChart";
 import { SizeChartEditor } from "@/components/products/SizeChartEditor";
-import ProductBackdropPicker from "@/components/products/ProductBackdropPicker";
-import { DEFAULT_PRODUCT_BACKDROP, normalizeProductBackdrop } from "@/lib/product-backgrounds";
 import AdminTryOnImageGenerator from "@/components/products/AdminTryOnImageGenerator";
 import type { SizeChart } from "@/lib/sizeChart";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -102,16 +100,10 @@ function EditProductContent() {
   const [colour, setColour] = useState("");
   const [occasion, setOccasion] = useState("");
   const [hemLength, setHemLength] = useState("");
-  const [displayBackground, setDisplayBackground] = useState("");
-  const [storeDefaultDisplayBackground, setStoreDefaultDisplayBackground] = useState(DEFAULT_PRODUCT_BACKDROP);
   const [isProcessingImageBackground, setIsProcessingImageBackground] = useState(false);
   const [modelPath, setModelPath] = useState("");
   const [isUploadingGlb, setIsUploadingGlb] = useState(false);
   const glbInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    settingsApi.getApp().then((data) => setStoreDefaultDisplayBackground(normalizeProductBackdrop(data.productDisplayBackground)));
-  }, []);
 
   // Pricing
   const [priceSelling, setPriceSelling] = useState("");
@@ -162,7 +154,6 @@ function EditProductContent() {
             setPriceMrp(hasOffer ? String(currentPrice) : "");
             setOccasion(prod.occasion || "");
             setHemLength(prod.hem_length || "");
-            setDisplayBackground(prod.display_background || "");
             setFabric(prod.fabric || "");
             setColour(prod.colour || "");
             setModelPath(prod.model_path || "");
@@ -534,7 +525,6 @@ function EditProductContent() {
         colour: colour.trim() || undefined,
         occasion: occasion.trim() || undefined,
         hem_length: isSkirtProductName(name) ? hemLength || null : null,
-        display_background: displayBackground || null,
         model_path: modelPath.trim(),
         price_selling: offerPrice ?? regularPrice,
         price_mrp: regularPrice,
@@ -924,8 +914,6 @@ function EditProductContent() {
               </div>
 
               <div className="mb-6">
-                <ProductBackdropPicker value={displayBackground} onChange={setDisplayBackground} defaultColor={storeDefaultDisplayBackground} allowStoreDefault label="Preview canvas color" />
-                <p className="mt-2 text-xs text-muted-foreground">This color is used behind transparent parts of a photo. Uploaded image pixels stay unchanged to preserve fabric, prints, and embroidery.</p>
               </div>
 
               {/* Hidden file input */}

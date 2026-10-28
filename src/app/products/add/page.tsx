@@ -6,7 +6,7 @@ import { ArrowLeft, Save, Plus, X as XIcon, Upload, Loader2, Check, RotateCw, Ey
 import Link from "next/link";
 import { clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
-import { productsApi, categoriesApi, settingsApi, CategoryItem } from "@/lib/api";
+import { productsApi, categoriesApi, CategoryItem } from "@/lib/api";
 import type { SizeChart } from "@/lib/sizeChart";
 import { useRouter } from "next/navigation";
 import { getSession } from "next-auth/react";
@@ -14,8 +14,6 @@ import { Product3DModal } from "@/components/3d/Product3DModal";
 import { generateThreeDModel } from "@/lib/threeDGeneration";
 import PhotoUploadCard from "@/components/products/PhotoUploadCard";
 import { SizeChartEditor } from "@/components/products/SizeChartEditor";
-import ProductBackdropPicker from "@/components/products/ProductBackdropPicker";
-import { DEFAULT_PRODUCT_BACKDROP, normalizeProductBackdrop } from "@/lib/product-backgrounds";
 import AdminTryOnImageGenerator from "@/components/products/AdminTryOnImageGenerator";
 import { generateProductCode } from "@/lib/product-code";
 
@@ -88,16 +86,10 @@ export default function AddProductPage() {
   const [colour, setColour] = useState("");
   const [occasion, setOccasion] = useState("");
   const [hemLength, setHemLength] = useState("");
-  const [displayBackground, setDisplayBackground] = useState("");
-  const [storeDefaultDisplayBackground, setStoreDefaultDisplayBackground] = useState(DEFAULT_PRODUCT_BACKDROP);
   const [isProcessingImageBackground, setIsProcessingImageBackground] = useState(false);
   const [modelPath, setModelPath] = useState("");
   const [isUploadingGlb, setIsUploadingGlb] = useState(false);
   const glbInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    settingsApi.getApp().then((data) => setStoreDefaultDisplayBackground(normalizeProductBackdrop(data.productDisplayBackground)));
-  }, []);
 
   // Pricing
   const [priceSelling, setPriceSelling] = useState("");
@@ -467,7 +459,6 @@ export default function AddProductPage() {
         colour: colour.trim() || undefined,
         occasion: occasion.trim() || undefined,
         hem_length: isSkirtProductName(name) ? hemLength || null : null,
-        display_background: displayBackground || null,
         model_path: modelPath.trim(),
         price_selling: offerPrice ?? regularPrice,
         price_mrp: regularPrice,
@@ -858,8 +849,6 @@ export default function AddProductPage() {
               </div>
 
               <div className="mb-6">
-                <ProductBackdropPicker value={displayBackground} onChange={setDisplayBackground} defaultColor={storeDefaultDisplayBackground} allowStoreDefault label="Preview canvas color" />
-                <p className="mt-2 text-xs text-muted-foreground">This color is used behind transparent parts of a photo. Uploaded image pixels stay unchanged to preserve fabric, prints, and embroidery.</p>
               </div>
 
               {/* Hidden file input */}
