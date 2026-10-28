@@ -210,7 +210,7 @@ def create_shipment_order(order_id: str, customer_info: dict, items: list, total
                 "order_items": [
                     {
                         "name": it.get("name", "Premium Garment"),
-                        "sku": it.get("variant_id", "GENERIC-SKU"),
+                        "sku": it.get("sku") or it.get("variant_id", "GENERIC-SKU"),
                         "units": it.get("quantity", 1),
                         "selling_price": str(it.get("unit_price", 0.0))
                     }

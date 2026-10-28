@@ -85,7 +85,7 @@ def test_shipment_payload_uses_cod_and_items_subtotal(monkeypatch):
     result = shiprocket.create_shipment_order(
         "VX-2026-ORDER",
         {"name": "Test Customer", "address": "12 Main Street", "city": "Madurai", "state": "Tamil Nadu", "pincode": "625001", "email": "test@example.com", "phone": "9876543210"},
-        [{"name": "Pink Coord", "variant_id": "variant-1", "quantity": 2, "unit_price": 1000}],
+        [{"name": "Pink Coord", "variant_id": "variant-1", "sku": "VTX-CS-PCS-PNK-S", "quantity": 2, "unit_price": 1000}],
         total_amount=2400,
         payment_method="COD",
         weight=1.0,
@@ -93,6 +93,7 @@ def test_shipment_payload_uses_cod_and_items_subtotal(monkeypatch):
 
     assert result["shipment_id"] == 12345
     assert captured["json"]["payment_method"] == "COD"
+    assert captured["json"]["order_items"][0]["sku"] == "VTX-CS-PCS-PNK-S"
     assert captured["json"]["sub_total"] == 2000
     assert captured["json"]["billing_pincode"] == "625001"
     assert captured["json"]["weight"] == 1.0

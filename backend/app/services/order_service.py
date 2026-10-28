@@ -288,6 +288,7 @@ def _book_shiprocket(order: Order, user: User, address: Address) -> None:
         items_to_ship.append({
             "name": it.product.name if it.product else "Premium Garment",
             "variant_id": it.variant_id,
+            "sku": it.variant.sku if it.variant and it.variant.sku else it.variant_id,
             "quantity": it.quantity,
             "unit_price": float(it.unit_price),
         })
