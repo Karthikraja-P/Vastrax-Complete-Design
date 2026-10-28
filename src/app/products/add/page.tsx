@@ -151,15 +151,16 @@ export default function AddProductPage() {
     setIsProcessingImageBackground(true);
     const selectedBackground = displayBackground || storeDefaultDisplayBackground;
     try {
-      const newImages = await Promise.all(files.map(async (file, index): Promise<UploadedImage> => {
+      const newImages: UploadedImage[] = [];
+      for (const [index, file] of files.entries()) {
         const processedFile = await replaceProductPhotoBackground(file, selectedBackground);
-        return {
+        newImages.push({
           id: `img-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 8)}`,
           file: processedFile,
           preview: URL.createObjectURL(processedFile),
           tryonRole: inferTryOnRole(file.name),
-        };
-      }));
+        });
+      }
       setImages((previous) => [...previous, ...newImages]);
     } catch (error) {
       console.error("Could not apply the selected product photo background:", error);
