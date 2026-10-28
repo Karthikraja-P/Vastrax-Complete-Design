@@ -183,6 +183,7 @@ export interface ProductItem {
   colour?: string;
   occasion?: string;
   hem_length?: "knee" | "midi" | "ankle" | "floor" | null;
+  display_background?: string | null;
   model_path?: string;
   model3dUrl?: string;
   price: number;
@@ -229,6 +230,7 @@ export interface StorefrontProduct {
   fabric?: string;
   colour?: string;
   occasion?: string;
+  displayBackground?: string;
   gender?: string;
   stock?: number;
   isSale?: boolean;
@@ -759,6 +761,7 @@ export interface AppSettings {
   maintenanceMode: boolean;
   stylistSystemPrompt: string;
   activeOffers: string;
+  productDisplayBackground: string;
   [key: string]: unknown;
 }
 
@@ -781,6 +784,7 @@ export const settingsApi = {
         maintenanceMode: false,
         stylistSystemPrompt: "You are Vastra, personal style advisor for VastraX.",
         activeOffers: "",
+        productDisplayBackground: "#F5F2ED",
       };
     }
   },

@@ -10,7 +10,8 @@ import Link from "next/link";
 import { CartDrawer } from "@/components/layout/CartDrawer";
 import { StylistDrawer } from "@/components/stylist/StylistDrawer";
 import type { AddToCartProduct } from "@/components/3d/Product3DModal";
-import { productsApi, categoriesApi, fetchApi, ProductItem, CategoryItem, ProductVariant, StorefrontProduct } from "@/lib/api";
+import { productsApi, categoriesApi, fetchApi, ProductItem, CategoryItem, ProductVariant, StorefrontProduct, settingsApi } from "@/lib/api";
+import { DEFAULT_PRODUCT_BACKDROP, normalizeProductBackdrop } from "@/lib/product-backgrounds";
 import { reportBackendReachable, reportBackendUnreachable } from "@/lib/backendStatus";
 import { addToCart as addCartItem } from "@/lib/cart";
 import { useCartItems } from "@/hooks/useCartItems";
@@ -84,10 +85,12 @@ function CollectionsPageContent({ initialCategory, initialSort, initialSearch }:
   useEffect(() => {
     async function fetchData() {
       try {
-        const [data, cats] = await Promise.all([
+        const [data, cats, storeSettings] = await Promise.all([
           productsApi.list(),
-          categoriesApi.list()
+          categoriesApi.list(),
+          settingsApi.getApp()
         ]);
+        const defaultProductBackground = normalizeProductBackdrop(storeSettings.productDisplayBackground, DEFAULT_PRODUCT_BACKDROP);
 
         const womenData = data.filter((p: ProductItem) => String(p.gender || "").trim().toLowerCase() === "women");
         const catMap = new Map((cats || []).map((c: CategoryItem) => [String(c.id), c.name]));
@@ -146,6 +149,7 @@ function CollectionsPageContent({ initialCategory, initialSort, initialSearch }:
             fabric: p.fabric || "",
             colour: [...new Set([p.colour, ...(p.variants || []).map((variant) => variant.colour || variant.color)].map((value) => String(value || "").trim()).filter(Boolean))].join(" | "),
             occasion: p.occasion || "",
+            displayBackground: normalizeProductBackdrop(p.display_background, defaultProductBackground),
             model3dUrl: p.model_path || p.model3dUrl,
             variants: p.variants || [],
             created_at: p.created_at
@@ -674,7 +678,7 @@ function CollectionsPageContent({ initialCategory, initialSort, initialSearch }:
                         </div>
 
                         {/* Image */}
-                        <a href={`/storefront/product?id=${product.id}`} className="vx-product-stage relative flex w-full items-center justify-center overflow-hidden">
+                        <a href={`/storefront/product?id=${product.id}`} className="vx-product-stage relative flex w-full items-center justify-center overflow-hidden" style={{ backgroundColor: product.displayBackground }}>
                           <Image width={1086} height={1449} sizes="(max-width: 640px) 48vw, (max-width: 1280px) 28vw, 22vw"
                             src={product.image}
                             alt={product.name}

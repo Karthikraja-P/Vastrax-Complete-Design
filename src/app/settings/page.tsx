@@ -4,6 +4,8 @@ import Image from "next/image";
 import React, { useState, useEffect } from "react";
 import { Home, ChevronRight, User, Shield, Settings as SettingsIcon, Edit3, Eye, EyeOff, ChevronDown, Lock, AlertTriangle, Upload, CheckCircle2, Loader2, Store, Globe, ShieldAlert, Sparkles, Sliders } from "lucide-react";
 import { settingsApi, fetchApi, AppSettings } from "@/lib/api";
+import ProductBackdropPicker from "@/components/products/ProductBackdropPicker";
+import { DEFAULT_PRODUCT_BACKDROP, normalizeProductBackdrop } from "@/lib/product-backgrounds";
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'app'>('profile');
@@ -62,6 +64,7 @@ export default function SettingsPage() {
     "Suggest Virtual Try-On as an optional visual preview, never as a fit guarantee. Keep quick replies relevant and put them at the end as [CHIPS:Option1|Option2|Option3]; only offer order or shipping actions when the shopper asks about an order."
   );
   const [activeOffers, setActiveOffers] = useState("");
+  const [productDisplayBackground, setProductDisplayBackground] = useState(DEFAULT_PRODUCT_BACKDROP);
   const [isSavingAppSettings, setIsSavingAppSettings] = useState(false);
   const [appSettingsSaved, setAppSettingsSaved] = useState(false);
 
@@ -82,6 +85,7 @@ export default function SettingsPage() {
         if (data.maintenanceMode !== undefined) setMaintenanceMode(data.maintenanceMode);
         if (data.stylistSystemPrompt) setStylistSystemPrompt(data.stylistSystemPrompt);
         if (data.activeOffers) setActiveOffers(data.activeOffers);
+        if (data.productDisplayBackground) setProductDisplayBackground(normalizeProductBackdrop(data.productDisplayBackground));
       }
     }
     loadSettings();
@@ -102,7 +106,8 @@ export default function SettingsPage() {
       autoArchiveOrders,
       maintenanceMode,
       stylistSystemPrompt,
-      activeOffers
+      activeOffers,
+      productDisplayBackground
     });
     setIsSavingAppSettings(false);
     setAppSettingsSaved(true);
@@ -533,6 +538,20 @@ export default function SettingsPage() {
                       </div>
                     </div>
                   </div>
+                </div>
+
+                {/* Storefront product image background */}
+                <div className="space-y-4 pt-4 border-t border-border">
+                  <div>
+                    <h3 className="text-sm font-semibold text-foreground uppercase tracking-wider">Default product backdrop</h3>
+                    <p className="mt-1 text-xs text-muted-foreground">Used by products set to &quot;Use store default.&quot; Individual products can choose a different color in Add/Edit Product.</p>
+                  </div>
+                  <ProductBackdropPicker
+                    value={productDisplayBackground}
+                    onChange={setProductDisplayBackground}
+                    defaultColor={productDisplayBackground}
+                    label="Storefront product image color"
+                  />
                 </div>
 
                 {/* Section 2: Storefront Banner & Announcement */}

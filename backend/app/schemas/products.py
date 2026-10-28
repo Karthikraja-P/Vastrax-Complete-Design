@@ -1,8 +1,17 @@
 from datetime import datetime
 from decimal import Decimal
 from typing import Optional, Any, Literal
+import re
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+def validate_display_background(value: str | None) -> str | None:
+    if value is None:
+        return None
+    if not re.fullmatch(r"#[0-9A-Fa-f]{6}", value):
+        raise ValueError("Product background must be a six-digit hex color.")
+    return value.upper()
 
 
 class ProductImageCreate(BaseModel):
@@ -49,6 +58,7 @@ class ProductCreate(BaseModel):
     colour: Optional[str] = None
     occasion: Optional[str] = None
     hem_length: Optional[Literal["knee", "midi", "ankle", "floor"]] = None
+    display_background: Optional[str] = None
     gender: Optional[str] = "Women"
     size_chart: Optional[Any] = None
     price_mrp: Decimal
@@ -62,6 +72,8 @@ class ProductCreate(BaseModel):
     images: list[ProductImageCreate] = []
     variants: list[ProductVariantCreate] = Field(min_length=1)
 
+    _validate_display_background = field_validator("display_background")(validate_display_background)
+
 
 class ProductUpdate(BaseModel):
     category_id: Optional[str] = None
@@ -70,6 +82,7 @@ class ProductUpdate(BaseModel):
     colour: Optional[str] = None
     occasion: Optional[str] = None
     hem_length: Optional[Literal["knee", "midi", "ankle", "floor"]] = None
+    display_background: Optional[str] = None
     gender: Optional[str] = None
     size_chart: Optional[Any] = None
     price_mrp: Optional[Decimal] = None
@@ -83,6 +96,8 @@ class ProductUpdate(BaseModel):
     images: Optional[list[ProductImageCreate]] = None
     variants: Optional[list[ProductVariantCreate]] = Field(default=None, min_length=1)
 
+    _validate_display_background = field_validator("display_background")(validate_display_background)
+
 
 class ProductResponse(BaseModel):
     id: str
@@ -92,6 +107,7 @@ class ProductResponse(BaseModel):
     colour: str | None
     occasion: str | None
     hem_length: Literal["knee", "midi", "ankle", "floor"] | None = None
+    display_background: str | None = None
     gender: str | None = "Women"
     size_chart: Any | None = None
     price_mrp: Decimal

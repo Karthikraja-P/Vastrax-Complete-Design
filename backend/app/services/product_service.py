@@ -115,6 +115,7 @@ class ProductService:
             colour=payload.colour,
             occasion=payload.occasion,
             hem_length=payload.hem_length,
+            display_background=payload.display_background,
             gender=payload.gender or "Women",
             size_chart=payload.size_chart,
             price_mrp=payload.price_mrp,
@@ -168,6 +169,8 @@ class ProductService:
 
         if "hem_length" in payload.model_fields_set:
             product.hem_length = payload.hem_length
+        if "display_background" in payload.model_fields_set:
+            product.display_background = payload.display_background
 
         if payload.model_path is not None:
             product.model_path = payload.model_path

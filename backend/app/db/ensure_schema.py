@@ -13,6 +13,7 @@ ADDITIVE_COLUMNS = {
     },
     "products": {
         "hem_length": "VARCHAR(20)",
+        "display_background": "VARCHAR(7)",
     },
     "categories": {
         "description": "TEXT",

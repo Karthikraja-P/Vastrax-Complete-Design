@@ -1,5 +1,7 @@
+import re
+
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db
@@ -21,6 +23,7 @@ class AppSettingsSchema(BaseModel):
     lowStockThreshold: int = 5
     autoArchiveOrders: bool = False
     maintenanceMode: bool = False
+    productDisplayBackground: str = "#F5F2ED"
     # AI Stylist & Concierge Customization (Option 2: Styling & Fit Core)
     stylistSystemPrompt: str = (
         "You are Vastra, a friendly, knowledgeable personal stylist for VASTRAX. Speak like a thoughtful human in a relaxed conversation, not a script or sales pitch.\n"
@@ -32,7 +35,14 @@ class AppSettingsSchema(BaseModel):
     )
     activeOffers: str = ""
 
-PUBLIC_FIELDS = {"storeName", "supportEmail", "supportPhone", "currency", "timezone", "announcementText", "enableGuestCheckout", "maintenanceMode", "activeOffers"}
+    @field_validator("productDisplayBackground")
+    @classmethod
+    def validate_product_display_background(cls, value: str) -> str:
+        if not re.fullmatch(r"#[0-9A-Fa-f]{6}", value):
+            raise ValueError("Product display background must be a six-digit hex color.")
+        return value.upper()
+
+PUBLIC_FIELDS = {"storeName", "supportEmail", "supportPhone", "currency", "timezone", "announcementText", "enableGuestCheckout", "maintenanceMode", "activeOffers", "productDisplayBackground"}
 
 
 def load_app_settings(db: Session | None) -> AppSettingsSchema:

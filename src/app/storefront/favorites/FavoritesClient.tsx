@@ -10,7 +10,8 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { performSignOut } from "@/lib/auth-utils";
 import { CartDrawer } from "@/components/layout/CartDrawer";
-import { productsApi, StorefrontProduct } from "@/lib/api";
+import { productsApi, StorefrontProduct, settingsApi } from "@/lib/api";
+import { DEFAULT_PRODUCT_BACKDROP, normalizeProductBackdrop } from "@/lib/product-backgrounds";
 import { useFavorites } from "@/hooks/useFavorites";
 import { addToCart as addCartItem } from "@/lib/cart";
 import { useCartItems } from "@/hooks/useCartItems";
@@ -46,7 +47,8 @@ export default function FavoritesPage() {
     async function fetchData() {
       setLoading(true);
       try {
-        const data = await productsApi.list();
+        const [data, storeSettings] = await Promise.all([productsApi.list(), settingsApi.getApp()]);
+        const defaultProductBackground = normalizeProductBackdrop(storeSettings.productDisplayBackground, DEFAULT_PRODUCT_BACKDROP);
         const mapped = data
           .filter((p) => String(p.gender || "").trim().toLowerCase() === "women")
           .map((p): StorefrontProduct => {
@@ -64,6 +66,7 @@ export default function FavoritesPage() {
             isNew: Boolean(p.isNew || p.is_featured),
             categoryId: p.categoryId || p.category_id,
             categoryName: p.category_name || p.category || "Apparel",
+            displayBackground: normalizeProductBackdrop(p.display_background, defaultProductBackground),
           };
         });
         setProducts(mapped);
@@ -260,7 +263,7 @@ export default function FavoritesPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 md:gap-8">
             {favoriteProducts.map((product) => (
               <div key={product.id} className="group relative flex flex-col h-full">
-                <div className="relative w-full aspect-[3/4] mb-4 flex items-center justify-center overflow-hidden cursor-pointer rounded-2xl bg-[#f8f7f4]">
+                <div className="relative w-full aspect-[3/4] mb-4 flex items-center justify-center overflow-hidden cursor-pointer rounded-2xl" style={{ backgroundColor: product.displayBackground }}>
                   <div className="absolute top-4 right-4 z-20 flex flex-col gap-2">
                     <button
                       type="button"
