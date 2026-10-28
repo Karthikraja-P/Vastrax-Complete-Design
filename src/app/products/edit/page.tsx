@@ -11,7 +11,6 @@ import { isSizeChart } from "@/lib/sizeChart";
 import { SizeChartEditor } from "@/components/products/SizeChartEditor";
 import ProductBackdropPicker from "@/components/products/ProductBackdropPicker";
 import { DEFAULT_PRODUCT_BACKDROP, normalizeProductBackdrop } from "@/lib/product-backgrounds";
-import { replaceProductPhotoBackground } from "@/lib/product-image-background";
 import AdminTryOnImageGenerator from "@/components/products/AdminTryOnImageGenerator";
 import type { SizeChart } from "@/lib/sizeChart";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -241,27 +240,16 @@ function EditProductContent() {
   // ─── 2D Image Handlers ──────────────────────────────────────
   const addProductImages = async (files: File[]) => {
     if (!files.length) return;
-    setIsProcessingImageBackground(true);
-    const selectedBackground = displayBackground || storeDefaultDisplayBackground;
-    try {
-      const newImages: UploadedImage[] = [];
-      for (const [index, file] of files.entries()) {
-        const processedFile = await replaceProductPhotoBackground(file, selectedBackground);
-        newImages.push({
-          id: `img-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 8)}`,
-          file: processedFile,
-          sourceFile: file,
-          preview: URL.createObjectURL(processedFile),
-          tryonRole: inferTryOnRole(file.name),
-        });
-      }
-      setImages((previous) => [...previous, ...newImages]);
-    } catch (error) {
-      console.error("Could not apply the selected product photo background:", error);
-      showToast("Could not prepare the photo. Try a smaller JPG, PNG, or WebP image.");
-    } finally {
-      setIsProcessingImageBackground(false);
-    }
+    const newImages = files.map((file, index): UploadedImage => ({
+      id: `img-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 8)}`,
+      // Keep the uploaded source unchanged; background color-key replacement
+      // can alter light fabrics, prints, and embroidery.
+      file,
+      sourceFile: file,
+      preview: URL.createObjectURL(file),
+      tryonRole: inferTryOnRole(file.name),
+    }));
+    setImages((previous) => [...previous, ...newImages]);
   };
 
   const handleImageSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -285,8 +273,8 @@ function EditProductContent() {
       setImages((current) => [...current, generated]);
       showToast(`Try-on image added for ${modelName}`);
     } catch (error) {
-      console.error("Could not apply the selected background to the try-on image:", error);
-      showToast("Could not prepare the try-on image with this background.");
+      console.error("Could not prepare the try-on image:", error);
+      showToast("Could not prepare the try-on image.");
     } finally {
       setIsProcessingImageBackground(false);
     }
@@ -926,7 +914,7 @@ function EditProductContent() {
                 </div>
                 {isProcessingImageBackground ? (
                   <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-accent bg-accent/10 border border-accent/20 px-2.5 py-1 rounded-full">
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> Preparing photo backgrounds
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> Preparing image
                   </span>
                 ) : (
                   <span className="text-xs font-semibold text-accent bg-accent/10 border border-accent/20 px-2.5 py-1 rounded-full">
@@ -936,8 +924,8 @@ function EditProductContent() {
               </div>
 
               <div className="mb-6">
-                <ProductBackdropPicker value={displayBackground} onChange={setDisplayBackground} defaultColor={storeDefaultDisplayBackground} allowStoreDefault label="Background color for uploaded product photos" />
-                <p className="mt-2 text-xs text-muted-foreground">Choose the color before uploading. Best results come from clean product photos with a simple, plain background; review each preview before saving.</p>
+                <ProductBackdropPicker value={displayBackground} onChange={setDisplayBackground} defaultColor={storeDefaultDisplayBackground} allowStoreDefault label="Preview canvas color" />
+                <p className="mt-2 text-xs text-muted-foreground">This color is used behind transparent parts of a photo. Uploaded image pixels stay unchanged to preserve fabric, prints, and embroidery.</p>
               </div>
 
               {/* Hidden file input */}
