@@ -10,8 +10,7 @@ import { StylistDrawer } from "@/components/stylist/StylistDrawer";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { productsApi, categoriesApi, CategoryItem, ProductItem, settingsApi } from "@/lib/api";
-import { DEFAULT_PRODUCT_BACKDROP, normalizeProductBackdrop } from "@/lib/product-backgrounds";
+import { productsApi, categoriesApi, CategoryItem, ProductItem } from "@/lib/api";
 import { useFavorites } from "@/hooks/useFavorites";
 
 import { useCartItems } from "@/hooks/useCartItems";
@@ -21,7 +20,6 @@ import StorefrontMobileControls from "@/components/layout/StorefrontMobileContro
 import { storefrontProductImage } from "@/lib/storefront-images";
 
 interface StoreCategory {
-  displayBackground?: string;
   id?: string;
   productId?: string | number;
   name: string;
@@ -68,12 +66,7 @@ export default function StorefrontHome() {
   useEffect(() => {
     async function fetchData() {
       try {
-        const [cats, prods, storeSettings] = await Promise.all([
-          categoriesApi.list().catch(() => []),
-          productsApi.list().catch(() => []),
-          settingsApi.getApp()
-        ]);
-        const defaultProductBackground = normalizeProductBackdrop(storeSettings.productDisplayBackground, DEFAULT_PRODUCT_BACKDROP);
+        const [cats, prods] = await Promise.all([categoriesApi.list().catch(() => []), productsApi.list().catch(() => [])]);
 
         // Helper to extract a valid image url from a product
         const getProductImage = (p: ProductItem) => {
@@ -143,7 +136,6 @@ export default function StorefrontHome() {
               title: product.name || product.title || "Collection",
               slug: String(product.name || product.title || "collection").toLowerCase().replace(/[^a-z0-9]+/g, "-"),
               image: getProductImage(product) || "/product-placeholder.svg",
-              displayBackground: normalizeProductBackdrop(product.display_background, defaultProductBackground),
               price: Number(product.price_selling || product.price || 0)
             })));
         } else {
@@ -157,7 +149,6 @@ export default function StorefrontHome() {
               title: product.name || product.title || "Collection",
               slug: String(product.name || product.title || "collection").toLowerCase().replace(/[^a-z0-9]+/g, "-"),
               image: getProductImage(product) || "/product-placeholder.svg",
-              displayBackground: normalizeProductBackdrop(product.display_background, defaultProductBackground),
               price: Number(product.price_selling || product.price || 0)
             })));
 
@@ -357,7 +348,7 @@ export default function StorefrontHome() {
           <div className="vx-look-grid">
             {collections.map((look, idx) => (
               <Link key={String(look.productId || look.id)} href={look.productId ? `/storefront/product?id=${encodeURIComponent(look.productId)}` : "/storefront/collections?gender=Women"} className="vx-look-card group">
-                <div className="vx-look-stage" style={{ backgroundColor: look.displayBackground }}>
+                <div className="vx-look-stage">
                   <Image src={look.image} alt={look.title || look.name} width={1086} height={1449} sizes="(max-width: 640px) 48vw, (max-width: 1024px) 31vw, 28vw" unoptimized={look.image.startsWith("http")} loading={idx === 0 ? "eager" : "lazy"} className="vx-look-image" />
                   <span className="vx-look-arrow" aria-hidden="true"><ArrowRight className="h-4 w-4" /></span>
                 </div>

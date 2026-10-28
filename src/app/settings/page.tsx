@@ -543,14 +543,14 @@ export default function SettingsPage() {
                 {/* Storefront product image background */}
                 <div className="space-y-4 pt-4 border-t border-border">
                   <div>
-                    <h3 className="text-sm font-semibold text-foreground uppercase tracking-wider">Default product backdrop</h3>
-                    <p className="mt-1 text-xs text-muted-foreground">Used by products set to &quot;Use store default.&quot; Individual products can choose a different color in Add/Edit Product.</p>
+                    <h3 className="text-sm font-semibold text-foreground uppercase tracking-wider">Default uploaded photo background</h3>
+                    <p className="mt-1 text-xs text-muted-foreground">This color is applied to new product photos at upload. Choose a different color in Add/Edit Product for each product.</p>
                   </div>
                   <ProductBackdropPicker
                     value={productDisplayBackground}
                     onChange={setProductDisplayBackground}
                     defaultColor={productDisplayBackground}
-                    label="Storefront product image color"
+                    label="Default upload background color"
                   />
                 </div>
 

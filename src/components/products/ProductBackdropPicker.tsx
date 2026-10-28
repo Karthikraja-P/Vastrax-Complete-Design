@@ -24,7 +24,7 @@ export default function ProductBackdropPicker({
     <section className="space-y-3 rounded-xl border border-border bg-background/50 p-4">
       <div>
         <h3 className="text-sm font-semibold text-foreground">{label}</h3>
-        <p className="mt-1 text-xs text-muted-foreground">Sets the color behind this product photo across the storefront. It does not edit the photo itself.</p>
+        <p className="mt-1 text-xs text-muted-foreground">Replaces the plain background connected to the edges of each newly uploaded product photo with this color.</p>
       </div>
       <div className="flex flex-wrap items-center gap-2">
         {allowStoreDefault && (

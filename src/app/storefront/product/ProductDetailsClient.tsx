@@ -13,8 +13,7 @@ import { StylistDrawer } from "@/components/stylist/StylistDrawer";
 import { GarmentViewer3D } from "@/components/3d/GarmentViewer3D";
 import { Product3DModal } from "@/components/3d/Product3DModal";
 
-import { productsApi, fetchApi, ProductItem, ProductVariant, settingsApi } from "@/lib/api";
-import { DEFAULT_PRODUCT_BACKDROP, normalizeProductBackdrop } from "@/lib/product-backgrounds";
+import { productsApi, fetchApi, ProductItem, ProductVariant } from "@/lib/api";
 import { addToCart as addCartItem } from "@/lib/cart";
 import { useCartItems } from "@/hooks/useCartItems";
 import { isSizeChart, SizeChart, WOMENS_SIZE_CHART } from "@/lib/sizeChart";
@@ -61,7 +60,6 @@ function ProductContent() {
   const { favorites, toggleFavorite: toggleFavoriteStore } = useFavorites();
 
   const { data: session } = useSession();
-  const [storeDefaultProductBackground, setStoreDefaultProductBackground] = useState(DEFAULT_PRODUCT_BACKDROP);
   const [is3DMode, setIs3DMode] = useState(false);
   const [is3DModalOpen, setIs3DModalOpen] = useState(false);
 
@@ -87,7 +85,6 @@ function ProductContent() {
     size_chart?: SizeChart;
     gender?: string;
     variants?: ProductVariant[];
-    displayBackground?: string;
   }>({
     id: "",
     name: "",
@@ -102,11 +99,9 @@ function ProductContent() {
     images: ["/product-placeholder.svg"],
     rating: 0,
     reviewsCount: 0,
-    displayBackground: "",
   });
 
   const galleryImages = product.images?.length ? product.images : [product.image];
-  const productDisplayBackground = product.displayBackground || storeDefaultProductBackground;
   const has3DModel = Boolean(product.model3dUrl || product.model_path);
   const totalSlides = galleryImages.length + Number(has3DModel);
   const currentSlideIndex = is3DMode && has3DModel ? galleryImages.length : activeImageIndex;
@@ -124,10 +119,6 @@ function ProductContent() {
   const showNextImage = () => {
     selectGallerySlide((currentSlideIndex + 1) % totalSlides);
   };
-
-  useEffect(() => {
-    settingsApi.getApp().then((data) => setStoreDefaultProductBackground(normalizeProductBackdrop(data.productDisplayBackground, DEFAULT_PRODUCT_BACKDROP)));
-  }, []);
 
   useEffect(() => {
     if (!isGalleryOpen) return;
@@ -201,7 +192,6 @@ function ProductContent() {
             colour: item.colour || "Default",
             occasion: item.occasion || "",
             hemLength: item.hem_length || "",
-            displayBackground: normalizeProductBackdrop(item.display_background, storeDefaultProductBackground),
             image: storefrontProductGalleryImage(img),
             images: allImgs,
             rating: Number(item.rating || item.rating_average || 0),
@@ -244,7 +234,6 @@ function ProductContent() {
           colour: item.colour || "Default",
           occasion: item.occasion || "",
           hemLength: item.hem_length || "",
-          displayBackground: normalizeProductBackdrop(item.display_background, storeDefaultProductBackground),
           image: storefrontProductGalleryImage(img),
           images: allImgs,
           rating: Number(item.rating_average || item.rating || 0),
@@ -275,7 +264,7 @@ function ProductContent() {
     return () => {
       cancelled = true;
     };
-  }, [productId, storeDefaultProductBackground]);
+  }, [productId]);
 
   const [notifyEmail, setNotifyEmail] = useState("");
   const [isSubscribingNotify, setIsSubscribingNotify] = useState(false);
@@ -493,7 +482,7 @@ function ProductContent() {
               {/* Left: Image Gallery & 3D Interactive Viewer */}
               <div className="w-full lg:w-[55%]">
                 <div
-                  className="rounded-[2.5rem] aspect-square relative flex items-center justify-center p-4 sm:p-8 transition-colors duration-300 overflow-hidden" style={{ backgroundColor: productDisplayBackground }}
+                  className="bg-[#f5f2ed] dark:bg-[#e9e5df] rounded-[2.5rem] aspect-square relative flex items-center justify-center p-4 sm:p-8 transition-colors duration-300 overflow-hidden"
                   onTouchStart={(event) => {
                     swipeHandled.current = false;
                     const touch = event.touches[0];
@@ -899,8 +888,7 @@ function ProductContent() {
                 setZoomOrigin(`${((event.clientX - bounds.left) / bounds.width) * 100}% ${((event.clientY - bounds.top) / bounds.height) * 100}%`);
               }}
               aria-label={`Product image. ${zoomScale === 1 ? "Double-click or double-tap to zoom in" : `${zoomScale.toFixed(1)} times zoom; double-click or double-tap to zoom out`}`}
-              className={`h-full w-full overflow-hidden ${zoomScale > 1 ? "cursor-move" : "cursor-default"}`}
-              style={{ backgroundColor: productDisplayBackground }}
+              className={`h-full w-full overflow-hidden bg-[#f5f2ed] dark:bg-[#e9e5df] ${zoomScale > 1 ? "cursor-move" : "cursor-default"}`}
             >
               <Image
                 src={galleryImages[activeImageIndex] || product.image}
@@ -918,8 +906,7 @@ function ProductContent() {
             <div className="flex gap-2 overflow-x-auto pb-2" role="group" aria-label="All product images">
               {galleryImages.map((src, index) => (
                 <button key={`${src}-${index}`} type="button" onClick={() => { setActiveImageIndex(index); setZoomScale(1); }} aria-label={`View image ${index + 1}`} aria-pressed={activeImageIndex === index}
-                  className={`h-16 w-16 shrink-0 overflow-hidden transition sm:h-20 sm:w-20 ${activeImageIndex === index ? "opacity-100" : "opacity-55 hover:opacity-90"}`}
-                  style={{ backgroundColor: productDisplayBackground }}>
+                  className={`h-16 w-16 shrink-0 overflow-hidden bg-[#f5f2ed] dark:bg-[#e9e5df] transition sm:h-20 sm:w-20 ${activeImageIndex === index ? "opacity-100" : "opacity-55 hover:opacity-90"}`}>
                   <Image src={src} alt={`${product.name} thumbnail ${index + 1}`} width={96} height={96} unoptimized className="h-full w-full object-contain" />
                 </button>
               ))}

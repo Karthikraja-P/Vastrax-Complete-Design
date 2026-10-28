@@ -16,6 +16,7 @@ import PhotoUploadCard from "@/components/products/PhotoUploadCard";
 import { SizeChartEditor } from "@/components/products/SizeChartEditor";
 import ProductBackdropPicker from "@/components/products/ProductBackdropPicker";
 import { DEFAULT_PRODUCT_BACKDROP, normalizeProductBackdrop } from "@/lib/product-backgrounds";
+import { replaceProductPhotoBackground } from "@/lib/product-image-background";
 import AdminTryOnImageGenerator from "@/components/products/AdminTryOnImageGenerator";
 import { generateProductCode } from "@/lib/product-code";
 
@@ -87,6 +88,7 @@ export default function AddProductPage() {
   const [hemLength, setHemLength] = useState("");
   const [displayBackground, setDisplayBackground] = useState("");
   const [storeDefaultDisplayBackground, setStoreDefaultDisplayBackground] = useState(DEFAULT_PRODUCT_BACKDROP);
+  const [isProcessingImageBackground, setIsProcessingImageBackground] = useState(false);
   const [modelPath, setModelPath] = useState("");
   const [isUploadingGlb, setIsUploadingGlb] = useState(false);
   const glbInputRef = useRef<HTMLInputElement>(null);
@@ -144,28 +146,54 @@ export default function AddProductPage() {
   };
 
   // ─── 2D Image Handlers ──────────────────────────────────────
-  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
-    const newImages: UploadedImage[] = files.map((file) => ({
-      id: `img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      file,
-      preview: URL.createObjectURL(file),
-      tryonRole: inferTryOnRole(file.name),
-    }));
-    setImages((prev) => [...prev, ...newImages]);
+  const addProductImages = async (files: File[]) => {
+    if (!files.length) return;
+    setIsProcessingImageBackground(true);
+    const selectedBackground = displayBackground || storeDefaultDisplayBackground;
+    try {
+      const newImages = await Promise.all(files.map(async (file, index): Promise<UploadedImage> => {
+        const processedFile = await replaceProductPhotoBackground(file, selectedBackground);
+        return {
+          id: `img-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 8)}`,
+          file: processedFile,
+          preview: URL.createObjectURL(processedFile),
+          tryonRole: inferTryOnRole(file.name),
+        };
+      }));
+      setImages((previous) => [...previous, ...newImages]);
+    } catch (error) {
+      console.error("Could not apply the selected product photo background:", error);
+      showToast("Could not prepare the photo. Try a smaller JPG, PNG, or WebP image.");
+    } finally {
+      setIsProcessingImageBackground(false);
+    }
+  };
+
+  const handleImageSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || []);
+    void addProductImages(files);
     if (imageInputRef.current) imageInputRef.current.value = "";
   };
 
-  const handleGeneratedImage = (file: File, modelName: string) => {
-    const generated: UploadedImage = {
-      id: `tryon-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      file,
-      preview: URL.createObjectURL(file),
-      label: `AI try-on · ${modelName}`,
-      tryonRole: "gallery",
-    };
-    setImages((current) => [...current, generated]);
-    showToast(`Try-on image added for ${modelName}`);
+  const handleGeneratedImage = async (file: File, modelName: string) => {
+    setIsProcessingImageBackground(true);
+    try {
+      const processedFile = await replaceProductPhotoBackground(file, displayBackground || storeDefaultDisplayBackground);
+      const generated: UploadedImage = {
+        id: `tryon-${Date.now()}`,
+        file: processedFile,
+        preview: URL.createObjectURL(processedFile),
+        label: `AI try-on - ${modelName}`,
+        tryonRole: "gallery",
+      };
+      setImages((current) => [...current, generated]);
+      showToast(`Try-on image added for ${modelName}`);
+    } catch (error) {
+      console.error("Could not apply the selected background to the try-on image:", error);
+      showToast("Could not prepare the try-on image with this background.");
+    } finally {
+      setIsProcessingImageBackground(false);
+    }
   };
 
   const handleSelectTryOnImage = (id: string, role: "top" | "bottom" | "set") => {
@@ -180,23 +208,15 @@ export default function AddProductPage() {
   const handleRemoveImage = (id: string) => {
     setImages((prev) => {
       const img = prev.find((i) => i.id === id);
-      if (img) URL.revokeObjectURL(img.preview);
+      if (img?.preview.startsWith("blob:")) URL.revokeObjectURL(img.preview);
       return prev.filter((i) => i.id !== id);
     });
   };
 
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    const files = Array.from(e.dataTransfer.files).filter((f) =>
-      f.type.startsWith("image/")
-    );
-    const newImages: UploadedImage[] = files.map((file) => ({
-      id: `img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      file,
-      preview: URL.createObjectURL(file),
-      tryonRole: inferTryOnRole(file.name),
-    }));
-    setImages((prev) => [...prev, ...newImages]);
+  const handleDrop = (event: React.DragEvent) => {
+    event.preventDefault();
+    const files = Array.from(event.dataTransfer.files).filter((file) => file.type.startsWith("image/"));
+    void addProductImages(files);
   };
 
   // Image Reordering & Swapping Handlers
@@ -401,6 +421,12 @@ export default function AddProductPage() {
     }
     if (!images.length) {
       showToast("Upload at least one product image before saving.");
+      setActiveTab("images");
+      return;
+    }
+
+    if (isProcessingImageBackground) {
+      showToast("Wait for product photo background processing to finish.");
       setActiveTab("images");
       return;
     }
@@ -696,9 +722,6 @@ export default function AddProductPage() {
                 </div>
               </div>
               <div className="mt-6">
-                <ProductBackdropPicker value={displayBackground} onChange={setDisplayBackground} defaultColor={storeDefaultDisplayBackground} allowStoreDefault label="Product photo backdrop" />
-              </div>
-              <div className="mt-6">
                 <SizeChartEditor value={sizeChart} onChange={handleSizeChartChange} stockBySize={stockBySize} onStockChange={setStockBySize} />
               </div>
             </div>
@@ -802,9 +825,20 @@ export default function AddProductPage() {
                     Product Images <span className="font-bold text-red-500 text-base">*</span>
                   </h2>
                 </div>
-                <span className="text-xs font-semibold text-accent bg-accent/10 border border-accent/20 px-2.5 py-1 rounded-full">
-                  {images.length} image{images.length !== 1 ? "s" : ""}
-                </span>
+                {isProcessingImageBackground ? (
+                  <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-accent bg-accent/10 border border-accent/20 px-2.5 py-1 rounded-full">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> Preparing photo backgrounds
+                  </span>
+                ) : (
+                  <span className="text-xs font-semibold text-accent bg-accent/10 border border-accent/20 px-2.5 py-1 rounded-full">
+                    {images.length} image{images.length !== 1 ? "s" : ""}
+                  </span>
+                )}
+              </div>
+
+              <div className="mb-6">
+                <ProductBackdropPicker value={displayBackground} onChange={setDisplayBackground} defaultColor={storeDefaultDisplayBackground} allowStoreDefault label="Background color for uploaded product photos" />
+                <p className="mt-2 text-xs text-muted-foreground">Choose the color before uploading. Best results come from clean product photos with a simple, plain background; review each preview before saving.</p>
               </div>
 
               {/* Hidden file input */}
