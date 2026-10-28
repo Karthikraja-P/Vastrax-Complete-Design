@@ -6,6 +6,8 @@ const nextConfig: NextConfig = {
   output: "standalone",
   poweredByHeader: false,
   experimental: {
+    // Product images are sent as base64 JSON; allow several original uploads per save.
+    proxyClientMaxBodySize: "80mb",
     // Combo try-on runs two GPU passes and can exceed Next's 30-second proxy default.
     proxyTimeout: 90_000,
   },
