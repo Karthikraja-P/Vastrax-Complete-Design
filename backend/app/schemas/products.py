@@ -64,6 +64,8 @@ class ProductCreate(BaseModel):
     price_mrp: Decimal
     price_selling: Decimal
     description: Optional[str] = None
+    product_details: Optional[str] = None
+    how_to_style: Optional[str] = None
     rating_average: Optional[Decimal] = Decimal("0.00")
     rating_count: Optional[int] = 0
     is_featured: bool = False
@@ -88,6 +90,8 @@ class ProductUpdate(BaseModel):
     price_mrp: Optional[Decimal] = None
     price_selling: Optional[Decimal] = None
     description: Optional[str] = None
+    product_details: Optional[str] = None
+    how_to_style: Optional[str] = None
     rating_average: Optional[Decimal] = None
     rating_count: Optional[int] = None
     is_featured: Optional[bool] = None
@@ -113,6 +117,8 @@ class ProductResponse(BaseModel):
     price_mrp: Decimal
     price_selling: Decimal
     description: str | None
+    product_details: str | None = None
+    how_to_style: str | None = None
     stock: int = 0
     rating_average: Decimal = Decimal("0.00")
     rating_count: int = 0

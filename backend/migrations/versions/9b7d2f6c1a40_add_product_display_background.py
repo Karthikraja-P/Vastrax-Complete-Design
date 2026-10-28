@@ -1,1 +1,23 @@
-"""Add per-product storefront display background color.\n\nRevision ID: 9b7d2f6c1a40\nRevises: 82f4c7139a2b\nCreate Date: 2026-10-28 00:00:00\n"""\nfrom typing import Sequence, Union\n\nfrom alembic import op\nimport sqlalchemy as sa\n\nrevision: str = "9b7d2f6c1a40"\ndown_revision: Union[str, Sequence[str], None] = "82f4c7139a2b"\nbranch_labels: Union[str, Sequence[str], None] = None\ndepends_on: Union[str, Sequence[str], None] = None\n\n\ndef upgrade() -> None:\n    op.add_column("products", sa.Column("display_background", sa.String(length=7), nullable=True))\n\n\ndef downgrade() -> None:\n    op.drop_column("products", "display_background")\n
+"""Add per-product storefront display background color.
+
+Revision ID: 9b7d2f6c1a40
+Revises: 82f4c7139a2b
+Create Date: 2026-10-28 00:00:00
+"""
+from typing import Sequence, Union
+
+from alembic import op
+import sqlalchemy as sa
+
+revision: str = "9b7d2f6c1a40"
+down_revision: Union[str, Sequence[str], None] = "82f4c7139a2b"
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
+
+
+def upgrade() -> None:
+    op.add_column("products", sa.Column("display_background", sa.String(length=7), nullable=True))
+
+
+def downgrade() -> None:
+    op.drop_column("products", "display_background")

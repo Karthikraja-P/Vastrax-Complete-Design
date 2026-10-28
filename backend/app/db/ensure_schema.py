@@ -14,6 +14,8 @@ ADDITIVE_COLUMNS = {
     "products": {
         "hem_length": "VARCHAR(20)",
         "display_background": "VARCHAR(7)",
+        "product_details": "TEXT",
+        "how_to_style": "TEXT",
     },
     "categories": {
         "description": "TEXT",

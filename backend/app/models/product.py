@@ -35,6 +35,8 @@ class Product(Base):
     gender: Mapped[str | None] = mapped_column(String(20), nullable=True, default="Women", index=True)
     size_chart: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    product_details: Mapped[str | None] = mapped_column(Text, nullable=True)
+    how_to_style: Mapped[str | None] = mapped_column(Text, nullable=True)
     rating_average: Mapped[Decimal] = mapped_column(Numeric(3, 2), nullable=False, default=Decimal("0.00"))
     rating_count: Mapped[int] = mapped_column(nullable=False, default=0)
     is_featured: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

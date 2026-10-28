@@ -122,6 +122,8 @@ class ProductService:
             price_selling=payload.price_selling,
             model_path=payload.model_path,
             description=payload.description,
+            product_details=payload.product_details,
+            how_to_style=payload.how_to_style,
             is_featured=payload.is_featured,
             is_published=payload.is_published,
         )
@@ -166,6 +168,10 @@ class ProductService:
                     except (ValueError, TypeError):
                         pass
                 setattr(product, field, value)
+
+        for field in ("product_details", "how_to_style"):
+            if field in payload.model_fields_set:
+                setattr(product, field, getattr(payload, field))
 
         if "hem_length" in payload.model_fields_set:
             product.hem_length = payload.hem_length

@@ -178,6 +178,8 @@ export interface ProductItem {
   title?: string;
   slug?: string;
   description?: string;
+  product_details?: string;
+  how_to_style?: string;
   created_at?: string;
   fabric?: string;
   colour?: string;

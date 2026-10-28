@@ -88,6 +88,8 @@ function EditProductContent() {
   // Basic Info
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [productDetails, setProductDetails] = useState("");
+  const [howToStyle, setHowToStyle] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [gender, setGender] = useState("Women");
   const [sizeChart, setSizeChart] = useState<SizeChart>({
@@ -151,6 +153,8 @@ function EditProductContent() {
           if (prod) {
             setName(prod.name || prod.title || "");
             setDescription(prod.description || "");
+            setProductDetails(prod.product_details || "");
+            setHowToStyle(prod.how_to_style || "");
             const currentPrice = Number(prod.price_selling ?? prod.price ?? 0);
             const comparisonPrice = Number(prod.price_mrp ?? prod.originalPrice ?? currentPrice);
             const hasOffer = Number.isFinite(comparisonPrice) && comparisonPrice > currentPrice;
@@ -525,6 +529,8 @@ function EditProductContent() {
       const payload = {
         name: name.trim(),
         description: description.trim(),
+        product_details: productDetails.trim() || null,
+        how_to_style: howToStyle.trim() || null,
         category_id: categoryId || (categories.length > 0 ? String(categories[0].id) : ""),
         gender: gender || "Women",
         size_chart: sizeChart,
@@ -777,6 +783,26 @@ function EditProductContent() {
                     onChange={(e) => setDescription(e.target.value)}
                     placeholder="Describe the product..."
                     className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent focus:ring-1 focus:ring-accent outline-none transition-all resize-none text-foreground"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-1.5">Product Details</label>
+                  <textarea
+                    rows={4}
+                    value={productDetails}
+                    onChange={(event) => setProductDetails(event.target.value)}
+                    placeholder="Add garment construction, fit, care, or other product-specific details..."
+                    className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent focus:ring-1 focus:ring-accent outline-none transition-all resize-y text-foreground"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-1.5">How to Style</label>
+                  <textarea
+                    rows={4}
+                    value={howToStyle}
+                    onChange={(event) => setHowToStyle(event.target.value)}
+                    placeholder="Suggest footwear, accessories, layering, or occasions for this look..."
+                    className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent focus:ring-1 focus:ring-accent outline-none transition-all resize-y text-foreground"
                   />
                 </div>
               </div>

@@ -126,3 +126,23 @@ def test_invalid_category_does_not_create_a_placeholder(db):
     with pytest.raises(BadRequestError):
         service._resolve_category_id("")
     assert db.query(Category).count() == 0
+
+
+def test_product_details_and_style_can_be_saved_and_cleared(db):
+    product = _product(db)
+    service = ProductService(db)
+
+    service.update_product(
+        product.id,
+        ProductUpdate(product_details="Cotton lining and side pockets", how_to_style="Pair with neutral sandals."),
+    )
+    db.expire_all()
+    saved = db.get(Product, product.id)
+    assert saved.product_details == "Cotton lining and side pockets"
+    assert saved.how_to_style == "Pair with neutral sandals."
+
+    service.update_product(product.id, ProductUpdate(product_details=None))
+    db.expire_all()
+    saved = db.get(Product, product.id)
+    assert saved.product_details is None
+    assert saved.how_to_style == "Pair with neutral sandals."

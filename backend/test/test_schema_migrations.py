@@ -106,3 +106,26 @@ def test_existing_two_piece_full_look_gallery_images_are_promoted_idempotently()
         roles = dict(conn.execute(text("SELECT id, tryon_role FROM product_images")).all())
         assert roles == {"BEIGE-SET": "set", "PINK-SET": "set", "BEIGE-TOP": "top"}
     engine.dispose()
+
+
+def test_legacy_products_get_product_details_and_style_fields():
+    engine = create_engine("sqlite:///:memory:")
+    with engine.begin() as conn:
+        conn.execute(text("""CREATE TABLE products (
+            id VARCHAR(36) PRIMARY KEY,
+            description TEXT
+        )"""))
+        conn.execute(text(
+            "INSERT INTO products (id, description) VALUES ('OLD-PRODUCT', 'Existing description')"
+        ))
+
+    ensure_columns(engine)
+
+    with engine.connect() as conn:
+        columns = {row["name"] for row in conn.execute(text("PRAGMA table_info(products)")).mappings()}
+        assert {"product_details", "how_to_style"} <= columns
+        row = conn.execute(
+            text("SELECT description, product_details, how_to_style FROM products WHERE id = 'OLD-PRODUCT'")
+        ).one()
+        assert row == ("Existing description", None, None)
+    engine.dispose()

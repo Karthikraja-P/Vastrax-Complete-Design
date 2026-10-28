@@ -70,6 +70,8 @@ function ProductContent() {
     categoryName: string;
     price: number;
     description: string;
+    productDetails: string;
+    howToStyle: string;
     fabric: string;
     colour: string;
     occasion: string;
@@ -91,6 +93,8 @@ function ProductContent() {
     categoryName: "",
     price: 0,
     description: "",
+    productDetails: "",
+    howToStyle: "",
     fabric: "",
     colour: "",
     occasion: "",
@@ -188,6 +192,8 @@ function ProductContent() {
             categoryName: catName,
             price: Number(item.price_selling || item.price || 0),
             description: item.description || "",
+            productDetails: item.product_details || "",
+            howToStyle: item.how_to_style || "",
             fabric: item.fabric || "",
             colour: item.colour || "Default",
             occasion: item.occasion || "",
@@ -230,6 +236,8 @@ function ProductContent() {
           categoryName: catName,
           price: Number(item.price_selling || item.price || 0),
           description: item.description || "",
+          productDetails: item.product_details || "",
+          howToStyle: item.how_to_style || "",
           fabric: item.fabric || "",
           colour: item.colour || "Default",
           occasion: item.occasion || "",
@@ -590,10 +598,25 @@ function ProductContent() {
               {/* Right: Product Details & purchase options */}
               <div className="w-full lg:w-[45%] flex flex-col pt-2">
                 <section className="mb-6">
-                  <h2 className="mb-3 text-xl font-bold text-foreground">Product Details</h2>
-                  <p className="mb-5 max-w-md text-sm leading-relaxed text-foreground/70">
-                    {product.description || "Description not available."}
-                  </p>
+                  <h2 className="mb-3 text-xl font-bold text-foreground">Product Information</h2>
+                  {product.description && (
+                    <div className="mb-5 max-w-md">
+                      <h3 className="mb-1.5 text-sm font-semibold text-foreground">Description</h3>
+                      <p className="whitespace-pre-line text-sm leading-relaxed text-foreground/70">{product.description}</p>
+                    </div>
+                  )}
+                  {product.productDetails && (
+                    <div className="mb-5 max-w-md">
+                      <h3 className="mb-1.5 text-sm font-semibold text-foreground">Product Details</h3>
+                      <p className="whitespace-pre-line text-sm leading-relaxed text-foreground/70">{product.productDetails}</p>
+                    </div>
+                  )}
+                  {product.howToStyle && (
+                    <div className="mb-5 max-w-md">
+                      <h3 className="mb-1.5 text-sm font-semibold text-foreground">How to Style</h3>
+                      <p className="whitespace-pre-line text-sm leading-relaxed text-foreground/70">{product.howToStyle}</p>
+                    </div>
+                  )}
                   <p className="mb-5 max-w-md border-l-2 border-[#a84d25]/50 pl-3 text-xs leading-relaxed text-muted-foreground">
                     Colour may vary slightly from the photos due to lighting and screen settings.
                   </p>
