@@ -35,6 +35,8 @@ def run_fashn(
     results_dir: str | None = None,
     garment_photo_type: str | None = None,
     segmentation_free: bool | None = None,
+    num_timesteps: int | None = None,
+    guidance_scale: float | None = None,
 ) -> str:
     """Run FASHN VTON 1.5 inference (Remote GPU / Local CUDA / Dev Fallback)."""
     import logging
@@ -72,6 +74,10 @@ def run_fashn(
                 }
                 if garment_photo_type in {"model", "flat-lay"}:
                     data["garment_photo_type"] = garment_photo_type
+                if num_timesteps is not None:
+                    data["num_timesteps"] = str(num_timesteps)
+                if guidance_scale is not None:
+                    data["guidance_scale"] = str(guidance_scale)
 
                 gf = open(garment_image_path, "rb") if has_garment_file else None
                 try:
@@ -139,6 +145,10 @@ def run_fashn(
             cmd.extend(["--garment-photo-type", garment_photo_type])
         if not segmentation_free_enabled:
             cmd.append("--no-segmentation-free")
+        if num_timesteps is not None:
+            cmd.extend(["--num-timesteps", str(num_timesteps)])
+        if guidance_scale is not None:
+            cmd.extend(["--guidance-scale", str(guidance_scale)])
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
         if result.returncode == 0 and os.path.exists(settings.fashn_output):
             if results_dir:

@@ -8,6 +8,7 @@ import { getSession } from "next-auth/react";
 interface GalleryImage {
   id: string;
   file: File;
+  sourceFile?: File;
   preview: string;
   tryonRole?: "top" | "bottom" | "gallery" | "set";
 }
@@ -45,6 +46,7 @@ export default function AdminTryOnImageGenerator({ productName, images, hemLengt
   const [personFile, setPersonFile] = useState<File | null>(null);
   const [models, setModels] = useState<AdminTryOnModel[]>([]);
   const [selectedModelId, setSelectedModelId] = useState("aanya");
+  const [garmentPhotoType, setGarmentPhotoType] = useState<"flat-lay" | "model">("flat-lay");
   const [modelsError, setModelsError] = useState<string | null>(null);
   const [result, setResult] = useState<{ file: File; url: string } | null>(null);
   const [processing, setProcessing] = useState(false);
@@ -79,6 +81,7 @@ export default function AdminTryOnImageGenerator({ productName, images, hemLengt
     setError(null);
     try {
       const asFile = async (image: GalleryImage) => {
+        if (image.sourceFile?.size) return image.sourceFile;
         if (image.file.size) return image.file;
         const imageResponse = await fetch(image.preview);
         if (!imageResponse.ok) throw new Error("Could not load the selected product photo.");
@@ -98,6 +101,7 @@ export default function AdminTryOnImageGenerator({ productName, images, hemLengt
       else {
         form.append("garment_image", sourceFile!);
         form.append("garment_type", garmentType(productName));
+        form.append("garment_photo_type", garmentPhotoType);
       }
       let token = localStorage.getItem("vastrax_token");
       if (!token || token === "null" || token === "undefined") token = (await getSession())?.accessToken || null;
@@ -167,6 +171,14 @@ export default function AdminTryOnImageGenerator({ productName, images, hemLengt
           ))}
         </div>
       )}
+      {!twoPieceSet && <label className="block max-w-sm space-y-1.5 text-xs font-medium text-foreground">
+        Product photo type
+        <select value={garmentPhotoType} onChange={(event) => setGarmentPhotoType(event.target.value as "flat-lay" | "model")} className="block w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground">
+          <option value="flat-lay">Product-only / mannequin photo</option>
+          <option value="model">Photo worn by a person</option>
+        </select>
+        <span className="block font-normal text-muted-foreground">Choose the source image type so FASHN can read the garment correctly.</span>
+      </label>}
       <div>
         <p className="mb-2 text-xs font-medium text-foreground">Choose a model or upload your own</p>
         {twoPieceSet && fullLook && (

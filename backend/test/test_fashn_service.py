@@ -94,7 +94,12 @@ def test_bottoms_use_segmentation_free_by_default_but_allow_override(
         results_dir=str(tmp_path / "results"),
         garment_photo_type="flat-lay",
         segmentation_free=override,
+        num_timesteps=50,
+        guidance_scale=1.5,
     )
 
     assert captured["data"]["segmentation_free"] == expected
+    assert captured["data"]["garment_photo_type"] == "flat-lay"
+    assert captured["data"]["num_timesteps"] == "50"
+    assert captured["data"]["guidance_scale"] == "1.5"
     assert Path(result).read_bytes() == Response.content

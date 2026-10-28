@@ -70,6 +70,9 @@ def test_admin_preview_runs_model_and_returns_gallery_usable_url(client, monkeyp
         assert Path(person_image_path).is_file()
         assert Path(garment_image_path).is_file()
         assert garment_type == "tops"
+        assert kwargs["garment_photo_type"] == "model"
+        assert kwargs["num_timesteps"] == 50
+        assert kwargs["guidance_scale"] == 1.5
         result = Path(results_dir) / "generated.webp"
         result.parent.mkdir(parents=True, exist_ok=True)
         result.write_bytes(b"test-image")
@@ -79,7 +82,7 @@ def test_admin_preview_runs_model_and_returns_gallery_usable_url(client, monkeyp
     response = client.post(
         "/api/v1/try-on/admin-preview",
         headers=_admin_headers(),
-        data={"model_id": "aanya", "garment_type": "tops"},
+        data={"model_id": "aanya", "garment_type": "tops", "garment_photo_type": "model"},
         files={"garment_image": ("garment.png", _png_bytes(), "image/png")},
     )
     assert response.status_code == 200, response.text

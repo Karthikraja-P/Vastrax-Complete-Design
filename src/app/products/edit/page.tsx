@@ -35,6 +35,7 @@ const tabs = [
 interface UploadedImage {
   id: string;
   file: File;
+  sourceFile?: File;
   preview: string;
   label?: string;
   tryonRole?: "top" | "bottom" | "gallery" | "set";
@@ -249,6 +250,7 @@ function EditProductContent() {
         newImages.push({
           id: `img-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 8)}`,
           file: processedFile,
+          sourceFile: file,
           preview: URL.createObjectURL(processedFile),
           tryonRole: inferTryOnRole(file.name),
         });
@@ -271,11 +273,12 @@ function EditProductContent() {
   const handleGeneratedImage = async (file: File, modelName: string) => {
     setIsProcessingImageBackground(true);
     try {
-      const processedFile = await replaceProductPhotoBackground(file, displayBackground || storeDefaultDisplayBackground);
+      // Keep the inference result byte-for-byte; border-color replacement can
+      // eat light fabric and embroidery that resembles the chosen backdrop.
       const generated: UploadedImage = {
         id: `tryon-${Date.now()}`,
-        file: processedFile,
-        preview: URL.createObjectURL(processedFile),
+        file,
+        preview: URL.createObjectURL(file),
         label: `AI try-on - ${modelName}`,
         tryonRole: "gallery",
       };

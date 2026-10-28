@@ -91,6 +91,7 @@ async def generate_admin_tryon_preview(
     bottom_image: UploadFile | None = File(None),
     set_image: UploadFile | None = File(None),
     full_look_reference: bool = Form(False),
+    garment_photo_type: str | None = Form(None),
     _: User = Depends(require_admin),
 ):
     """Preview a product on an uploaded person photo or a curated model."""
@@ -105,6 +106,8 @@ async def generate_admin_tryon_preview(
         raise ServiceUnavailableError("The selected model image is unavailable")
     if garment_type not in {"tops", "bottoms", "one-pieces"}:
         raise BadRequestError("Choose a supported garment type")
+    if garment_photo_type not in {None, "flat-lay", "model"}:
+        raise BadRequestError("Choose a supported product photo type")
     if set_image and (garment_image or bottom_image):
         raise BadRequestError("Choose either one complete set photo or separate garment photos")
     if full_look_reference and not set_image:
@@ -163,6 +166,7 @@ async def generate_admin_tryon_preview(
         from app.core.gpu_queue import gpu_queue
         from app.services.fashn_service import run_fashn
 
+        admin_quality = {"num_timesteps": 50, "guidance_scale": 1.5}
         async with gpu_queue.acquire("tryon_admin_preview"):
             if full_look_reference:
                 from app.services.tryon_service import _normalize_two_piece_person_image
@@ -176,6 +180,7 @@ async def generate_admin_tryon_preview(
                     results_dir=preview_results_dir,
                     garment_photo_type="model",
                     segmentation_free=True,
+                    **admin_quality,
                 )
             elif bottom_path:
                 # The catalog editor uses the same two-pass flow as storefront try-on:
@@ -193,6 +198,7 @@ async def generate_admin_tryon_preview(
                     results_dir=preview_results_dir,
                     garment_photo_type="flat-lay",
                     segmentation_free=True,
+                    **admin_quality,
                 )
                 if not result_path or not os.path.isfile(result_path):
                     raise InternalError("Virtual try-on did not produce the bottom preview")
@@ -203,6 +209,7 @@ async def generate_admin_tryon_preview(
                     garment_type="tops",
                     results_dir=preview_results_dir,
                     garment_photo_type="flat-lay",
+                    **admin_quality,
                 )
             else:
                 result_path = await asyncio.to_thread(
@@ -211,6 +218,8 @@ async def generate_admin_tryon_preview(
                     garment_image_path=top_path,
                     garment_type=garment_type,
                     results_dir=preview_results_dir,
+                    garment_photo_type=garment_photo_type or "flat-lay",
+                    **admin_quality,
                 )
         if not result_path or not os.path.isfile(result_path):
             raise InternalError("Virtual try-on did not produce a preview image")
