@@ -490,7 +490,7 @@ function ProductContent() {
               {/* Left: Image Gallery & 3D Interactive Viewer */}
               <div className="w-full lg:w-[55%]">
                 <div
-                  className="bg-[#f5f2ed] dark:bg-[#e9e5df] rounded-[2.5rem] aspect-square relative flex items-center justify-center p-4 sm:p-8 transition-colors duration-300 overflow-hidden"
+                  className="bg-[#fbf9f4] dark:bg-[#fbf9f4] rounded-[2.5rem] aspect-square relative flex items-center justify-center p-4 sm:p-8 transition-colors duration-300 overflow-hidden"
                   onTouchStart={(event) => {
                     swipeHandled.current = false;
                     const touch = event.touches[0];
@@ -911,7 +911,7 @@ function ProductContent() {
                 setZoomOrigin(`${((event.clientX - bounds.left) / bounds.width) * 100}% ${((event.clientY - bounds.top) / bounds.height) * 100}%`);
               }}
               aria-label={`Product image. ${zoomScale === 1 ? "Double-click or double-tap to zoom in" : `${zoomScale.toFixed(1)} times zoom; double-click or double-tap to zoom out`}`}
-              className={`h-full w-full overflow-hidden bg-[#f5f2ed] dark:bg-[#e9e5df] ${zoomScale > 1 ? "cursor-move" : "cursor-default"}`}
+              className={`h-full w-full overflow-hidden bg-[#fbf9f4] dark:bg-[#fbf9f4] ${zoomScale > 1 ? "cursor-move" : "cursor-default"}`}
             >
               <Image
                 src={galleryImages[activeImageIndex] || product.image}
@@ -929,7 +929,7 @@ function ProductContent() {
             <div className="flex gap-2 overflow-x-auto pb-2" role="group" aria-label="All product images">
               {galleryImages.map((src, index) => (
                 <button key={`${src}-${index}`} type="button" onClick={() => { setActiveImageIndex(index); setZoomScale(1); }} aria-label={`View image ${index + 1}`} aria-pressed={activeImageIndex === index}
-                  className={`h-16 w-16 shrink-0 overflow-hidden bg-[#f5f2ed] dark:bg-[#e9e5df] transition sm:h-20 sm:w-20 ${activeImageIndex === index ? "opacity-100" : "opacity-55 hover:opacity-90"}`}>
+                  className={`h-16 w-16 shrink-0 overflow-hidden bg-[#fbf9f4] dark:bg-[#fbf9f4] transition sm:h-20 sm:w-20 ${activeImageIndex === index ? "opacity-100" : "opacity-55 hover:opacity-90"}`}>
                   <Image src={src} alt={`${product.name} thumbnail ${index + 1}`} width={96} height={96} unoptimized className="h-full w-full object-contain" />
                 </button>
               ))}
