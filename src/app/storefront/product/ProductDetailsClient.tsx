@@ -32,6 +32,39 @@ function resolveSizeChart(value: unknown, gender?: string): SizeChart | undefine
   return String(gender || "").toLowerCase() === "women" ? WOMENS_SIZE_CHART : undefined;
 }
 
+const DEFAULT_PRODUCT_IMAGE_BACKDROP = "#FBF9F4";
+
+function sampleImageBackdrop(image: HTMLImageElement): string | null {
+  if (!image.naturalWidth || !image.naturalHeight) return null;
+  const canvas = document.createElement("canvas");
+  canvas.width = 16;
+  canvas.height = 16;
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  if (!context) return null;
+
+  try {
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+    const samples: number[][] = [];
+    for (const [startX, startY] of [[0, 0], [13, 0], [0, 13], [13, 13]]) {
+      for (let y = startY; y < startY + 3; y += 1) {
+        for (let x = startX; x < startX + 3; x += 1) {
+          const offset = (y * canvas.width + x) * 4;
+          if (pixels[offset + 3] > 220) samples.push([pixels[offset], pixels[offset + 1], pixels[offset + 2]]);
+        }
+      }
+    }
+    if (!samples.length) return null;
+    const channels = [0, 1, 2].map((channel) => samples.map((sample) => sample[channel]));
+    if (channels.some((values) => Math.max(...values) - Math.min(...values) > 36)) return null;
+    const rgb = channels.map((values) => Math.round(values.reduce((sum, value) => sum + value, 0) / values.length));
+    return `#${rgb.map((value) => value.toString(16).padStart(2, "0")).join("")}`;
+  } catch {
+    // Cross-origin or unusual images keep the neutral off-white fallback.
+    return null;
+  }
+}
+
 function ProductContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -50,6 +83,7 @@ function ProductContent() {
   const [activeSize, setActiveSize] = useState('M');
   const [quantity, setQuantity] = useState(1);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [galleryImageBackdrops, setGalleryImageBackdrops] = useState<Record<string, string>>({});
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
   const [zoomScale, setZoomScale] = useState(1);
   const [zoomOrigin, setZoomOrigin] = useState("center center");
@@ -106,6 +140,8 @@ function ProductContent() {
   });
 
   const galleryImages = product.images?.length ? product.images : [product.image];
+  const activeGalleryImage = galleryImages[activeImageIndex] || product.image;
+  const activeGalleryBackdrop = galleryImageBackdrops[activeGalleryImage] || DEFAULT_PRODUCT_IMAGE_BACKDROP;
   const has3DModel = Boolean(product.model3dUrl || product.model_path);
   const totalSlides = galleryImages.length + Number(has3DModel);
   const currentSlideIndex = is3DMode && has3DModel ? galleryImages.length : activeImageIndex;
@@ -490,7 +526,8 @@ function ProductContent() {
               {/* Left: Image Gallery & 3D Interactive Viewer */}
               <div className="w-full lg:w-[55%]">
                 <div
-                  className="bg-[#fbf9f4] dark:bg-[#fbf9f4] rounded-[2.5rem] aspect-square relative flex items-center justify-center p-4 sm:p-8 transition-colors duration-300 overflow-hidden"
+                  style={{ backgroundColor: activeGalleryBackdrop }}
+                  className="rounded-[2.5rem] aspect-square relative flex items-center justify-center p-4 sm:p-8 transition-colors duration-300 overflow-hidden"
                   onTouchStart={(event) => {
                     swipeHandled.current = false;
                     const touch = event.touches[0];
@@ -552,8 +589,12 @@ function ProductContent() {
                       className="h-full w-full cursor-pointer rounded-2xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
                     >
                       <Image width={1200} height={900} unoptimized
-                        src={product.images?.[activeImageIndex] || product.image}
+                        src={activeGalleryImage}
                         alt={product.name}
+                        onLoad={(event) => {
+                          const sampled = sampleImageBackdrop(event.currentTarget);
+                          if (sampled) setGalleryImageBackdrops((current) => ({ ...current, [activeGalleryImage]: sampled }));
+                        }}
                         className="w-full h-full object-contain rounded-2xl bg-transparent p-2 md:p-4 animate-fade-in"
                       />
                     </button>
@@ -911,14 +952,19 @@ function ProductContent() {
                 setZoomOrigin(`${((event.clientX - bounds.left) / bounds.width) * 100}% ${((event.clientY - bounds.top) / bounds.height) * 100}%`);
               }}
               aria-label={`Product image. ${zoomScale === 1 ? "Double-click or double-tap to zoom in" : `${zoomScale.toFixed(1)} times zoom; double-click or double-tap to zoom out`}`}
-              className={`h-full w-full overflow-hidden bg-[#fbf9f4] dark:bg-[#fbf9f4] ${zoomScale > 1 ? "cursor-move" : "cursor-default"}`}
+              style={{ backgroundColor: activeGalleryBackdrop }}
+              className={`h-full w-full overflow-hidden ${zoomScale > 1 ? "cursor-move" : "cursor-default"}`}
             >
               <Image
-                src={galleryImages[activeImageIndex] || product.image}
+                src={activeGalleryImage}
                 alt={`${product.name}, image ${activeImageIndex + 1}`}
                 width={1600}
                 height={1600}
                 unoptimized
+                onLoad={(event) => {
+                  const sampled = sampleImageBackdrop(event.currentTarget);
+                  if (sampled) setGalleryImageBackdrops((current) => ({ ...current, [activeGalleryImage]: sampled }));
+                }}
                 className="h-full w-full object-contain transition-transform duration-150"
                 style={{ transform: `scale(${zoomScale})`, transformOrigin: zoomOrigin }}
               />
@@ -929,7 +975,8 @@ function ProductContent() {
             <div className="flex gap-2 overflow-x-auto pb-2" role="group" aria-label="All product images">
               {galleryImages.map((src, index) => (
                 <button key={`${src}-${index}`} type="button" onClick={() => { setActiveImageIndex(index); setZoomScale(1); }} aria-label={`View image ${index + 1}`} aria-pressed={activeImageIndex === index}
-                  className={`h-16 w-16 shrink-0 overflow-hidden bg-[#fbf9f4] dark:bg-[#fbf9f4] transition sm:h-20 sm:w-20 ${activeImageIndex === index ? "opacity-100" : "opacity-55 hover:opacity-90"}`}>
+                  style={{ backgroundColor: galleryImageBackdrops[src] || DEFAULT_PRODUCT_IMAGE_BACKDROP }}
+                  className={`h-16 w-16 shrink-0 overflow-hidden transition sm:h-20 sm:w-20 ${activeImageIndex === index ? "opacity-100" : "opacity-55 hover:opacity-90"}`}>
                   <Image src={src} alt={`${product.name} thumbnail ${index + 1}`} width={96} height={96} unoptimized className="h-full w-full object-contain" />
                 </button>
               ))}
