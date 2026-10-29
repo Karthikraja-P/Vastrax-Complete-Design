@@ -28,6 +28,7 @@ if ($listener) { throw "Port 8082 is occupied by PID $($listener.OwningProcess).
 
 $env:PYTHONPATH = $sitePackages
 $env:PYTHONIOENCODING = 'utf-8'
+$env:HF_HUB_DISABLE_XET = '1'
 $env:GENERATOR_3D_SECRET = $generatorSecret
 $env:HF_HOME = Join-Path $env:USERPROFILE '.cache\huggingface'
 $env:HY3DGEN_MODELS = Join-Path $env:USERPROFILE '.cache\hy3dgen'
@@ -35,11 +36,14 @@ $cachePath = Join-Path $env:LOCALAPPDATA 'Temp\vastrax-hunyuan-cache'
 $outLog = Join-Path $env:LOCALAPPDATA 'Temp\vastrax-hunyuan-out.log'
 $errLog = Join-Path $env:LOCALAPPDATA 'Temp\vastrax-hunyuan-err.log'
 $modelPath = if ($env:VASTRAX_HUNYUAN_MV_MODEL) { $env:VASTRAX_HUNYUAN_MV_MODEL } else { 'tencent/Hunyuan3D-2mv' }
-$subfolder = if ($env:VASTRAX_HUNYUAN_MV_SUBFOLDER) { $env:VASTRAX_HUNYUAN_MV_SUBFOLDER } else { 'hunyuan3d-dit-v2-mv-turbo' }
+$subfolder = if ($env:VASTRAX_HUNYUAN_MV_SUBFOLDER) { $env:VASTRAX_HUNYUAN_MV_SUBFOLDER } else { 'hunyuan3d-dit-v2-mv' }
+$steps = if ($env:VASTRAX_HUNYUAN_MV_STEPS) { $env:VASTRAX_HUNYUAN_MV_STEPS } else { '30' }
+$octreeResolution = if ($env:VASTRAX_HUNYUAN_MV_OCTREE_RESOLUTION) { $env:VASTRAX_HUNYUAN_MV_OCTREE_RESOLUTION } else { '380' }
 
 $process = Start-Process -FilePath $python -ArgumentList @(
     $serviceScript, '--port', '8082', '--host', '0.0.0.0',
     '--model_path', $modelPath, '--subfolder', $subfolder,
+    '--steps', $steps, '--octree-resolution', $octreeResolution,
     '--cache-path', $cachePath
 ) -WorkingDirectory $modelRoot -RedirectStandardOutput $outLog -RedirectStandardError $errLog -WindowStyle Hidden -PassThru
 

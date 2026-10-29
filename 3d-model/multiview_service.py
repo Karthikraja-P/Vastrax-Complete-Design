@@ -53,6 +53,7 @@ _TARGET_ALIASES = {
     "hy3dgen.shapegen.models.Hunyuan3DDiT": "hy3dshape.models.denoisers.hunyuan3ddit.Hunyuan3DDiT",
     "hy3dgen.shapegen.models.ShapeVAE": "hy3dshape.models.autoencoders.model.ShapeVAE",
     "hy3dgen.shapegen.models.SingleImageEncoder": "hy3dshape.models.conditioner.SingleImageEncoder",
+    "hy3dgen.shapegen.schedulers.FlowMatchEulerDiscreteScheduler": "hy3dshape.schedulers.FlowMatchEulerDiscreteScheduler",
     "hy3dgen.shapegen.schedulers.ConsistencyFlowMatchEulerDiscreteScheduler": "hy3dshape.schedulers.ConsistencyFlowMatchEulerDiscreteScheduler",
     "hy3dgen.shapegen.preprocessors.MVImageProcessorV2": "hy3dshape.preprocessors.MVImageProcessorV2",
 }
@@ -146,11 +147,13 @@ def _texture_with_view_references(paint: Hunyuan3DPaintPipeline, mesh_path: str,
 
 
 class MultiViewWorker:
-    def __init__(self, model_path: str, subfolder: str, cache_dir: Path):
+    def __init__(self, model_path: str, subfolder: str, cache_dir: Path, steps: int, octree_resolution: int):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         if self.device != "cuda":
             raise RuntimeError("Multi-view 3D reconstruction requires a CUDA GPU")
         self.cache_dir = cache_dir
+        self.steps = steps
+        self.octree_resolution = octree_resolution
         cache_dir.mkdir(parents=True, exist_ok=True)
         self.rembg = BackgroundRemover()
         self.shape = Hunyuan3DDiTFlowMatchingPipeline.from_pretrained(
@@ -181,8 +184,8 @@ class MultiViewWorker:
         started = time.time()
         self.shape.to(self.device)
         output = self.shape(
-            image=views, num_inference_steps=5, guidance_scale=5.0,
-            octree_resolution=256, num_chunks=8000, output_type="mesh",
+            image=views, num_inference_steps=self.steps, guidance_scale=5.0,
+            octree_resolution=self.octree_resolution, num_chunks=20000, output_type="mesh",
         )
         mesh = export_to_trimesh(output)[0]
         shape_path = self.cache_dir / f"{job_id}_shape.glb"
@@ -228,10 +231,12 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--host", default="0.0.0.0")
 parser.add_argument("--port", type=int, default=8082)
 parser.add_argument("--model_path", default="tencent/Hunyuan3D-2mv")
-parser.add_argument("--subfolder", default="hunyuan3d-dit-v2-mv-turbo")
+parser.add_argument("--subfolder", default="hunyuan3d-dit-v2-mv")
+parser.add_argument("--steps", type=int, default=30)
+parser.add_argument("--octree-resolution", type=int, default=380)
 parser.add_argument("--cache-path", default=os.path.join(os.environ.get("LOCALAPPDATA", "."), "Temp", "vastrax-hunyuan-cache"))
 args = parser.parse_args()
-worker = MultiViewWorker(args.model_path, args.subfolder, Path(args.cache_path))
+worker = MultiViewWorker(args.model_path, args.subfolder, Path(args.cache_path), args.steps, args.octree_resolution)
 app = FastAPI(title="VASTRAX Multi-view Hunyuan3D Service")
 
 
