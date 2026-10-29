@@ -6,6 +6,20 @@ import uuid
 from app.core.config import settings
 
 
+
+def classify_product_garment(category_name: str | None, product_name: str | None) -> str | None:
+    """Infer a garment class from the product's visible catalog details."""
+    combined = f"{category_name or ''} {product_name or ''}".lower().replace("_", "-")
+    if any(word in combined for word in ("dress", "frock", "gown", "lehenga", "bodycon", "kurti", "one-piece", "cat-dresses")):
+        return "one-pieces"
+    if "maxi" in combined and "skirt" not in combined:
+        return "one-pieces"
+    if any(word in combined for word in ("pant", "trouser", "skirt", "bottom", "jean", "denim", "palazzo", "cat-bottoms")):
+        return "bottoms"
+    if any(word in combined for word in ("top", "tee", "shirt", "jacket", "hoodie", "cat-tops")):
+        return "tops"
+    return None
+
 def detect_category(garment_path: str) -> str:
     """
     Auto-detect FASHN category from garment filename or URL.
@@ -16,15 +30,15 @@ def detect_category(garment_path: str) -> str:
 
     path = garment_path.lower()
     if any(w in path for w in [
-        "frock", "dress", "gown", "lehenga", "bodycon", "body_con", "body-con",
-        "floral", "textured", "midi", "maxi", "jumpsuit", "overall", "one-piece",
-    ]):
-        return "one-pieces"
-    if any(w in path for w in [
         "pant", "jean", "denim", "skirt", "trouser", "flared",
         "shorts", "palazzo", "culottes", "legging", "bottom",
     ]):
         return "bottoms"
+    if any(w in path for w in [
+        "frock", "dress", "gown", "lehenga", "bodycon", "body_con", "body-con",
+        "floral", "textured", "midi", "maxi", "jumpsuit", "overall", "one-piece",
+    ]):
+        return "one-pieces"
     return "tops"
 
 

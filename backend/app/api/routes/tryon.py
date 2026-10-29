@@ -267,14 +267,8 @@ async def submit_tryon(
         if product:
             if not garment_url and product.images:
                 garment_url = product.images[0].s3_url
-            p_cat = str(product.category_id or "").lower()
-            p_name = str(product.name or "").lower()
-            if any(w in p_cat or w in p_name for w in ["dress", "frock", "gown", "lehenga", "one-piece", "cat-dresses"]):
-                category = "one-pieces"
-            elif any(w in p_cat or w in p_name for w in ["pant", "trouser", "skirt", "bottom", "jean", "denim", "palazzo", "cat-bottoms"]):
-                category = "bottoms"
-            elif any(w in p_cat or w in p_name for w in ["top", "tee", "shirt", "t-shirt", "jacket", "hoodie", "cat-tops"]):
-                category = "tops"
+            from app.services.fashn_service import classify_product_garment
+            category = classify_product_garment(str(product.category_id or ""), str(product.name or "")) or category
 
     garment_url = garment_url or "https://images.unsplash.com/photo-1551028719-00167b16eac5?q=80&w=800&auto=format&fit=crop"
     category = category or detect_category(garment_url)
@@ -362,14 +356,8 @@ async def try_on(
         if product:
             if not g_path and product.images:
                 g_path = product.images[0].s3_url
-            p_cat = str(product.category_id or "").lower()
-            p_name = str(product.name or "").lower()
-            if any(w in p_cat or w in p_name for w in ["dress", "frock", "gown", "lehenga", "one-piece", "cat-dresses"]):
-                g_type = "one-pieces"
-            elif any(w in p_cat or w in p_name for w in ["pant", "trouser", "skirt", "bottom", "jean", "denim", "palazzo", "cat-bottoms"]):
-                g_type = "bottoms"
-            elif any(w in p_cat or w in p_name for w in ["top", "tee", "shirt", "t-shirt", "jacket", "hoodie", "cat-tops"]):
-                g_type = "tops"
+            from app.services.fashn_service import classify_product_garment
+            g_type = classify_product_garment(str(product.category_id or ""), str(product.name or "")) or g_type
     
     if not g_path:
         from app.core.exceptions import BadRequestError

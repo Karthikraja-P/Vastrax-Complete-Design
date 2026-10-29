@@ -169,7 +169,7 @@ export default function VirtualTryOnPage() {
 
   const getFashnCategory = (cat: string, name: string = "") => {
     const combined = (cat + " " + name).toLowerCase();
-    if (combined.includes("dress") || combined.includes("frock") || combined.includes("gown") || combined.includes("bodycon") || combined.includes("kurti") || combined.includes("one-piece") || combined.includes("cat-dresses")) return "one-pieces";
+    if (combined.includes("dress") || combined.includes("frock") || combined.includes("gown") || combined.includes("bodycon") || combined.includes("kurti") || combined.includes("one-piece") || combined.includes("cat-dresses") || (combined.includes("maxi") && !combined.includes("skirt"))) return "one-pieces";
     if (combined.includes("pant") || combined.includes("bottom") || combined.includes("denim") || combined.includes("skirt") || combined.includes("trouser") || combined.includes("cat-bottoms")) return "bottoms";
     return "tops";
   };

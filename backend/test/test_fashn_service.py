@@ -103,3 +103,12 @@ def test_bottoms_use_segmentation_free_by_default_but_allow_override(
     assert captured["data"]["num_timesteps"] == "50"
     assert captured["data"]["guidance_scale"] == "1.5"
     assert Path(result).read_bytes() == Response.content
+
+
+def test_black_maxi_is_classified_as_a_one_piece_dress():
+    from app.services.fashn_service import classify_product_garment, detect_category
+
+    assert classify_product_garment("Women", "Black Maxi") == "one-pieces"
+    assert classify_product_garment("Women", "Black Maxi Skirt") == "bottoms"
+    assert detect_category("/uploads/black-maxi.webp") == "one-pieces"
+    assert detect_category("/uploads/black-maxi-skirt.webp") == "bottoms"

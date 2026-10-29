@@ -33,7 +33,7 @@ function isTwoPieceSet(name: string): boolean {
 }
 
 function garmentType(name: string): "tops" | "bottoms" | "one-pieces" {
-  if (/dress|frock|gown|lehenga|one-piece/i.test(name)) return "one-pieces";
+  if (/dress|frock|gown|lehenga|one-piece|\bmaxi\b/i.test(name) && !/skirt/i.test(name)) return "one-pieces";
   if (/skirt|trouser|pant|jean|bottom|palazzo/i.test(name)) return "bottoms";
   return "tops";
 }
