@@ -303,9 +303,13 @@
 }
 
 .vx-look-grid {
+  --vx-look-bleed-space: clamp(2.5rem, 6vw, 5.5rem);
   display: flex;
   gap: clamp(0.8rem, 2vw, 1.5rem);
   overflow-x: auto;
+  /* Keep the enlarged center slide fully visible inside the horizontal scrollport. */
+  padding-block: var(--vx-look-bleed-space);
+  margin-block: calc(-1 * var(--vx-look-bleed-space));
   overscroll-behavior-inline: contain;
   scroll-snap-type: x mandatory;
   scrollbar-width: none;
