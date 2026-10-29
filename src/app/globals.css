@@ -272,16 +272,57 @@
   font-weight: 600;
 }
 
-.vx-look-grid {
+.vx-look-carousel-wrap {
+  position: relative;
+}
+
+.vx-look-controls {
+  position: absolute;
+  top: -4.7rem;
+  right: 10.5rem;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.vx-look-control {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  width: 2.7rem;
+  height: 2.7rem;
+  place-items: center;
+  border: 1px solid var(--vx-line);
+  border-radius: 999px;
+  background: var(--vx-paper);
+  color: var(--vx-ink);
+  transition: border-color 180ms ease, color 180ms ease, transform 180ms ease;
+}
+
+.vx-look-control:hover {
+  transform: translateY(-1px);
+  border-color: var(--vx-accent);
+  color: var(--vx-accent);
+}
+
+.vx-look-grid {
+  display: flex;
   gap: clamp(0.8rem, 2vw, 1.5rem);
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  scroll-behavior: auto;
+  touch-action: pan-x;
+}
+
+.vx-look-grid::-webkit-scrollbar {
+  display: none;
 }
 
 .vx-look-card {
   display: block;
+  flex: 0 0 52%;
   min-width: 0;
   color: var(--vx-ink);
+  scroll-snap-align: start;
 }
 
 .vx-look-stage {
@@ -306,7 +347,7 @@
 
 .vx-look-card:hover .vx-look-image,
 .vx-look-card:focus-visible .vx-look-image {
-  transform: scale(1.045);
+  transform: scale(1.1);
 }
 
 .vx-look-index {
@@ -596,8 +637,16 @@
   }
 
   .vx-look-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.75rem;
+  }
+
+  .vx-look-card {
+    flex-basis: 62%;
+  }
+
+  .vx-look-controls {
+    top: -4.2rem;
+    right: 9.5rem;
   }
 
   .vx-look-stage {
@@ -646,9 +695,14 @@
   }
 }
 
-@media (max-width: 380px) {
-  .vx-look-grid {
-    grid-template-columns: 1fr;
+@media (max-width: 640px) {
+  .vx-look-card {
+    flex-basis: 84%;
+  }
+
+  .vx-look-controls {
+    top: -3.5rem;
+    right: 8.7rem;
   }
 }
 
@@ -888,7 +942,8 @@
 }
 
 .dark .vx-category-link,
-.dark .vx-mobile-shop-cta {
+.dark .vx-mobile-shop-cta,
+.dark .vx-look-control {
   background: #201d1a;
   color: var(--vx-ink);
 }

@@ -1,8 +1,8 @@
 "use client";
 import Image from "next/image";
 
-import { useState, useEffect } from "react";
-import { User, ShoppingBag, ArrowRight, Heart } from "lucide-react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { User, ShoppingBag, ArrowRight, ArrowLeft, Heart } from "lucide-react";
 import { AuthModal } from "@/components/auth/AuthModal";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { CartDrawer } from "@/components/layout/CartDrawer";
@@ -29,6 +29,28 @@ interface StoreCategory {
   price?: number;
 }
 
+function moveLookCarousel(viewport: HTMLDivElement | null, count: number, direction: -1 | 1) {
+  if (!viewport || count < 2) return;
+  const slides = viewport.querySelectorAll<HTMLElement>("[data-look-slide]");
+  const first = slides[0];
+  if (!first) return;
+  const gap = Number.parseFloat(getComputedStyle(viewport).columnGap || "0") || 0;
+  const step = first.getBoundingClientRect().width + gap;
+  const loopStart = step * count;
+
+  if (direction > 0 && viewport.scrollLeft + step >= loopStart - 1) {
+    viewport.scrollTo({ left: loopStart, behavior: "smooth" });
+    window.setTimeout(() => viewport.scrollTo({ left: 0, behavior: "auto" }), 500);
+    return;
+  }
+  if (direction < 0 && viewport.scrollLeft < 1) {
+    viewport.scrollTo({ left: loopStart, behavior: "auto" });
+    requestAnimationFrame(() => viewport.scrollBy({ left: -step, behavior: "smooth" }));
+    return;
+  }
+  viewport.scrollBy({ left: direction * step, behavior: "smooth" });
+}
+
 export default function StorefrontHome() {
   const router = useRouter();
   const { data: session } = useSession();
@@ -40,6 +62,17 @@ export default function StorefrontHome() {
 
   const [collections, setCollections] = useState<StoreCategory[]>([]);
   const [categories, setCategories] = useState<StoreCategory[]>([]);
+  const lookCarouselRef = useRef<HTMLDivElement>(null);
+  const [isLookCarouselPaused, setIsLookCarouselPaused] = useState(false);
+  const moveLookCarouselBy = useCallback((direction: -1 | 1) => {
+    moveLookCarousel(lookCarouselRef.current, collections.length, direction);
+  }, [collections.length]);
+
+  useEffect(() => {
+    if (collections.length < 2 || isLookCarouselPaused) return;
+    const timer = window.setInterval(() => moveLookCarouselBy(1), 3000);
+    return () => window.clearInterval(timer);
+  }, [collections.length, isLookCarouselPaused, moveLookCarouselBy]);
   const bagItems = useCartItems();
 
   // Alert if redirected from protected admin routes
@@ -345,20 +378,54 @@ export default function StorefrontHome() {
             </Link>
           </div>
 
-          <div className="vx-look-grid">
-            {collections.map((look, idx) => (
-              <Link key={String(look.productId || look.id)} href={look.productId ? `/storefront/product?id=${encodeURIComponent(look.productId)}` : "/storefront/collections?gender=Women"} className="vx-look-card group">
-                <div className="vx-look-stage">
-                  <Image src={look.image} alt={look.title || look.name} width={1086} height={1449} sizes="(max-width: 640px) 48vw, (max-width: 1024px) 31vw, 28vw" unoptimized={look.image.startsWith("http")} loading={idx === 0 ? "eager" : "lazy"} className="vx-look-image" />
-                  <span className="vx-look-arrow" aria-hidden="true"><ArrowRight className="h-4 w-4" /></span>
-                </div>
-                <div className="vx-look-meta">
-                  <h3>{look.title || look.name}</h3>
-                  {typeof look.price === "number" && look.price > 0 && <p>₹{look.price.toLocaleString("en-IN")}</p>}
-                </div>
-              </Link>
-            ))}
-            {collections.length === 0 && <p className="vx-empty-edit">New coordinated looks will appear here as they are added.</p>}
+          <div className="vx-look-carousel-wrap">
+            {collections.length > 1 && (
+              <div className="vx-look-controls" aria-label="Coordinated look carousel controls">
+                <button type="button" className="vx-look-control" aria-label="Previous coordinated looks" onClick={() => moveLookCarouselBy(-1)}>
+                  <ArrowLeft aria-hidden="true" className="h-4 w-4" />
+                </button>
+                <button type="button" className="vx-look-control" aria-label="Next coordinated looks" onClick={() => moveLookCarouselBy(1)}>
+                  <ArrowRight aria-hidden="true" className="h-4 w-4" />
+                </button>
+              </div>
+            )}
+            <div
+              ref={lookCarouselRef}
+              className="vx-look-grid"
+              aria-label="Coordinated looks"
+              onMouseEnter={() => setIsLookCarouselPaused(true)}
+              onMouseLeave={() => setIsLookCarouselPaused(false)}
+              onTouchStart={() => setIsLookCarouselPaused(true)}
+              onTouchEnd={() => setIsLookCarouselPaused(false)}
+              onFocusCapture={() => setIsLookCarouselPaused(true)}
+              onBlurCapture={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setIsLookCarouselPaused(false);
+              }}
+            >
+              {collections.length > 0 ? [...collections, ...collections].map((look, idx) => {
+                const isClone = idx >= collections.length;
+                const originalIndex = idx % collections.length;
+                return (
+                  <Link
+                    key={"look-" + (isClone ? "clone" : "original") + "-" + String(look.productId || look.id)}
+                    href={look.productId ? "/storefront/product?id=" + encodeURIComponent(look.productId) : "/storefront/collections?gender=Women"}
+                    className="vx-look-card group"
+                    data-look-slide
+                    aria-hidden={isClone}
+                    tabIndex={isClone ? -1 : undefined}
+                  >
+                    <div className="vx-look-stage">
+                      <Image src={look.image} alt={isClone ? "" : look.title || look.name} width={1086} height={1449} sizes="(max-width: 640px) 84vw, (max-width: 1024px) 62vw, 52vw" unoptimized={look.image.startsWith("http")} loading={originalIndex === 0 && !isClone ? "eager" : "lazy"} className="vx-look-image" />
+                      <span className="vx-look-arrow" aria-hidden="true"><ArrowRight className="h-4 w-4" /></span>
+                    </div>
+                    <div className="vx-look-meta">
+                      <h3>{look.title || look.name}</h3>
+                      {typeof look.price === "number" && look.price > 0 && <p>{String.fromCharCode(8377)}{look.price.toLocaleString("en-IN")}</p>}
+                    </div>
+                  </Link>
+                );
+              }) : <p className="vx-empty-edit">New coordinated looks will appear here as they are added.</p>}
+            </div>
           </div>
         </section>
       </main>
