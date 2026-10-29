@@ -82,8 +82,8 @@ async def _run_generation(job_id: str, product_id: str | None, category_id: str 
                     result = response.json()
                     model_url = result.get("model_url")
                     generation_mode = result.get("generation_mode", "unknown")
-                    if generation_mode != "hunyuan_textured":
-                        raise RuntimeError("Hunyuan did not return a textured garment-specific model. No model was attached.")
+                    if generation_mode != "hunyuan_multiview_textured":
+                        raise RuntimeError("The 3D service did not use all uploaded garment views. No model was attached.")
                     if not model_url or not model_url.startswith("/models/3d/"):
                         raise RuntimeError("3D service returned an invalid model path.")
                     model_response = await client.get(f"{generator_url}{model_url}")

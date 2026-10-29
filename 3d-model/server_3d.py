@@ -317,10 +317,13 @@ async def generate_3d(
             generated = False
             try:
                 async with httpx.AsyncClient(timeout=1200.0) as hy_client:
-                    with open(front_path, "rb") as f_in:
-                        b64_str = base64.b64encode(f_in.read()).decode("utf-8")
+                    encoded_views = {}
+                    for view_name, view_path in (("front", front_path), ("back", back_path), ("left", side_path)):
+                        if view_path:
+                            with open(view_path, "rb") as f_in:
+                                encoded_views[view_name] = base64.b64encode(f_in.read()).decode("utf-8")
                     payload = {
-                        "image": b64_str,
+                        "images": encoded_views,
                         "texture": os.environ.get("HUNYUAN_TEXTURE", "true").lower() == "true",
                         "type": "glb"
                     }
@@ -358,7 +361,7 @@ async def generate_3d(
 
                     if hy_res and hy_res.status_code == 200:
                         generation_mode = hy_res.headers.get("X-Generation-Mode", "hunyuan_untextured")
-                        if generation_mode == "hunyuan_textured" and hy_res.content.startswith(b"glTF"):
+                        if generation_mode == "hunyuan_multiview_textured" and hy_res.content.startswith(b"glTF"):
                             with open(dest_path, "wb") as out_f:
                                 out_f.write(hy_res.content)
                             generated = True
@@ -384,7 +387,7 @@ async def generate_3d(
                 "model_url": f"/models/3d/{out_filename}",
                 "filename": out_filename,
                 "generation_mode": generation_mode,
-                "message": "Hunyuan neural garment reconstruction generated"
+                "message": "Hunyuan multi-view garment reconstruction generated"
             }
         except HTTPException:
             raise
