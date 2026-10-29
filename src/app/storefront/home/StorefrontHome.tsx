@@ -73,7 +73,7 @@ export default function StorefrontHome() {
 
   useEffect(() => {
     if (collections.length < 2 || isLookCarouselPaused) return;
-    const timer = window.setInterval(() => moveLookCarouselBy(1), 3000);
+    const timer = window.setInterval(() => moveLookCarouselBy(1), 2500);
     return () => window.clearInterval(timer);
   }, [collections.length, isLookCarouselPaused, moveLookCarouselBy]);
   const bagItems = useCartItems();
@@ -396,8 +396,6 @@ export default function StorefrontHome() {
               ref={lookCarouselRef}
               className="vx-look-grid"
               aria-label="Coordinated looks"
-              onMouseEnter={() => setIsLookCarouselPaused(true)}
-              onMouseLeave={() => setIsLookCarouselPaused(false)}
               onTouchStart={() => setIsLookCarouselPaused(true)}
               onTouchEnd={() => {
                 window.setTimeout(() => {
