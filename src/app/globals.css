@@ -346,13 +346,7 @@
 
 .vx-look-card.is-active .vx-look-stage {
   opacity: 1;
-  transform: scale(1.18);
-}
-
-.vx-look-card:not(.is-active):hover .vx-look-stage,
-.vx-look-card:not(.is-active):focus-visible .vx-look-stage {
-  opacity: 1;
-  transform: scale(0.96);
+  transform: scale(1.35);
 }
 
 .vx-look-image {
@@ -364,11 +358,6 @@
   transition: transform 360ms cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 
-.vx-look-card:hover .vx-look-image,
-.vx-look-card:focus-visible .vx-look-image {
-  transform: scale(1.08);
-}
-
 .vx-look-index {
   position: absolute;
   top: 0.8rem;
@@ -377,27 +366,6 @@
   font-size: 0.7rem;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.08em;
-}
-
-.vx-look-arrow {
-  position: absolute;
-  right: 0.8rem;
-  bottom: 0.8rem;
-  display: grid;
-  width: 2.6rem;
-  height: 2.6rem;
-  place-items: center;
-  border-radius: 999px;
-  background: #fffefa;
-  color: var(--vx-ink);
-  box-shadow: 0 4px 14px rgb(41 35 31 / 10%);
-  transition: color 180ms ease, background-color 180ms ease, transform 180ms ease;
-}
-
-.vx-look-card:hover .vx-look-arrow {
-  transform: translateX(2px);
-  background: var(--vx-accent);
-  color: #fff;
 }
 
 .vx-look-meta {
@@ -736,7 +704,7 @@
   }
 
   .vx-look-card.is-active .vx-look-stage {
-    transform: scale(1.28);
+    transform: scale(1.42);
   }
 
   .vx-look-controls {

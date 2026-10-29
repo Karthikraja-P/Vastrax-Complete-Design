@@ -434,7 +434,6 @@ export default function StorefrontHome() {
                   >
                     <div className="vx-look-stage">
                       <Image src={look.image} alt={isClone ? "" : look.title || look.name} width={1086} height={1449} sizes="(max-width: 640px) 84vw, (max-width: 1024px) 62vw, 52vw" unoptimized={look.image.startsWith("http")} loading={originalIndex === 0 && !isClone ? "eager" : "lazy"} className="vx-look-image" />
-                      <span className="vx-look-arrow" aria-hidden="true"><ArrowRight className="h-4 w-4" /></span>
                     </div>
                     <div className="vx-look-meta">
                       <h3>{look.title || look.name}</h3>
