@@ -31,24 +31,36 @@ interface StoreCategory {
 
 function moveLookCarousel(viewport: HTMLDivElement | null, count: number, direction: -1 | 1) {
   if (!viewport || count < 2) return;
-  const slides = viewport.querySelectorAll<HTMLElement>("[data-look-slide]");
-  const first = slides[0];
-  if (!first) return;
-  const gap = Number.parseFloat(getComputedStyle(viewport).columnGap || "0") || 0;
-  const step = first.getBoundingClientRect().width + gap;
-  const loopStart = step * count;
+  const slides = Array.from(viewport.querySelectorAll<HTMLElement>("[data-look-slide]"));
+  if (!slides.length) return;
+  const viewportRect = viewport.getBoundingClientRect();
+  const viewportCenter = viewportRect.left + viewport.clientWidth / 2;
+  const currentIndex = slides.reduce((bestIndex, slide, index) => {
+    const rect = slide.getBoundingClientRect();
+    const center = rect.left + rect.width / 2;
+    const bestRect = slides[bestIndex].getBoundingClientRect();
+    const bestCenter = bestRect.left + bestRect.width / 2;
+    return Math.abs(center - viewportCenter) < Math.abs(bestCenter - viewportCenter) ? index : bestIndex;
+  }, 0);
+  let targetIndex = currentIndex + direction;
+  if (targetIndex < 0) targetIndex += count;
+  if (targetIndex >= slides.length) targetIndex -= count;
 
-  if (direction > 0 && viewport.scrollLeft + step >= loopStart - 1) {
-    viewport.scrollTo({ left: loopStart, behavior: "smooth" });
-    window.setTimeout(() => viewport.scrollTo({ left: 0, behavior: "auto" }), 500);
-    return;
+  const scrollToCenteredSlide = (slide: HTMLElement, behavior: ScrollBehavior) => {
+    const rect = slide.getBoundingClientRect();
+    const left = viewport.scrollLeft + rect.left - viewportRect.left + rect.width / 2 - viewport.clientWidth / 2;
+    viewport.scrollTo({ left, behavior });
+  };
+  scrollToCenteredSlide(slides[targetIndex], "smooth");
+
+  const equivalentIndex = targetIndex < count
+    ? targetIndex + count
+    : targetIndex >= count * 2
+      ? targetIndex - count
+      : targetIndex;
+  if (equivalentIndex !== targetIndex) {
+    window.setTimeout(() => scrollToCenteredSlide(slides[equivalentIndex], "auto"), 520);
   }
-  if (direction < 0 && viewport.scrollLeft < 1) {
-    viewport.scrollTo({ left: loopStart, behavior: "auto" });
-    requestAnimationFrame(() => viewport.scrollBy({ left: -step, behavior: "smooth" }));
-    return;
-  }
-  viewport.scrollBy({ left: direction * step, behavior: "smooth" });
 }
 
 export default function StorefrontHome() {
@@ -76,6 +88,18 @@ export default function StorefrontHome() {
     const timer = window.setInterval(() => moveLookCarouselBy(1), 2500);
     return () => window.clearInterval(timer);
   }, [collections.length, isLookCarouselPaused, moveLookCarouselBy]);
+
+  useEffect(() => {
+    if (collections.length < 2) return;
+    const viewport = lookCarouselRef.current;
+    const slides = viewport?.querySelectorAll<HTMLElement>("[data-look-slide]");
+    const initialSlide = slides?.[collections.length + 1];
+    if (!viewport || !initialSlide) return;
+    const viewportRect = viewport.getBoundingClientRect();
+    const slideRect = initialSlide.getBoundingClientRect();
+    const left = viewport.scrollLeft + slideRect.left - viewportRect.left + slideRect.width / 2 - viewport.clientWidth / 2;
+    viewport.scrollTo({ left, behavior: "auto" });
+  }, [collections.length]);
   const bagItems = useCartItems();
 
   // Alert if redirected from protected admin routes
