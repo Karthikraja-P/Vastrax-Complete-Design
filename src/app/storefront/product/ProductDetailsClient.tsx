@@ -32,7 +32,7 @@ function resolveSizeChart(value: unknown, gender?: string): SizeChart | undefine
   return String(gender || "").toLowerCase() === "women" ? WOMENS_SIZE_CHART : undefined;
 }
 
-const DEFAULT_PRODUCT_IMAGE_BACKDROP = "#FBF9F4";
+const DEFAULT_PRODUCT_IMAGE_BACKDROP = "#F5F2EC";
 
 function sampleImageBackdrop(image: HTMLImageElement): string | null {
   if (!image.naturalWidth || !image.naturalHeight) return null;
@@ -547,6 +547,11 @@ function ProductContent() {
                     }
                   }}
                 >
+                  <div
+                    aria-hidden="true"
+                    className="pointer-events-none absolute inset-0 z-0 scale-110 bg-cover bg-center blur-2xl"
+                    style={{ backgroundImage: `url("${activeGalleryImage}")` }}
+                  />
                   {/* Top Right: Wishlist */}
                   <button
                     onClick={(e) => toggleFavorite(product, e)}
@@ -586,7 +591,7 @@ function ProductContent() {
                         setIsGalleryOpen(true);
                       }}
                       aria-label={`Enlarge image ${activeImageIndex + 1} of ${product.name}`}
-                      className="h-full w-full cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                      className="relative z-10 h-full w-full cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
                     >
                       <Image width={1200} height={900} unoptimized
                         src={activeGalleryImage}
@@ -953,8 +958,13 @@ function ProductContent() {
               }}
               aria-label={`Product image. ${zoomScale === 1 ? "Double-click or double-tap to zoom in" : `${zoomScale.toFixed(1)} times zoom; double-click or double-tap to zoom out`}`}
               style={{ backgroundColor: activeGalleryBackdrop }}
-              className={`h-full w-full overflow-hidden ${zoomScale > 1 ? "cursor-move" : "cursor-default"}`}
+              className={`relative h-full w-full overflow-hidden ${zoomScale > 1 ? "cursor-move" : "cursor-default"}`}
             >
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-0 z-0 scale-110 bg-cover bg-center blur-2xl"
+                style={{ backgroundImage: `url("${activeGalleryImage}")` }}
+              />
               <Image
                 src={activeGalleryImage}
                 alt={`${product.name}, image ${activeImageIndex + 1}`}
@@ -965,7 +975,7 @@ function ProductContent() {
                   const sampled = sampleImageBackdrop(event.currentTarget);
                   if (sampled) setGalleryImageBackdrops((current) => ({ ...current, [activeGalleryImage]: sampled }));
                 }}
-                className="h-full w-full object-contain transition-transform duration-150"
+                className="relative z-10 h-full w-full object-contain transition-transform duration-150"
                 style={{ transform: `scale(${zoomScale})`, transformOrigin: zoomOrigin }}
               />
             </button>
