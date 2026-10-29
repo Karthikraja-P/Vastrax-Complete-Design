@@ -63,9 +63,12 @@ export default function StorefrontHome() {
   const [collections, setCollections] = useState<StoreCategory[]>([]);
   const [categories, setCategories] = useState<StoreCategory[]>([]);
   const lookCarouselRef = useRef<HTMLDivElement>(null);
+  const [activeLookIndex, setActiveLookIndex] = useState(1);
   const [isLookCarouselPaused, setIsLookCarouselPaused] = useState(false);
   const moveLookCarouselBy = useCallback((direction: -1 | 1) => {
+    if (collections.length < 2) return;
     moveLookCarousel(lookCarouselRef.current, collections.length, direction);
+    setActiveLookIndex((current) => (current + direction + collections.length) % collections.length);
   }, [collections.length]);
 
   useEffect(() => {
@@ -396,21 +399,36 @@ export default function StorefrontHome() {
               onMouseEnter={() => setIsLookCarouselPaused(true)}
               onMouseLeave={() => setIsLookCarouselPaused(false)}
               onTouchStart={() => setIsLookCarouselPaused(true)}
-              onTouchEnd={() => setIsLookCarouselPaused(false)}
+              onTouchEnd={() => {
+                window.setTimeout(() => {
+                  const viewport = lookCarouselRef.current;
+                  if (!viewport) return;
+                  const center = viewport.getBoundingClientRect().left + viewport.clientWidth / 2;
+                  const cards = Array.from(viewport.querySelectorAll<HTMLElement>("[data-look-slide]"));
+                  const nearest = cards.reduce<HTMLElement | null>((best, card) => {
+                    if (!best) return card;
+                    return Math.abs(card.getBoundingClientRect().left + card.getBoundingClientRect().width / 2 - center) < Math.abs(best.getBoundingClientRect().left + best.getBoundingClientRect().width / 2 - center) ? card : best;
+                  }, null);
+                  if (nearest) setActiveLookIndex(Number(nearest.dataset.lookIndex));
+                  setIsLookCarouselPaused(false);
+                }, 250);
+              }}
               onFocusCapture={() => setIsLookCarouselPaused(true)}
               onBlurCapture={(event) => {
                 if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setIsLookCarouselPaused(false);
               }}
             >
-              {collections.length > 0 ? [...collections, ...collections].map((look, idx) => {
-                const isClone = idx >= collections.length;
+              {collections.length > 0 ? [...collections, ...collections, ...collections].map((look, idx) => {
+                const cycleIndex = Math.floor(idx / collections.length);
+                const isClone = cycleIndex > 0;
                 const originalIndex = idx % collections.length;
                 return (
                   <Link
-                    key={"look-" + (isClone ? "clone" : "original") + "-" + String(look.productId || look.id)}
+                    key={"look-" + cycleIndex + "-" + String(look.productId || look.id)}
                     href={look.productId ? "/storefront/product?id=" + encodeURIComponent(look.productId) : "/storefront/collections?gender=Women"}
-                    className="vx-look-card group"
+                    className={"vx-look-card group " + (originalIndex === (collections.length > 1 ? activeLookIndex : 0) ? "is-active" : "")}
                     data-look-slide
+                    data-look-index={originalIndex}
                     aria-hidden={isClone}
                     tabIndex={isClone ? -1 : undefined}
                   >
