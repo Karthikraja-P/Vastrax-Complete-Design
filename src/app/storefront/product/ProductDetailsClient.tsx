@@ -527,7 +527,7 @@ function ProductContent() {
               <div className="w-full lg:w-[55%]">
                 <div
                   style={{ backgroundColor: activeGalleryBackdrop }}
-                  className="rounded-[2.5rem] aspect-square relative flex items-center justify-center p-4 sm:p-8 transition-colors duration-300 overflow-hidden"
+                  className="rounded-[2.5rem] aspect-square relative flex items-center justify-center transition-colors duration-300 overflow-hidden"
                   onTouchStart={(event) => {
                     swipeHandled.current = false;
                     const touch = event.touches[0];
@@ -586,7 +586,7 @@ function ProductContent() {
                         setIsGalleryOpen(true);
                       }}
                       aria-label={`Enlarge image ${activeImageIndex + 1} of ${product.name}`}
-                      className="h-full w-full cursor-pointer rounded-2xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                      className="h-full w-full cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
                     >
                       <Image width={1200} height={900} unoptimized
                         src={activeGalleryImage}
@@ -595,7 +595,7 @@ function ProductContent() {
                           const sampled = sampleImageBackdrop(event.currentTarget);
                           if (sampled) setGalleryImageBackdrops((current) => ({ ...current, [activeGalleryImage]: sampled }));
                         }}
-                        className="w-full h-full object-contain rounded-2xl bg-transparent p-2 md:p-4 animate-fade-in"
+                        className="w-full h-full object-contain bg-transparent animate-fade-in"
                       />
                     </button>
                   )}
