@@ -66,7 +66,19 @@ async def _run_generation(job_id: str, product_id: str | None, category_id: str 
                     )
                     if response.status_code != 200:
                         logger.warning("3D generator returned %s: %s", response.status_code, response.text[:500])
-                        raise RuntimeError("3D reconstruction failed. No model was attached; please retry.")
+                        try:
+                            error_payload = response.json()
+                        except ValueError:
+                            error_payload = {}
+                        if not isinstance(error_payload, dict):
+                            error_payload = {}
+                        detail = (
+                            error_payload.get("detail")
+                            or error_payload.get("message")
+                            or response.text[:300]
+                            or f"HTTP {response.status_code}"
+                        )
+                        raise RuntimeError(f"3D generator error: {detail}")
                     result = response.json()
                     model_url = result.get("model_url")
                     generation_mode = result.get("generation_mode", "unknown")
