@@ -310,6 +310,7 @@
   /* Keep the enlarged center slide fully visible inside the horizontal scrollport. */
   padding-block: var(--vx-look-bleed-space);
   margin-block: calc(-1 * var(--vx-look-bleed-space));
+  margin-top: calc(-1 * var(--vx-look-bleed-space) + 4rem);
   overscroll-behavior-inline: contain;
   scroll-snap-type: x mandatory;
   scrollbar-width: none;
