@@ -457,10 +457,6 @@ export default function StorefrontHome() {
                     <div className="vx-look-stage">
                       <Image src={look.image} alt={isClone ? "" : look.title || look.name} width={1086} height={1449} sizes="(max-width: 640px) 84vw, (max-width: 1024px) 62vw, 52vw" unoptimized={look.image.startsWith("http")} loading={originalIndex === 0 && !isClone ? "eager" : "lazy"} className="vx-look-image" />
                     </div>
-                    <div className="vx-look-meta">
-                      <h3>{look.title || look.name}</h3>
-                      {typeof look.price === "number" && look.price > 0 && <p>{String.fromCharCode(8377)}{look.price.toLocaleString("en-IN")}</p>}
-                    </div>
                   </Link>
                 );
               }) : <p className="vx-empty-edit">New coordinated looks will appear here as they are added.</p>}

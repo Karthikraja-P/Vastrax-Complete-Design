@@ -368,41 +368,6 @@
   letter-spacing: 0.08em;
 }
 
-.vx-look-meta {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 0.8rem;
-  padding: 0.8rem 0.1rem 0.3rem;
-  opacity: 0.55;
-  transform: scale(0.82);
-  transform-origin: top center;
-  transition: opacity 360ms ease, transform 360ms ease;
-}
-
-.vx-look-card.is-active .vx-look-meta,
-.vx-look-card:not(.is-active):hover .vx-look-meta,
-.vx-look-card:not(.is-active):focus-visible .vx-look-meta {
-  opacity: 1;
-  transform: scale(1);
-}
-
-.vx-look-meta h3 {
-  overflow: hidden;
-  font-size: clamp(0.9rem, 1.1vw, 1.05rem);
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.vx-look-meta p {
-  flex: 0 0 auto;
-  color: var(--vx-ink);
-  font-size: 0.95rem;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-}
-
 .vx-empty-edit {
   grid-column: 1 / -1;
   border: 1px dashed var(--vx-line);
@@ -654,20 +619,6 @@
 
   .vx-look-image {
     padding: 0.1rem;
-  }
-
-  .vx-look-meta {
-    display: block;
-    padding-top: 0.7rem;
-  }
-
-  .vx-look-meta h3 {
-    font-size: 0.85rem;
-  }
-
-  .vx-look-meta p {
-    margin-top: 0.25rem;
-    font-size: 0.9rem;
   }
 
   .vx-product-stage {
