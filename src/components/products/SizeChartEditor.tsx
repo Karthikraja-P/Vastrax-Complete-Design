@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { SizeChart } from "@/lib/sizeChart";
-import { WOMENS_SIZE_CHART } from "@/lib/sizeChart";
+import { WOMENS_SIZE_CHART, sortSizeLabels, sortSizeRows } from "@/lib/sizeChart";
 
 interface SizeChartEditorProps {
   value: SizeChart;
@@ -31,7 +31,7 @@ export function SizeChartEditor({ value, onChange, stockBySize, onStockChange }:
       .filter((option) => selectedSizes.has(option.toLowerCase()))
       .map((option) => WOMENS_SIZE_CHART.rows.find((row) => row.size === option)!)
       .map((row) => ({ ...row }));
-    const nextRows = [...standardRows, ...customRows];
+    const nextRows = sortSizeRows([...standardRows, ...customRows]);
 
     onChange({
       unit: WOMENS_SIZE_CHART.unit,
@@ -54,15 +54,15 @@ export function SizeChartEditor({ value, onChange, stockBySize, onStockChange }:
     onChange({
       unit: WOMENS_SIZE_CHART.unit,
       headers: [...WOMENS_SIZE_CHART.headers],
-      rows: [...value.rows, { size, ...Object.fromEntries(measurementKeys.map((key) => [key, ""])) }],
+      rows: sortSizeRows([...value.rows, { size, ...Object.fromEntries(measurementKeys.map((key) => [key, ""])) }]),
     });
     if (onStockChange) onStockChange((current) => ({ ...current, [size]: "0" }));
     setCustomSize("");
   };
 
-  const customSizes = value.rows
+  const customSizes = sortSizeLabels(value.rows
     .map((row) => row.size)
-    .filter((size) => !availableSizeOptions.some((option) => option.toLowerCase() === size.toLowerCase()));
+    .filter((size) => !availableSizeOptions.some((option) => option.toLowerCase() === size.toLowerCase())));
   const sizesToDisplay = [...availableSizeOptions, ...customSizes];
 
   return (
@@ -135,7 +135,7 @@ export function SizeChartEditor({ value, onChange, stockBySize, onStockChange }:
       </div>
 
       <p className="text-xs text-muted-foreground">
-        {value.rows.length ? `Selected: ${value.rows.map((row) => row.size).join(", ")}` : "Select at least one size and enter its stock quantity."}
+        {value.rows.length ? `Selected: ${sortSizeLabels(value.rows.map((row) => row.size)).join(", ")}` : "Select at least one size and enter its stock quantity."}
       </p>
     </section>
   );

@@ -16,7 +16,7 @@ import { Product3DModal } from "@/components/3d/Product3DModal";
 import { productsApi, fetchApi, ProductItem, ProductVariant } from "@/lib/api";
 import { addToCart as addCartItem } from "@/lib/cart";
 import { useCartItems } from "@/hooks/useCartItems";
-import { isSizeChart, SizeChart, WOMENS_SIZE_CHART } from "@/lib/sizeChart";
+import { isSizeChart, SizeChart, sortSizeLabels, WOMENS_SIZE_CHART } from "@/lib/sizeChart";
 import { showToast } from "@/lib/toast";
 import StorefrontMobileControls from "@/components/layout/StorefrontMobileControls";
 import { useFavorites } from "@/hooks/useFavorites";
@@ -297,7 +297,7 @@ function ProductContent() {
   const isOutOfStock = currentStock <= 0;
   const chartSizes = product.size_chart?.rows.map((row) => row.size.trim()).filter(Boolean) || [];
   const variantSizes = product.variants?.map((variant) => variant.size?.trim()).filter((size): size is string => Boolean(size)) || [];
-  const availableSizes = variantSizes.length ? variantSizes : chartSizes;
+  const availableSizes = sortSizeLabels(variantSizes.length ? variantSizes : chartSizes);
 
   const handleSubscribeNotify = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -7,6 +7,7 @@ import Link from "next/link";
 import { clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { productsApi, categoriesApi, CategoryItem } from "@/lib/api";
+import { sortSizeRows } from "@/lib/sizeChart";
 import type { SizeChart } from "@/lib/sizeChart";
 import { useRouter } from "next/navigation";
 import { getSession } from "next-auth/react";
@@ -464,7 +465,7 @@ export default function AddProductPage() {
         price_mrp: regularPrice,
         is_published: publish,
         is_featured: isFeatured,
-        variants: sizeChart.rows
+        variants: sortSizeRows(sizeChart.rows)
           .filter((row) => row.size.trim())
           .map((row) => ({
             sku: generateProductCode({ category: selectedCategoryName, style: name, colour, size: row.size }),

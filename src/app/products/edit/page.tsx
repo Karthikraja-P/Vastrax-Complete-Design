@@ -7,7 +7,7 @@ import Link from "next/link";
 import { clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { productsApi, categoriesApi, CategoryItem } from "@/lib/api";
-import { isSizeChart } from "@/lib/sizeChart";
+import { isSizeChart, sortSizeLabels, sortSizeRows } from "@/lib/sizeChart";
 import { SizeChartEditor } from "@/components/products/SizeChartEditor";
 import AdminTryOnImageGenerator from "@/components/products/AdminTryOnImageGenerator";
 import type { SizeChart } from "@/lib/sizeChart";
@@ -160,12 +160,12 @@ function EditProductContent() {
             setReconstructResult(prod.model_path || null);
             setGender(prod.gender || "Women");
             const savedChart = isSizeChart(prod.size_chart) ? prod.size_chart : null;
-            const variantSizes = (prod.variants || []).map((variant) => variant.size?.trim()).filter((size): size is string => Boolean(size));
+            const variantSizes = sortSizeLabels((prod.variants || []).map((variant) => variant.size?.trim()).filter((size): size is string => Boolean(size)));
             const chartCoversVariants = savedChart && variantSizes.every((size) =>
               savedChart.rows.some((row) => row.size.toLowerCase() === size.toLowerCase())
             );
             if (savedChart && chartCoversVariants) {
-              setSizeChart(savedChart);
+              setSizeChart({ ...savedChart, rows: sortSizeRows(savedChart.rows) });
             } else if (variantSizes.length > 0) {
               const headers = savedChart?.headers?.length ? savedChart.headers : ["Size", "Chest (in)", "Waist (in)", "Hips (in)", "Length (in)"];
               const measurementKeys = savedChart?.rows[0]
@@ -180,7 +180,7 @@ function EditProductContent() {
                 })),
               });
             } else if (savedChart) {
-              setSizeChart(savedChart);
+              setSizeChart({ ...savedChart, rows: sortSizeRows(savedChart.rows) });
             }
 
             const targetCat = String(prod.category_id || prod.categoryId || "");
@@ -530,7 +530,7 @@ function EditProductContent() {
         price_mrp: regularPrice,
         is_published: publish,
         is_featured: isFeatured,
-        variants: sizeChart.rows
+        variants: sortSizeRows(sizeChart.rows)
           .filter((row) => row.size.trim())
           .map((row) => ({
             sku: generateProductCode({ category: selectedCategoryName, style: name, colour, size: row.size }),

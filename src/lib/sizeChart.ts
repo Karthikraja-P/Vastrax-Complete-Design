@@ -13,6 +13,30 @@ export const WOMENS_SIZE_CHART: SizeChart = {
   ],
 };
 
+const standardSizeOrder = WOMENS_SIZE_CHART.rows.map((row) => row.size.toUpperCase());
+
+export function sortSizeLabels(sizes: string[]): string[] {
+  return [...sizes].sort((left, right) => {
+    const leftRank = standardSizeOrder.indexOf(left.trim().toUpperCase());
+    const rightRank = standardSizeOrder.indexOf(right.trim().toUpperCase());
+    if (leftRank >= 0 || rightRank >= 0) {
+      if (leftRank < 0) return 1;
+      if (rightRank < 0) return -1;
+      return leftRank - rightRank;
+    }
+    return left.localeCompare(right, undefined, { numeric: true, sensitivity: "base" });
+  });
+}
+
+export function sortSizeRows<T extends { size: string }>(rows: T[]): T[] {
+  const orderedSizes = sortSizeLabels(rows.map((row) => row.size));
+  const remainingRows = [...rows];
+  return orderedSizes.map((size) => {
+    const rowIndex = remainingRows.findIndex((row) => row.size === size);
+    return remainingRows.splice(rowIndex, 1)[0];
+  });
+}
+
 export interface SizeChartRow {
   size: string;
   [measurement: string]: string;
