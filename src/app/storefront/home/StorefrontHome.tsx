@@ -381,7 +381,8 @@ export default function StorefrontHome() {
           </div>
         </section>
 
-        <section className="vx-category-strip mx-auto mt-5 w-full max-w-[1400px] px-5 py-12 md:px-12 md:py-16" aria-labelledby="category-title">
+        <section className="vx-category-strip mt-5 w-full py-12 md:py-16" aria-labelledby="category-title">
+          <div className="mx-auto w-full max-w-[1400px] px-6 md:px-12">
           <div className="vx-section-heading mb-7">
             <h2 id="category-title">Find your kind of set</h2>
           </div>
@@ -396,9 +397,11 @@ export default function StorefrontHome() {
               </Link>
             )}
           </nav>
+          </div>
         </section>
 
-        <section id="featured-looks" className="vx-edit-section mx-auto mt-2 w-full max-w-[1400px] px-5 pb-16 pt-6 md:px-12 md:pb-24" aria-labelledby="edit-title">
+        <section id="featured-looks" className="vx-edit-section mt-2 w-full pb-16 pt-6 md:pb-24" aria-labelledby="edit-title">
+          <div className="mx-auto w-full max-w-[1400px] px-6 md:px-12">
           <div className="vx-section-heading mb-8 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
             <div>
               <p className="vx-kicker">MADE TO BE WORN TOGETHER</p>
@@ -465,6 +468,7 @@ export default function StorefrontHome() {
                 );
               }) : <p className="vx-empty-edit">New coordinated looks will appear here as they are added.</p>}
             </div>
+          </div>
           </div>
         </section>
       </main>
