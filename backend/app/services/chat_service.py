@@ -13,10 +13,12 @@ SHOPPER HELP — ORDERS, SIZE, TRY-ON, AND STYLE:
 - You are the VastraX store assistant as well as a stylist. Help with order updates, product discovery, size charts, virtual try-on, and practical outfit advice.
 - For “where is my order?”, “check my orders”, or order tracking without an order number, use the verified recent-order account context below and call list_my_orders if more detail is needed. For a supplied order number, call get_order_status. Never claim you cannot access the shopper's orders page; the secure account lookup can check their signed-in account. If they are not signed in, explain that they must sign in to the account that placed the order. Do not invent shipping, payment, courier, or delivery updates. The shopper can also open My Account → Orders & Shipment at /storefront/account. If the verified lookup returns zero orders, say none are listed for the signed-in account and suggest checking that they signed in with the account used to place the order.
 - For current product availability or recommendations, use search_products when needed and recommend only published items in the live catalog. Include the [PRODUCT:id] tag for each product you recommend.
-- For sizing, use the actual size chart and configured sizes included in the catalog. Use check_inventory before claiming a size is in stock. Do not claim the chart predicts exact fit; invite the shopper to compare their measurements with the chart.
+- For sizing, retrieve the actual product size chart with get_product_details when needed, then compare it with measurements the shopper provides. Use check_inventory before claiming a size is in stock. Do not claim the chart predicts exact fit.
 - For virtual try-on, explain that it is a visual preview, not a fit measurement. Give practical photo guidance when useful: use a clear, well-lit, full-length photo, stand mostly facing the camera with arms slightly away from the body, keep the outfit visible, and avoid other people or objects covering the person. Link them to the product's Virtual Try-On page when relevant.
 - Give natural, useful general style advice when asked. You may discuss visual styling effects (for example, vertical stripes can create a longer visual line) as optional styling ideas, never as guaranteed effects or assumptions about the shopper's body. Personalize only from preferences or measurements the shopper actually shared; do not infer complexion, body shape, or fit from an image or product name.
 - Speak like a thoughtful, attentive human in a relaxed conversation. Answer the shopper's actual question first, use earlier turns when relevant, and do not restart the conversation or repeat a question they already answered.
+- For the first reply, welcome the shopper warmly and naturally, then help with what they asked; if they only greet you, greet them back and offer one easy way to begin. In later turns, acknowledge their answer or preference briefly and build on it instead of resetting to a generic pitch. Treat details already shared as known: never say they have not specified something they already told you, and never repeat the same follow-up question.
+- Sound like a helpful boutique stylist: use plain, warm language, vary phrasing naturally, and show interest through relevant follow-up—not exaggerated enthusiasm, sales pressure, or repeated "How can I help?" lines. Be transparent that you are Vastra, the AI stylist; never claim to be a human employee.
 - Be concise by default, but give enough detail to solve the question. Do not force a product recommendation, follow-up question, or quick-reply chips into a simple factual answer. Ask one focused question only when the answer genuinely depends on it.
 - Use cart context only when it helps with pairing or the shopper asks about their bag. Never expose internal IDs or repeat the cart contents unnecessarily.
 """
@@ -60,16 +62,12 @@ def _get_catalog_context(db=None) -> str:
                     occasion = p.occasion or "not specified"
                     price = f"₹{p.price_selling:,.0f}" if p.price_selling is not None else "not specified"
                     desc = p.description or ""
-                    lines.append(f"{i}. ID: {p.id} | Name: {p.name} | Category: {cat_name} | Occasion: {occasion}")
-                    lines.append(f"   Fabric: {fabric} | Colour: {colour} | Price: {price}")
+                    lines.append(f"{i}. ID: {p.id} | Name: {p.name} | Category: {cat_name} | Occasion: {occasion} | Fabric: {fabric} | Colour: {colour} | Price: {price}")
                     sizes = ", ".join(v.size for v in p.variants) or "not specified"
-                    lines.append(f"   Configured sizes: {sizes}")
-                    if p.size_chart:
-                        chart = json.dumps(p.size_chart, ensure_ascii=False, separators=(",", ":"), default=str)
-                        lines.append(f"   Size chart: {chart[:1600]}")
                     if desc:
-                        lines.append(f"   Description: {desc}")
-                    lines.append(f"   Product page: /storefront/product?id={p.id} | Virtual try-on: /storefront/product/{p.id}/tryon")
+                        lines.append(f"   Sizes: {sizes} | About: {desc[:180].strip()}")
+                    else:
+                        lines.append(f"   Sizes: {sizes}")
                 return "\n".join(lines)
         except Exception as e:
             logger.warning("Could not load products from database: %s", e)
@@ -120,6 +118,7 @@ def _call_qwen(
 
     qwen_messages = [{"role": "system", "content": system_prompt}] + messages
     executed_tools = []
+    available_tools = _relevant_tools(messages, CHAT_TOOLS) if db is not None else []
     try:
         with httpx.Client(timeout=120.0, trust_env=False) as client:
 
@@ -127,12 +126,12 @@ def _call_qwen(
                 payload = {
                     "model": model,
                     "messages": qwen_messages,
-                    "options": {"num_predict": 768, "num_ctx": 4096, "num_gpu": 28, "temperature": 0.6},
+                    "options": {"num_predict": 384, "num_ctx": 4096, "num_gpu": 28, "temperature": 0.6},
                     "think": False,
                     "stream": False,
                 }
-                if include_tools and db is not None:
-                    payload["tools"] = CHAT_TOOLS
+                if include_tools and available_tools:
+                    payload["tools"] = available_tools
                 res = client.post(base_url, json=payload)
                 if res.status_code != 200:
                     logger.error("Local Qwen API returned HTTP %s", res.status_code)
@@ -196,6 +195,27 @@ def _sanitize_client_messages(messages: list) -> list:
         for m in messages or []
         if isinstance(m, dict) and m.get("role") in _CLIENT_ROLES and isinstance(m.get("content"), str)
     ]
+
+
+def _relevant_tools(messages: list, tool_definitions: list) -> list:
+    """Keep unrelated tool schemas out of the prompt so the model can retain chat history."""
+    latest = next((m.get("content", "") for m in reversed(messages) if m.get("role") == "user"), "")
+    text = latest.lower()
+    selected = set()
+
+    if re.search(r"\b(order|shipment|tracking|delivery|shipped|courier|return|exchange|refund|cancel|support|damaged)\b", text):
+        selected.update({
+            "list_my_orders", "get_order_status", "get_order_details", "get_shipping_estimate",
+            "check_return_eligibility", "cancel_order", "create_support_ticket", "connect_to_human",
+        })
+    if re.search(r"\b(size chart|measurements|fabric|details|product details)\b", text):
+        selected.add("get_product_details")
+    if re.search(r"\b(in stock|stock|available|availability)\b", text):
+        selected.add("check_inventory")
+    if re.search(r"\b(show|find|recommend|suggest|looking for|shop|catalog|collection|outfit|look|product|products|dress|top|skirt|co-?ord(?:inated|s|set)?|set|occasion|colour|color|price|budget)\b", text):
+        selected.add("search_products")
+
+    return [tool for tool in tool_definitions if tool.get("function", {}).get("name") in selected]
 
 
 def _order_lookup_context(messages: list, db, user_id: str | None) -> str:

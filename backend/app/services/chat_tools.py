@@ -57,7 +57,7 @@ CHAT_TOOLS = [
         "type": "function",
         "function": {
             "name": "get_product_details",
-            "description": "Retrieve comprehensive details for a specific product including price, fabric, available colors, description, and available sizes.",
+            "description": "Retrieve verified details for a specific published product, including price, fabric, colour, description, available sizes, and its actual size chart.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -357,6 +357,7 @@ def _get_product_details(db: Session, product_id: str) -> Dict[str, Any]:
         "colour": p.colour,
         "occasion": p.occasion,
         "description": p.description,
+        "size_chart": p.size_chart,
         "image": p.images[0].s3_url if p.images else None,
         "sizes": variants,
     }

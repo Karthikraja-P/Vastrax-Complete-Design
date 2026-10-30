@@ -416,28 +416,41 @@ export function StylistDrawer({ isOpen: externalIsOpen, onClose: externalOnClose
                       <Sparkles className="w-7 h-7 text-accent" />
                     </div>
                     <h4 className="text-base md:text-lg font-bold text-foreground tracking-tight mb-2">
-                      Meet Vastra, Your AI Stylist
+                      Welcome in — I’m Vastra
                     </h4>
-                    <p className="text-xs text-muted-foreground max-w-sm leading-relaxed mb-6">
-                      Ask about an occasion, a piece you’re viewing, size guidance, virtual try-on, your order, or everyday styling. I’ll use the live collection and any preferences you choose to share.
+                    <p className="text-sm text-muted-foreground max-w-sm leading-relaxed mb-5">
+                      Tell me what you’re shopping for, or point me to a piece you like. I can help you put a look together, check sizes and availability, or find an order. What’s on your mind?
                     </p>
 
-                    {/* Collapsible Inspiration Quick-Starters (Option 2 & 3 Hybrid) */}
-                    <div className="w-full max-w-sm">
+                    <div className="w-full max-w-sm grid grid-cols-1 gap-1.5">
+                      {activePrompts.slice(0, 3).map((prompt, i) => (
+                        <button
+                          key={i}
+                          onClick={() => handleSend(prompt)}
+                          className="text-left px-3.5 py-2.5 rounded-xl bg-surface border border-border/80 hover:border-accent/40 text-sm text-foreground hover:text-accent transition-all cursor-pointer shadow-sm hover:scale-[1.01] flex items-center justify-between group"
+                        >
+                          <span>{prompt}</span>
+                          <ChevronRight className="w-3.5 h-3.5 text-muted-foreground group-hover:text-accent group-hover:translate-x-0.5 transition-all" />
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Keep the first welcome simple while leaving more conversation starters available. */}
+                    {activePrompts.length > 3 && <div className="w-full max-w-sm mt-2">
                       <button
                         type="button"
                         onClick={() => setShowInspiration(prev => !prev)}
                         className="w-full py-2.5 px-4 rounded-xl border border-border bg-surface/80 hover:bg-surface text-xs text-foreground/90 flex items-center justify-between transition-colors cursor-pointer shadow-sm"
                       >
                         <span className="flex items-center gap-2 font-medium text-accent">
-                          <Sparkles className="w-3.5 h-3.5" /> Need inspiration?
+                          <Sparkles className="w-3.5 h-3.5" /> More ideas
                         </span>
                         <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform duration-200 ${showInspiration ? "rotate-180" : ""}`} />
                       </button>
 
                       {showInspiration && (
                         <div className="grid grid-cols-1 gap-1.5 pt-2 pb-1 animate-in fade-in slide-in-from-top-1 duration-200">
-                          {activePrompts.map((prompt, i) => (
+                          {activePrompts.slice(3).map((prompt, i) => (
                             <button
                               key={i}
                               onClick={() => handleSend(prompt)}
@@ -449,7 +462,7 @@ export function StylistDrawer({ isOpen: externalIsOpen, onClose: externalOnClose
                           ))}
                         </div>
                       )}
-                    </div>
+                    </div>}
                   </div>
                 )}
 
