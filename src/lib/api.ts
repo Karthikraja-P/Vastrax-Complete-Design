@@ -852,7 +852,8 @@ export const chatApi = {
     profile: JsonObject = {},
     contextUrl?: string,
     cartItems?: ChatCartItem[],
-    userId?: string
+    userId?: string,
+    wishlistProductIds?: string[]
   ): Promise<ChatResponse> {
     const messagesPayload = [...history, { role: "user", content: message }];
     return await fetchApi<ChatResponse>("/chat", {
@@ -863,7 +864,8 @@ export const chatApi = {
         profile,
         context_url: contextUrl,
         cart_items: cartItems,
-        user_id: userId
+        user_id: userId,
+        wishlist_product_ids: wishlistProductIds
       }),
     });
   },

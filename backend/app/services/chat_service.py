@@ -13,6 +13,7 @@ SHOPPER HELP — ORDERS, SIZE, TRY-ON, AND STYLE:
 - You are the VastraX store assistant as well as a stylist. Help with order updates, product discovery, size charts, virtual try-on, and practical outfit advice.
 - For “where is my order?”, “check my orders”, or order tracking without an order number, use the verified recent-order account context below and call list_my_orders if more detail is needed. For a supplied order number, call get_order_status. Never claim you cannot access the shopper's orders page; the secure account lookup can check their signed-in account. If they are not signed in, explain that they must sign in to the account that placed the order. Do not invent shipping, payment, courier, or delivery updates. The shopper can also open My Account → Orders & Shipment at /storefront/account. If the verified lookup returns zero orders, say none are listed for the signed-in account and suggest checking that they signed in with the account used to place the order.
 - For current product availability or recommendations, use search_products when needed and recommend only published items in the live catalog. Include the [PRODUCT:id] tag for each product you recommend.
+- For questions about saved, favorited, or wishlisted items, use only the verified WISHLIST CONTEXT below. Mention specific saved products from that list and include [PRODUCT:id] tags when recommending them. If the list is empty, say you cannot see any saved items yet and invite the shopper to save a product; never invent wishlist contents.
 - For sizing, retrieve the actual product size chart with get_product_details when needed, then compare it with measurements the shopper provides. Use check_inventory before claiming a size is in stock. Do not claim the chart predicts exact fit.
 - For virtual try-on, explain that it is a visual preview, not a fit measurement. Give practical photo guidance when useful: use a clear, well-lit, full-length photo, stand mostly facing the camera with arms slightly away from the body, keep the outfit visible, and avoid other people or objects covering the person. Link them to the product's Virtual Try-On page when relevant.
 - Give natural, useful general style advice when asked. You may discuss visual styling effects (for example, vertical stripes can create a longer visual line) as optional styling ideas, never as guaranteed effects or assumptions about the shopper's body. Personalize only from preferences or measurements the shopper actually shared; do not infer complexion, body shape, or fit from an image or product name.
@@ -74,7 +75,7 @@ def _get_catalog_context(db=None) -> str:
     return "LIVE BOUTIQUE CATALOG: No published products are currently available."
 
 
-def _build_system_prompt(profile: dict, db=None, context_url: str = None, cart_items: list = None, order_context: str = "") -> str:
+def _build_system_prompt(profile: dict, db=None, context_url: str = None, cart_items: list = None, order_context: str = "", wishlist_context: str = "") -> str:
     from app.api.routes.settings import load_app_settings
     app_settings = load_app_settings(db)
     admin_instructions = getattr(app_settings, "stylistSystemPrompt", "You are Vastra, the personal style advisor for VastraX boutique.")
@@ -88,6 +89,9 @@ def _build_system_prompt(profile: dict, db=None, context_url: str = None, cart_i
         
     if order_context:
         ctx += f"\n\nVERIFIED ACCOUNT ORDER LOOKUP:\n{order_context}\nUse this data only to answer the signed-in shopper's order question; state the recorded status and tracking details plainly."
+
+    if wishlist_context:
+        ctx += f"\n\n{wishlist_context}"
 
     if context_url:
         ctx += f"\n\nCURRENT PAGE: User is currently on this page/product URL: {context_url}. If this is a product page, proactively use this context to provide relevant styling advice for this specific item."
@@ -232,6 +236,66 @@ def _order_lookup_context(messages: list, db, user_id: str | None) -> str:
 
 # ── Public entry point ────────────────────────────────────────────────────────
 
+def _wishlist_lookup_context(messages: list, db, user_id: str | None, client_product_ids: list | None) -> str:
+    """Resolve account wishlist or validated guest favorite IDs for wishlist questions."""
+    if not messages or db is None:
+        return ""
+    latest = next((m.get("content", "") for m in reversed(messages) if m.get("role") == "user"), "")
+    if not re.search(r"\b(?:wish\s?list(?:ed)?|favorites?|favourites?|saved (?:items?|products?|pieces?))\b", latest, re.IGNORECASE):
+        return ""
+
+    try:
+        from app.models.product import Product
+        from app.models.wishlist import Wishlist
+
+        product_ids: list[str] = []
+        if user_id:
+            account_ids = (
+                db.query(Wishlist.product_id)
+                .join(Product, Product.id == Wishlist.product_id)
+                .filter(Wishlist.user_id == user_id, Product.is_published.is_(True))
+                .order_by(Wishlist.added_at.desc())
+                .limit(24)
+                .all()
+            )
+            product_ids.extend(product_id for (product_id,) in account_ids)
+
+        # Guest favorites are browser-local; IDs are hints, resolved below against published products.
+        for raw_id in client_product_ids or []:
+            if isinstance(raw_id, str):
+                clean_id = raw_id.strip()
+                if clean_id and clean_id not in product_ids:
+                    product_ids.append(clean_id)
+            if len(product_ids) >= 24:
+                break
+
+        if not product_ids:
+            if user_id:
+                return "VERIFIED WISHLIST CONTEXT: The signed-in shopper's wishlist is empty. Do not claim they have saved items; invite them to save pieces they like."
+            return "VERIFIED WISHLIST CONTEXT: No guest favorites were supplied and the shopper is not signed in. Do not claim to see saved items; invite them to save a product or sign in to view their account wishlist."
+
+        products = db.query(Product).filter(
+            Product.id.in_(product_ids), Product.is_published.is_(True)
+        ).all()
+        by_id = {product.id: product for product in products}
+        ordered = [by_id[product_id] for product_id in product_ids if product_id in by_id][:12]
+        if not ordered:
+            return "VERIFIED WISHLIST CONTEXT: No saved products are currently published in the catalog. Do not invent saved items; offer to browse current pieces."
+
+        lines = [f"VERIFIED WISHLIST CONTEXT ({len(ordered)} published saved products):"]
+        for product in ordered:
+            category = product.category.name if product.category else "Apparel"
+            price = f"INR {product.price_selling:,.0f}" if product.price_selling is not None else "not listed"
+            colour = product.colour or "not specified"
+            fabric = product.fabric or "not specified"
+            lines.append(f"- ID: {product.id} | Name: {product.name} | Category: {category} | Colour: {colour} | Fabric: {fabric} | Price: {price}")
+        lines.append("Use only these saved products when answering what the shopper saved or styling their wishlist. Check live catalog/inventory before making availability claims.")
+        return "\n".join(lines)
+    except Exception as exc:
+        logger.warning("Could not load stylist wishlist context: %s", type(exc).__name__)
+        return "VERIFIED WISHLIST CONTEXT: Wishlist lookup is temporarily unavailable. Be transparent and do not guess saved items."
+
+
 def chat(
     messages: list,
     profile: dict,
@@ -240,6 +304,7 @@ def chat(
     cart_items: list = None,
     user_id: str = None,
     session_id: str = None,
+    wishlist_product_ids: list = None,
 ) -> tuple[str, list]:
     """
     Shopper stylist chat uses the self-hosted Qwen model only. An outage raises
@@ -255,8 +320,10 @@ def chat(
     if not model or not url:
         raise ServiceUnavailableError("Stylist is not configured")
     order_context = _order_lookup_context(messages, db, user_id)
+    wishlist_context = _wishlist_lookup_context(messages, db, user_id, wishlist_product_ids)
     system_prompt = _build_system_prompt(
-        profile, db=db, context_url=context_url, cart_items=cart_items, order_context=order_context
+        profile, db=db, context_url=context_url, cart_items=cart_items,
+        order_context=order_context, wishlist_context=wishlist_context
     )
     return _call_qwen(
         messages=messages,
@@ -277,6 +344,7 @@ def chat_stream(
     cart_items: list = None,
     user_id: str = None,
     session_id: str = None,
+    wishlist_product_ids: list = None,
 ):
     """
     Server-Sent Events for a streamed reply. The provider call runs eagerly (before the
@@ -290,6 +358,7 @@ def chat_stream(
         cart_items=cart_items,
         user_id=user_id,
         session_id=session_id,
+        wishlist_product_ids=wishlist_product_ids,
     )
     return _sse_events(reply_text, executed_tools, session_id)
 

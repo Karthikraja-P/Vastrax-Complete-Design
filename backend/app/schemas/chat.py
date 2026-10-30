@@ -15,6 +15,7 @@ class ChatRequest(BaseModel):
     user_id: Optional[str] = None
     context_url: Optional[str] = None
     cart_items: Optional[list] = None
+    wishlist_product_ids: Optional[List[str]] = None
 
 
 class ChatHistoryItem(BaseModel):

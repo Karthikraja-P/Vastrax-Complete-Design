@@ -64,6 +64,7 @@ def chat_endpoint(
         db=db,
         context_url=req.context_url,
         cart_items=req.cart_items,
+        wishlist_product_ids=req.wishlist_product_ids,
         user_id=user_id,
         session_id=session_id,
     )
@@ -154,6 +155,7 @@ def chat_stream_endpoint(
         db=db,
         context_url=req.context_url,
         cart_items=req.cart_items,
+        wishlist_product_ids=req.wishlist_product_ids,
         user_id=user_id,
         session_id=session_id,
     )

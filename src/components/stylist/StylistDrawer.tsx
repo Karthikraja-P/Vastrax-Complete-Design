@@ -8,7 +8,7 @@ import {
   Shirt, RefreshCcw, Loader2, CheckCircle2, Heart, ShoppingBag, Eye,
   ChevronDown, ChevronRight
 } from "lucide-react";
-import { chatApi, ordersApi, type ChatResponse } from "@/lib/api";
+import { chatApi, fetchApi, ordersApi, type ChatResponse } from "@/lib/api";
 import { useRouter, usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useFavorites } from "@/hooks/useFavorites";
@@ -182,6 +182,7 @@ export function StylistDrawer({ isOpen: externalIsOpen, onClose: externalOnClose
   const { isFavorite, toggleFavorite, favorites } = useFavorites();
 
   const [apiHasOrders, setApiHasOrders] = useState(false);
+  const [apiFavoritesCount, setApiFavoritesCount] = useState(0);
   const [showInspiration, setShowInspiration] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -244,13 +245,25 @@ export function StylistDrawer({ isOpen: externalIsOpen, onClose: externalOnClose
 
   const hasOrders = localHasOrders || (signedIn && apiHasOrders);
 
+  useEffect(() => {
+    if (!isOpen || !signedIn) {
+      if (!signedIn) setApiFavoritesCount(0);
+      return;
+    }
+    let active = true;
+    fetchApi<Array<{ id: string }>>("/users/me/wishlist")
+      .then((items) => { if (active) setApiFavoritesCount(Array.isArray(items) ? items.length : 0); })
+      .catch(() => { if (active) setApiFavoritesCount(0); });
+    return () => { active = false; };
+  }, [isOpen, signedIn]);
+
   // Active prompts follow activity or route changes
   const activePrompts = useMemo(() => {
     void isOpen; // recompute (cart contents may have changed) whenever the drawer is toggled
     const cartHasItems = getCart().length > 0;
-    const favsCount = favorites?.length || 0;
+    const favsCount = Math.max(favorites?.length || 0, signedIn ? apiFavoritesCount : 0);
     return getSuggestionsForActivity(pathname, hasOrders, cartHasItems, favsCount).prompts;
-  }, [isOpen, pathname, hasOrders, favorites]);
+  }, [isOpen, pathname, hasOrders, favorites, signedIn, apiFavoritesCount]);
 
   // Initialize or load session & history
   useEffect(() => {
@@ -314,7 +327,7 @@ export function StylistDrawer({ isOpen: externalIsOpen, onClose: externalOnClose
         color,
         quantity,
       }));
-      const res = await chatApi.sendMessage(query, sessionId, historyPayload, {}, contextUrl, cartContext, userId);
+      const res = await chatApi.sendMessage(query, sessionId, historyPayload, {}, contextUrl, cartContext, userId, favorites);
       const { cleanText, chips } = parseTagsFromReply(res.message);
 
       const stylistMsg: Message = {
