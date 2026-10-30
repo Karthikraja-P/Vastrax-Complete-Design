@@ -29,10 +29,10 @@ interface StoreCategory {
   price?: number;
 }
 
-function moveLookCarousel(viewport: HTMLDivElement | null, count: number, direction: -1 | 1) {
-  if (!viewport || count < 2) return;
+function moveLookCarousel(viewport: HTMLDivElement | null, count: number, direction: -1 | 1): number | null {
+  if (!viewport || count < 2) return null;
   const slides = Array.from(viewport.querySelectorAll<HTMLElement>("[data-look-slide]"));
-  if (!slides.length) return;
+  if (!slides.length) return null;
   const viewportRect = viewport.getBoundingClientRect();
   const viewportCenter = viewportRect.left + viewport.clientWidth / 2;
   const currentIndex = slides.reduce((bestIndex, slide, index) => {
@@ -53,6 +53,7 @@ function moveLookCarousel(viewport: HTMLDivElement | null, count: number, direct
   };
   scrollToCenteredSlide(slides[targetIndex], "smooth");
 
+  const activeIndex = Number(slides[targetIndex].dataset.lookIndex);
   const equivalentIndex = targetIndex < count
     ? targetIndex + count
     : targetIndex >= count * 2
@@ -61,6 +62,7 @@ function moveLookCarousel(viewport: HTMLDivElement | null, count: number, direct
   if (equivalentIndex !== targetIndex) {
     window.setTimeout(() => scrollToCenteredSlide(slides[equivalentIndex], "auto"), 520);
   }
+  return Number.isFinite(activeIndex) ? activeIndex : null;
 }
 
 export default function StorefrontHome() {
@@ -79,8 +81,8 @@ export default function StorefrontHome() {
   const [isLookCarouselPaused, setIsLookCarouselPaused] = useState(false);
   const moveLookCarouselBy = useCallback((direction: -1 | 1) => {
     if (collections.length < 2) return;
-    moveLookCarousel(lookCarouselRef.current, collections.length, direction);
-    setActiveLookIndex((current) => (current + direction + collections.length) % collections.length);
+    const nextActiveIndex = moveLookCarousel(lookCarouselRef.current, collections.length, direction);
+    if (nextActiveIndex !== null) setActiveLookIndex(nextActiveIndex);
   }, [collections.length]);
 
   useEffect(() => {
@@ -99,6 +101,8 @@ export default function StorefrontHome() {
     const slideRect = initialSlide.getBoundingClientRect();
     const left = viewport.scrollLeft + slideRect.left - viewportRect.left + slideRect.width / 2 - viewport.clientWidth / 2;
     viewport.scrollTo({ left, behavior: "auto" });
+    const initialIndex = Number(initialSlide.dataset.lookIndex);
+    if (Number.isFinite(initialIndex)) setActiveLookIndex(initialIndex);
   }, [collections.length]);
   const bagItems = useCartItems();
 
