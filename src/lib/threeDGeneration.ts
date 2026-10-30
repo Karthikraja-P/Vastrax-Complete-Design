@@ -45,8 +45,8 @@ export async function generateThreeDModel(formData: FormData, token?: string | n
     const job = await readJson(response);
     onStatus?.(job);
     if (job.status === "completed") {
-      if (!job.model_url || job.generation_mode !== "hunyuan_textured") {
-        throw new Error("A textured garment-specific model was not produced. No model was attached.");
+      if (!job.model_url || job.generation_mode !== "hunyuan_multiview_textured") {
+        throw new Error("The service did not verify a textured multi-view model. No model was attached.");
       }
       return job;
     }
