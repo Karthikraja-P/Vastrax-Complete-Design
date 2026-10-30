@@ -407,22 +407,24 @@ export default function StorefrontHome() {
               <p className="vx-kicker">MADE TO BE WORN TOGETHER</p>
               <h2 id="edit-title">Shop the Looks</h2>
             </div>
-            <Link href="/storefront/collections?gender=Women" className="vx-text-link inline-flex items-center gap-2">
-              View all pieces <ArrowRight aria-hidden="true" className="h-4 w-4" />
-            </Link>
+            <div className="vx-look-heading-actions">
+              {collections.length > 1 && (
+                <div className="vx-look-controls" aria-label="Coordinated look carousel controls">
+                  <button type="button" className="vx-look-control" aria-label="Previous coordinated looks" onClick={() => moveLookCarouselBy(-1)}>
+                    <ArrowLeft aria-hidden="true" className="h-4 w-4" />
+                  </button>
+                  <button type="button" className="vx-look-control" aria-label="Next coordinated looks" onClick={() => moveLookCarouselBy(1)}>
+                    <ArrowRight aria-hidden="true" className="h-4 w-4" />
+                  </button>
+                </div>
+              )}
+              <Link href="/storefront/collections?gender=Women" className="vx-text-link inline-flex items-center gap-2">
+                View all pieces <ArrowRight aria-hidden="true" className="h-4 w-4" />
+              </Link>
+            </div>
           </div>
 
           <div className="vx-look-carousel-wrap">
-            {collections.length > 1 && (
-              <div className="vx-look-controls" aria-label="Coordinated look carousel controls">
-                <button type="button" className="vx-look-control" aria-label="Previous coordinated looks" onClick={() => moveLookCarouselBy(-1)}>
-                  <ArrowLeft aria-hidden="true" className="h-4 w-4" />
-                </button>
-                <button type="button" className="vx-look-control" aria-label="Next coordinated looks" onClick={() => moveLookCarouselBy(1)}>
-                  <ArrowRight aria-hidden="true" className="h-4 w-4" />
-                </button>
-              </div>
-            )}
             <div
               ref={lookCarouselRef}
               className="vx-look-grid"

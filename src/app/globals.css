@@ -276,10 +276,13 @@
   position: relative;
 }
 
+.vx-look-heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+}
+
 .vx-look-controls {
-  position: absolute;
-  top: -4.7rem;
-  right: 10.5rem;
   display: flex;
   gap: 0.5rem;
 }
@@ -613,11 +616,6 @@
     flex-basis: 32%;
   }
 
-  .vx-look-controls {
-    top: -4.2rem;
-    right: 9.5rem;
-  }
-
   .vx-look-stage {
     aspect-ratio: 0.76;
     border-radius: 15px;
@@ -660,10 +658,6 @@
     transform: scale(1.4);
   }
 
-  .vx-look-controls {
-    top: -3.5rem;
-    right: 8.7rem;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
