@@ -20,6 +20,14 @@ export function storefrontCollectionImage(id: string | number, fallback?: string
 }
 
 const PRODUCT_GALLERY_BEIGE_BACKGROUNDS = new Set([
+  // Keep every uploaded gallery frame for the two coord sets and skirt-and-top
+  // product on the same plain off-white canvas. These entries were previously
+  // missing, so their original grey backgrounds leaked into the gallery.
+  "8dee7e1b171a52235a21d2f7b2f5240c55734ba53975ddd161089a269b5d027d.webp",
+  "4cd351791364950c009ee4fd8a54085700bbdbf570be61a473488fd5b993c646.webp",
+  "8ab390e9f4e0f4ddd38d0eb227e880ae28c21a6ff86ab0fa4379d25250cf5d9.webp",
+  "9fd4c31c48e01974715239b244fd8fb8622bfad8352baaf05e974fdb4e35c8e4.webp",
+  "55664b986733d169b5ef96f78da2512ac7f12b98320d768abbc99fdc67ca43d6.webp",
   "fa1feea757faa71e0d27b3f0dd16b6dcabe198b201ff4ee475d5fd0346bacad0.webp",
   "9b483d39eebe78579e0cf5c6984a1a49a075cf88af62ec0349f4d3559571a546.webp",
   "17679a24b4dd0cb7a6eb3c7627fc640189021699e5aa0188e71d4b7c700a6a25.webp",
