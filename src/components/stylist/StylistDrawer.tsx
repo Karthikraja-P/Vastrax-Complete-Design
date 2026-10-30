@@ -305,7 +305,16 @@ export function StylistDrawer({ isOpen: externalIsOpen, onClose: externalOnClose
       const contextUrl = typeof window !== 'undefined' ? `${pathname}${window.location.search}` : '';
       const userId = (session?.user as { id?: string } | undefined)?.id || session?.user?.email || undefined;
       
-      const res = await chatApi.sendMessage(query, sessionId, historyPayload, {}, contextUrl, [], userId);
+      // Share only useful cart details; image URLs and stored cart metadata are not
+      // needed for a styling conversation.
+      const cartContext = getCart().map(({ id, name, size, color, quantity }) => ({
+        id,
+        name,
+        size,
+        color,
+        quantity,
+      }));
+      const res = await chatApi.sendMessage(query, sessionId, historyPayload, {}, contextUrl, cartContext, userId);
       const { cleanText, chips } = parseTagsFromReply(res.message);
 
       const stylistMsg: Message = {
@@ -410,7 +419,7 @@ export function StylistDrawer({ isOpen: externalIsOpen, onClose: externalOnClose
                       Meet Vastra, Your AI Stylist
                     </h4>
                     <p className="text-xs text-muted-foreground max-w-sm leading-relaxed mb-6">
-                      Tell me what look, celebration, or styling advice you have in mind. I tailor recommendations to your complexion, silhouette, and live boutique inventory.
+                      Ask about an occasion, a piece you’re viewing, size guidance, virtual try-on, your order, or everyday styling. I’ll use the live collection and any preferences you choose to share.
                     </p>
 
                     {/* Collapsible Inspiration Quick-Starters (Option 2 & 3 Hybrid) */}
