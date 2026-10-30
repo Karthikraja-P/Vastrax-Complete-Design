@@ -384,7 +384,7 @@ export default function StorefrontHome() {
         <section className="vx-category-strip mt-5 w-full py-12 md:py-16" aria-labelledby="category-title">
           <div className="mx-auto w-full max-w-[1400px] px-6 md:px-12">
           <div className="vx-section-heading mb-7">
-            <h2 id="category-title">Find your kind of set</h2>
+            <h2 id="category-title">Browse Categories</h2>
           </div>
           <nav aria-label="Shop by category" className="vx-category-links">
             {categories.length > 0 ? categories.map((cat) => (
@@ -405,7 +405,7 @@ export default function StorefrontHome() {
           <div className="vx-section-heading mb-8 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
             <div>
               <p className="vx-kicker">MADE TO BE WORN TOGETHER</p>
-              <h2 id="edit-title">The coordinated edit</h2>
+              <h2 id="edit-title">Shop the Looks</h2>
             </div>
             <Link href="/storefront/collections?gender=Women" className="vx-text-link inline-flex items-center gap-2">
               View all pieces <ArrowRight aria-hidden="true" className="h-4 w-4" />
