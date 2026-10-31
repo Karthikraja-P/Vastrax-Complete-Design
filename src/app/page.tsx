@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Bell, Sparkles, ChevronDown, Download, Home, ChevronRight, TrendingUp, Loader2, ShoppingCart, RotateCcw, Users, Package } from "lucide-react";
+import { Bell, ChevronDown, Download, Home, ChevronRight, TrendingUp, Loader2, ShoppingCart, RotateCcw, Users, Package } from "lucide-react";
 import { NotchedCard } from "@/components/admin/NotchedCard";
 import { analyticsApi, ordersApi, usersApi, productsApi, OrderItemRecord, AnalyticsInsights } from "@/lib/api";
 import Link from "next/link";
@@ -45,19 +45,31 @@ export default function Dashboard() {
   const ordersCount = orders.length;
   const avgOrderValue = paidOrders.length > 0 ? (totalRevenue / paidOrders.length).toFixed(2) : "0.00";
 
-  // Real-time day-of-week sales from confirmed orders
-  const dayTotals = [0, 0, 0, 0, 0, 0, 0]; // Sun=0, Mon=1...
-  paidOrders.forEach(o => {
-    if (o.createdAt) {
-      const d = new Date(o.createdAt);
-      const dayIdx = isNaN(d.getDay()) ? 0 : d.getDay();
-      dayTotals[dayIdx] += (Number(o.totalAmount) || 0);
-    }
+  // Build the seven-day trend from actual paid orders, grouped by local calendar date.
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const lastSevenDays = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(today);
+    date.setDate(today.getDate() - 6 + index);
+    return date;
   });
-  const weeklyLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-  const weeklyValues = [dayTotals[1], dayTotals[2], dayTotals[3], dayTotals[4], dayTotals[5], dayTotals[6], dayTotals[0]];
+  const dateKey = (date: Date) => date.getFullYear() + "-" + date.getMonth() + "-" + date.getDate();
+  const weeklyLabels = lastSevenDays.map((date) => date.toLocaleDateString("en-IN", { weekday: "short" }));
+  const weeklyValues = lastSevenDays.map((date) => paidOrders.reduce((sum, order) => {
+    if (!order.createdAt || dateKey(new Date(order.createdAt)) !== dateKey(date)) return sum;
+    return sum + (Number(order.totalAmount) || 0);
+  }, 0));
   const totalWeeklySales = weeklyValues.reduce((a, b) => a + b, 0);
-  const maxWeekly = Math.max(...weeklyValues, 1);
+  const maxWeekly = Math.max(...weeklyValues, 0);
+  const revenueChartPoints = weeklyValues.map((value, index) => ({
+    x: (index / (weeklyValues.length - 1)) * 100,
+    y: maxWeekly > 0 ? 36 - (value / maxWeekly) * 30 : 36,
+    value,
+    label: weeklyLabels[index],
+  }));
+  const revenueChartPath = revenueChartPoints.map((point, index) =>
+    (index === 0 ? "M" : "L") + point.x + " " + point.y
+  ).join(" ");
 
   const handleExportCSV = () => {
     const dateStr = new Date().toISOString().split("T")[0];
@@ -136,7 +148,6 @@ export default function Dashboard() {
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-foreground">Overview</h1>
-          <p className="text-muted-foreground mt-1 text-sm">Real-time platform metrics and live store activity</p>
         </div>
         <div className="flex items-center gap-3">
           {/* Refresh Button */}
@@ -195,7 +206,6 @@ export default function Dashboard() {
             subtitle="Platform Total" 
             title="Total Revenue"
             actionIcon1={<Bell className="w-3.5 h-3.5" />}
-            actionIcon2={<Sparkles className="w-3.5 h-3.5" />}
             alertTitle={insights?.revenue?.alertTitle || "Live Revenue Status"}
             alertContent={insights?.revenue?.alertContent || `Store gross revenue calculated directly from ${ordersCount} confirmed database order(s).`}
             insightTitle={insights?.revenue?.insightTitle || "Catalog & Sales Status"}
@@ -242,8 +252,13 @@ export default function Dashboard() {
 
               {/* Glowing Line Chart at Bottom */}
               <div className="absolute bottom-0 left-0 right-0 h-24 overflow-hidden pointer-events-none">
-                <svg viewBox="0 0 100 40" preserveAspectRatio="none" className="w-full h-full stroke-accent drop-shadow-[0_0_8px_rgba(224,122,63,0.8)] fill-none">
-                  <path d="M0 35 Q 10 30, 20 32 T 40 28 T 60 30 T 80 15 T 100 5" strokeWidth="1.5" pathLength="100" className="animate-draw-line" />
+                <svg viewBox="0 0 100 40" preserveAspectRatio="none" className="w-full h-full stroke-accent drop-shadow-[0_0_8px_rgba(224,122,63,0.8)] fill-none" role="img" aria-label="Paid order revenue by day for the last seven days">
+                  <path d={revenueChartPath} strokeWidth="1.5" pathLength="100" className="animate-draw-line" />
+                  {revenueChartPoints.map((point) => (
+                    <circle key={point.label} cx={point.x} cy={point.y} r="1.5" className="fill-accent stroke-surface" strokeWidth="0.8" aria-label={point.label + ": \u20b9" + point.value.toFixed(2)}>
+                      <title>{point.label + ": \u20b9" + point.value.toFixed(2)}</title>
+                    </circle>
+                  ))}
                 </svg>
               </div>
             </div>
@@ -257,8 +272,7 @@ export default function Dashboard() {
               subtitle="Registered accounts" 
               title="Customers"
               actionIcon1={<Bell className="w-3.5 h-3.5" />}
-              actionIcon2={<Sparkles className="w-3.5 h-3.5" />}
-              alertTitle={insights?.users?.alertTitle || "Clientele Count"}
+                alertTitle={insights?.users?.alertTitle || "Clientele Count"}
               alertContent={insights?.users?.alertContent || `Total of ${usersCount} registered accounts active in database.`}
               insightTitle={insights?.users?.insightTitle || "Patron Management"}
               insightContent={insights?.users?.insightContent || "View and manage user permissions from the Admin Management console."}
@@ -294,8 +308,7 @@ export default function Dashboard() {
               subtitle="Live Catalog" 
               title="Products"
               actionIcon1={<Bell className="w-3.5 h-3.5" />}
-              actionIcon2={<Sparkles className="w-3.5 h-3.5" />}
-              alertTitle={insights?.products?.alertTitle || "Inventory Catalog Status"}
+                alertTitle={insights?.products?.alertTitle || "Inventory Catalog Status"}
               alertContent={insights?.products?.alertContent || "All published luxury garments are correctly indexed in the database."}
               insightTitle={insights?.products?.insightTitle || "Merchandising Suggestion"}
               insightContent={insights?.products?.insightContent || "AI recommends expanding the Fall collection based on current high-margin product velocity."}
@@ -333,8 +346,7 @@ export default function Dashboard() {
               subtitle="Orders" 
               title="Orders Volume"
               actionIcon1={<Bell className="w-3.5 h-3.5" />}
-              actionIcon2={<Sparkles className="w-3.5 h-3.5" />}
-              alertTitle="Order Stream"
+                alertTitle="Order Stream"
               alertContent={`${ordersCount} total orders have been placed.`}
               insightTitle="Order Tracking"
               insightContent="Orders update automatically upon customer checkout completion."
@@ -363,9 +375,8 @@ export default function Dashboard() {
             subtitle="Activity" 
             title="Weekly Order Revenue"
             actionIcon1={<Bell className="w-3.5 h-3.5" />}
-            actionIcon2={<Sparkles className="w-3.5 h-3.5" />}
-            alertTitle="Weekly Overview"
-            alertContent={`Week-to-date sales total ₹${totalWeeklySales.toFixed(2)}.`}
+            alertTitle="Last 7 Days"
+            alertContent={`Paid order revenue over the last seven days is ₹${totalWeeklySales.toFixed(2)}.`}
             insightTitle="Real-time Tracking"
             insightContent="Daily volume reflects paid orders recorded in the store database."
             className="h-[200px]"
@@ -379,9 +390,9 @@ export default function Dashboard() {
               {/* Mini Bar Chart */}
               <div className="h-16 flex items-end gap-2 px-2">
                 {weeklyValues.map((val: number, i: number) => {
-                  const heightPercent = maxWeekly > 0 && totalWeeklySales > 0 ? Math.max((val / maxWeekly) * 100, 15) : 15;
+                  const heightPercent = maxWeekly > 0 ? (val / maxWeekly) * 100 : 0;
                   return (
-                    <div key={i} className="flex flex-col items-center gap-1">
+                    <div key={i} className="flex flex-col items-center gap-1" title={weeklyLabels[i] + ": \u20b9" + val.toFixed(2)}>
                       <div 
                         className={`w-4 rounded-t-sm ${val > 0 ? 'bg-accent shadow-[0_0_8px_rgba(224,122,63,0.6)]' : 'bg-surface-hover border border-border'}`}
                         style={{ height: `${heightPercent}%` }}
@@ -398,10 +409,8 @@ export default function Dashboard() {
         {/* ROW 3: Recent Orders & Live Order Log */}
         <div className="lg:col-span-4">
           <NotchedCard 
-            subtitle="Live orders from database" 
             title="Recent Orders"
             actionIcon1={<Bell className="w-3.5 h-3.5" />}
-            actionIcon2={<Sparkles className="w-3.5 h-3.5" />}
             alertTitle={insights?.orders?.alertTitle || "Order Fulfillment Pipeline"}
             alertContent={insights?.orders?.alertContent || "Currently monitoring active fulfillment status for all pending and processing items."}
             insightTitle={insights?.orders?.insightTitle || "Logistics AI Insight"}

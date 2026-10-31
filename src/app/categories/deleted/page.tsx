@@ -103,7 +103,7 @@ export default function DeletedCategoriesPage() {
         <ChevronRight className="w-3 h-3" />
         <Link href="/categories" className="cursor-pointer hover:text-foreground transition-colors">Categories</Link>
         <ChevronRight className="w-3 h-3" />
-        <span className="text-foreground">Trash &amp; Deleted</span>
+        <span className="text-foreground">Deleted</span>
       </div>
 
       {/* Header */}

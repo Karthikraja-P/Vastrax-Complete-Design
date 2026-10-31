@@ -274,15 +274,6 @@ class ProductService:
             self.db.add(StockMovement(product_id=product_id, variant_id=variant_id, quantity_delta=stock_qty - old_qty, stock_before=old_qty, stock_after=stock_qty, reason="admin_stock_update"))
         self.db.commit()
 
-        if old_qty <= 0 and stock_qty > 0:
-            try:
-                from app.services.stock_notification_service import StockNotificationService
-                StockNotificationService(self.db).notify_subscribers_for_product(
-                    product_id=product_id, variant_id=variant_id, new_qty=stock_qty
-                )
-            except Exception as e:
-                logger.error("Error triggering stock notifications: %s", e)
-
         return {"product_id": product_id, "variant_id": variant_id, "stock_qty": stock_qty}
 
 

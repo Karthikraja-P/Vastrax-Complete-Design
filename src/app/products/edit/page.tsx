@@ -22,8 +22,8 @@ function cn(...inputs: (string | undefined | null | false)[]) {
 const tabs = [
   { id: "basic", label: "Basic Info" },
   { id: "pricing", label: "Pricing & Inventory" },
-  { id: "images", label: "Product Images", icon: ImageIcon },
-  { id: "3d", label: "3D Product", icon: Box, highlight: true },
+  { id: "images", label: "Product Images" },
+  { id: "3d", label: "3D Product" },
 ];
 
 interface UploadedImage {
@@ -53,7 +53,10 @@ function EditProductContent() {
   const searchParams = useSearchParams();
   const productId = searchParams.get("id");
 
-  const [activeTab, setActiveTab] = useState("basic");
+  const [activeTab, setActiveTab] = useState(() => {
+    const requestedTab = searchParams.get("tab");
+    return tabs.some((tab) => tab.id === requestedTab) ? requestedTab! : "basic";
+  });
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -65,7 +68,7 @@ function EditProductContent() {
   const [gender, setGender] = useState("Women");
   const [sizeChart, setSizeChart] = useState<SizeChart>({
     unit: "in",
-    headers: ["Size", "Chest (in)", "Waist (in)", "Hips (in)", "Length (in)"],
+    headers: ["Size"],
     rows: [],
   });
   const [categories, setCategories] = useState<CategoryItem[]>([]);
@@ -121,26 +124,12 @@ function EditProductContent() {
             setGender(prod.gender || "Women");
             const savedChart = isSizeChart(prod.size_chart) ? prod.size_chart : null;
             const variantSizes = (prod.variants || []).map((variant) => variant.size?.trim()).filter((size): size is string => Boolean(size));
-            const chartCoversVariants = savedChart && variantSizes.every((size) =>
-              savedChart.rows.some((row) => row.size.toLowerCase() === size.toLowerCase())
-            );
-            if (savedChart && chartCoversVariants) {
-              setSizeChart(savedChart);
-            } else if (variantSizes.length > 0) {
-              const headers = savedChart?.headers?.length ? savedChart.headers : ["Size", "Chest (in)", "Waist (in)", "Hips (in)", "Length (in)"];
-              const measurementKeys = savedChart?.rows[0]
-                ? Object.keys(savedChart.rows[0]).filter((key) => key !== "size")
-                : ["chest", "waist", "hips", "length"];
-              setSizeChart({
-                unit: savedChart?.unit || "in",
-                headers,
-                rows: variantSizes.map((size) => ({
-                  size,
-                  ...Object.fromEntries(measurementKeys.map((key) => [key, ""])),
-                })),
-              });
-            } else if (savedChart) {
-              setSizeChart(savedChart);
+            const sizeOptions = Array.from(new Set([
+              ...(savedChart?.rows.map((row) => row.size.trim()) || []),
+              ...variantSizes,
+            ].filter(Boolean)));
+            if (sizeOptions.length > 0) {
+              setSizeChart({ unit: "in", headers: ["Size"], rows: sizeOptions.map((size) => ({ size })) });
             }
 
             const targetCat = String(prod.category_id || prod.categoryId || "");
@@ -327,20 +316,51 @@ function EditProductContent() {
       setActiveTab("basic");
       return;
     }
+    if (!description.trim()) {
+      showToast("Please enter a product description.");
+      setActiveTab("basic");
+      return;
+    }
+    if (!categoryId) {
+      showToast("Please select a product category.");
+      setActiveTab("basic");
+      return;
+    }
+    if (!gender.trim()) {
+      showToast("Please select a department.");
+      setActiveTab("basic");
+      return;
+    }
+    if (!fabric.trim()) {
+      showToast("Please enter the product fabric.");
+      setActiveTab("basic");
+      return;
+    }
+    if (!occasion.trim()) {
+      showToast("Please select an occasion.");
+      setActiveTab("basic");
+      return;
+    }
     if (!colour.trim()) {
       showToast("Please enter the product colour so customers can filter by colour.");
       setActiveTab("basic");
       return;
     }
-    if (!priceSelling || isNaN(parseFloat(priceSelling))) {
+    if (!priceSelling || !Number.isFinite(parseFloat(priceSelling)) || parseFloat(priceSelling) <= 0) {
       showToast("Please enter a valid selling price");
       setActiveTab("pricing");
       return;
     }
 
     if (!sizeChart.rows.some((row) => row.size.trim())) {
-      showToast("Add at least one size in the product size chart before saving.");
+      showToast("Add at least one product size before saving.");
       setActiveTab("basic");
+      return;
+    }
+
+    if (priceMrp && (!Number.isFinite(parseFloat(priceMrp)) || parseFloat(priceMrp) <= parseFloat(priceSelling))) {
+      showToast("Compare price must be higher than the selling price.");
+      setActiveTab("pricing");
       return;
     }
 
@@ -365,13 +385,13 @@ function EditProductContent() {
         description: description.trim(),
         category_id: categoryId || (categories.length > 0 ? String(categories[0].id) : ""),
         gender: gender || "Women",
-        size_chart: sizeChart,
+        size_chart: { unit: sizeChart.unit || "in", headers: ["Size"], rows: sizeChart.rows.filter((row) => row.size.trim()).map((row) => ({ size: row.size.trim() })) },
         fabric: fabric.trim() || undefined,
         colour: colour.trim() || undefined,
         occasion: occasion.trim() || undefined,
         model_path: modelPath.trim(),
         price_selling: parseFloat(priceSelling),
-        price_mrp: priceMrp ? parseFloat(priceMrp) : parseFloat(priceSelling),
+        price_mrp: priceMrp ? parseFloat(priceMrp) : null,
         is_published: publish,
         is_featured: isFeatured,
         variants: sizeChart.rows
@@ -416,9 +436,6 @@ function EditProductContent() {
         </Link>
         <div>
           <h1 className="text-2xl font-bold text-foreground">Add New Product</h1>
-          <p className="text-sm text-muted-foreground">
-            Create a new product listing with AI-enhanced media.
-          </p>
         </div>
         <div className="ml-auto flex items-center gap-3">
           <button
@@ -466,12 +483,8 @@ function EditProductContent() {
                   )}
                 >
                   <div className="flex items-center gap-3">
-                    {tab.icon && <tab.icon className="w-4 h-4" />}
                     {tab.label}
                   </div>
-                  {tab.highlight && (
-                    <Sparkles className="w-3 h-3 text-accent" />
-                  )}
                 </button>
               ))}
             </nav>
@@ -496,6 +509,7 @@ function EditProductContent() {
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder="e.g. Classic Silk Shirt"
+                    required
                     className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent focus:ring-1 focus:ring-accent outline-none transition-all text-foreground"
                   />
                 </div>
@@ -514,10 +528,11 @@ function EditProductContent() {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-1.5">
-                      Category
+                      Category <span className="text-accent">*</span>
                     </label>
                     <select
                       value={categoryId}
+                      required
                       onChange={(e) => setCategoryId(e.target.value)}
                       className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent focus:ring-1 focus:ring-accent outline-none transition-all appearance-none text-foreground"
                     >
@@ -537,6 +552,7 @@ function EditProductContent() {
                     </label>
                     <select
                       value={gender}
+                      required
                       onChange={(e) => setGender(e.target.value)}
                       className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent focus:ring-1 focus:ring-accent outline-none transition-all appearance-none text-foreground"
                     >
@@ -550,11 +566,12 @@ function EditProductContent() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-1.5">
-                      Fabric
+                      Fabric <span className="text-accent">*</span>
                     </label>
                     <input
                       type="text"
                       value={fabric}
+                      required
                       onChange={(e) => setFabric(e.target.value)}
                       placeholder="e.g. Silk, Cotton blend"
                       className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent focus:ring-1 focus:ring-accent outline-none transition-all text-foreground"
@@ -576,10 +593,11 @@ function EditProductContent() {
                 </div>
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-1.5">
-                      Occasion
+                      Occasion <span className="text-accent">*</span>
                     </label>
                     <select
                       value={occasion}
+                      required
                       onChange={(e) => setOccasion(e.target.value)}
                       className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent focus:ring-1 focus:ring-accent outline-none transition-all appearance-none text-foreground"
                     >
@@ -592,11 +610,12 @@ function EditProductContent() {
                   </div>
                 <div>
                   <label className="block text-sm font-medium text-foreground mb-1.5">
-                    Description
+                    Description <span className="text-accent">*</span>
                   </label>
                   <textarea
                     rows={5}
                     value={description}
+                    required
                     onChange={(e) => setDescription(e.target.value)}
                     placeholder="Describe the product..."
                     className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent focus:ring-1 focus:ring-accent outline-none transition-all resize-none text-foreground"
@@ -625,21 +644,20 @@ function EditProductContent() {
                       type="number"
                       value={priceSelling}
                       onChange={(e) => setPriceSelling(e.target.value)}
-                      placeholder="2499.00"
                       className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent focus:ring-1 focus:ring-accent outline-none transition-all text-foreground"
                     />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-1.5">
-                      MRP / Compare Price (₹)
+                      Original Price (₹)
                     </label>
                     <input
                       type="number"
                       value={priceMrp}
                       onChange={(e) => setPriceMrp(e.target.value)}
-                      placeholder="3499.00"
                       className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent focus:ring-1 focus:ring-accent outline-none transition-all text-foreground"
                     />
+                    <p className="mt-1.5 text-xs text-muted-foreground">Optional. A higher original price appears crossed out beside the selling price.</p>
                   </div>
                 </div>
                 <div>
@@ -699,6 +717,7 @@ function EditProductContent() {
                       <span className="text-sm font-medium text-foreground group-hover:text-accent transition-colors">
                         Featured Item
                       </span>
+                      <span className="text-xs text-muted-foreground">Highlights this product in featured storefront sections.</span>
                     </label>
                   </div>
                 </div>
