@@ -79,6 +79,7 @@ export default function StorefrontHome() {
   const lookCarouselRef = useRef<HTMLDivElement>(null);
   const [activeLookIndex, setActiveLookIndex] = useState(1);
   const [isLookCarouselPaused, setIsLookCarouselPaused] = useState(false);
+  const [isFooterVisible, setIsFooterVisible] = useState(false);
   const moveLookCarouselBy = useCallback((direction: -1 | 1) => {
     if (collections.length < 2) return;
     const nextActiveIndex = moveLookCarousel(lookCarouselRef.current, collections.length, direction);
@@ -90,6 +91,16 @@ export default function StorefrontHome() {
     const timer = window.setInterval(() => moveLookCarouselBy(1), 2500);
     return () => window.clearInterval(timer);
   }, [collections.length, isLookCarouselPaused, moveLookCarouselBy]);
+
+  useEffect(() => {
+    const footer = document.querySelector(".vx-footer");
+    if (!footer) return;
+    const observer = new IntersectionObserver(([entry]) => {
+      setIsFooterVisible(Boolean(entry?.isIntersecting));
+    });
+    observer.observe(footer);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     if (collections.length < 2) return;
@@ -235,7 +246,7 @@ export default function StorefrontHome() {
   }, []);
 
   return (
-    <div className="vx-storefront vx-home-storefront min-h-screen bg-surface text-foreground font-sans flex flex-col">
+    <div className={`vx-storefront vx-home-storefront min-h-screen bg-surface text-foreground font-sans flex flex-col ${isFooterVisible ? "vx-footer-visible" : ""}`}>
       {/* Storefront Header */}
       <header className="vx-header h-16 md:h-20 flex items-center justify-between relative px-3 sm:px-6 md:px-12 sticky top-0 bg-background z-40 border-b border-border/50">
         {/* Left Side: Navigation */}

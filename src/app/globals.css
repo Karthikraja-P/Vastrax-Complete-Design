@@ -318,7 +318,8 @@
   scroll-snap-type: x mandatory;
   scrollbar-width: none;
   scroll-behavior: auto;
-  touch-action: pan-x;
+  /* Keep horizontal carousel swipes while allowing the page to scroll vertically from it. */
+  touch-action: pan-x pan-y;
 }
 
 .vx-look-grid::-webkit-scrollbar {
@@ -398,6 +399,15 @@
   background: rgb(255 254 250 / 94%);
   box-shadow: 0 8px 30px rgb(41 35 31 / 15%);
   backdrop-filter: blur(12px);
+  transition: opacity 180ms ease, visibility 180ms ease;
+}
+
+/* Floating controls should not cover legal links or footer text at the end of the page. */
+.vx-footer-visible .vx-mobile-shop-cta,
+.vx-footer-visible .vx-stylist-launch {
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
 }
 
 .vx-home-storefront {
