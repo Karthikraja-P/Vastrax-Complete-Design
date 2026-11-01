@@ -38,7 +38,7 @@ export default function StorefrontMobileControls({ showMenu = true, inlineSearch
           setMenuOpen((open) => !open);
           setSearchOpen(false);
         }}
-        className="rounded-full p-2 text-foreground/80 transition-colors hover:bg-black/5 hover:text-accent dark:hover:bg-white/10"
+        className="flex min-h-11 min-w-11 items-center justify-center rounded-full p-2 text-foreground/80 transition-colors hover:bg-black/5 hover:text-accent dark:hover:bg-white/10"
       >
         {menuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
       </button>}
@@ -52,7 +52,7 @@ export default function StorefrontMobileControls({ showMenu = true, inlineSearch
             aria-label="Search products"
             className="w-20 appearance-none border-0 bg-transparent text-foreground shadow-none outline-none ring-0 focus:border-0 focus:shadow-none focus:outline-none focus:ring-0 md:w-28 lg:w-36"
           />
-          <button type="submit" aria-label="Search products" className="rounded-full bg-accent px-3 py-1.5 text-xs font-semibold text-accent-foreground">Search</button>
+          <button type="submit" aria-label="Search products" className="min-h-11 min-w-11 rounded-full bg-accent px-3 py-1.5 text-xs font-semibold text-accent-foreground">Search</button>
         </form>
       )}
       <button
@@ -63,7 +63,7 @@ export default function StorefrontMobileControls({ showMenu = true, inlineSearch
           setSearchOpen((open) => !open);
           setMenuOpen(false);
         }}
-        className={`rounded-full p-2 text-foreground/80 transition-colors hover:bg-black/5 hover:text-accent dark:hover:bg-white/10 ${inlineSearch ? "vx-inline-search-toggle sm:hidden" : ""}`}
+        className={`flex min-h-11 min-w-11 items-center justify-center rounded-full p-2 text-foreground/80 transition-colors hover:bg-black/5 hover:text-accent dark:hover:bg-white/10 ${inlineSearch ? "vx-inline-search-toggle sm:hidden" : ""}`}
       >
         {searchOpen ? <X className="h-5 w-5" /> : <Search className="h-5 w-5" />}
       </button>

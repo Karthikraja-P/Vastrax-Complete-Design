@@ -606,10 +606,10 @@ function ProductContent() {
                   )}
                   {totalSlides > 1 && (
                     <>
-                      <button type="button" onClick={showPreviousImage} aria-label="Previous product image" className="absolute left-4 top-1/2 z-20 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/95 text-[#29231f] shadow-md transition hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#a84d25]">
+                      <button type="button" onClick={showPreviousImage} aria-label="Previous product image" className="absolute left-4 top-1/2 z-20 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-white/95 text-[#29231f] shadow-md transition hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#a84d25]">
                         <ChevronLeft aria-hidden="true" className="h-5 w-5" />
                       </button>
-                      <button type="button" onClick={showNextImage} aria-label="Next product image" className="absolute right-4 top-1/2 z-20 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/95 text-[#29231f] shadow-md transition hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#a84d25]">
+                      <button type="button" onClick={showNextImage} aria-label="Next product image" className="absolute right-4 top-1/2 z-20 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-white/95 text-[#29231f] shadow-md transition hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#a84d25]">
                         <ChevronRight aria-hidden="true" className="h-5 w-5" />
                       </button>
                     </>
@@ -625,8 +625,10 @@ function ProductContent() {
                         onClick={() => selectGallerySlide(idx)}
                         aria-label={has3DModel && idx === galleryImages.length ? `Show 3D model of ${product.name}` : `Show image ${idx + 1} of ${product.name}`}
                         aria-pressed={currentSlideIndex === idx}
-                        className={`h-2.5 rounded-full transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#a84d25] ${currentSlideIndex === idx ? "w-6 bg-[#a84d25]" : "w-2.5 bg-[#b9afa6] hover:bg-[#8d4e2c]"}`}
-                      />
+                        className="group flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#a84d25]"
+                      >
+                        <span aria-hidden="true" className={`block h-2.5 rounded-full transition-all ${currentSlideIndex === idx ? "w-6 bg-[#a84d25]" : "w-2.5 bg-[#b9afa6] group-hover:bg-[#8d4e2c]"}`} />
+                      </button>
                     ))}
                   </div>
                 )}
