@@ -403,6 +403,18 @@
 }
 
 /* Floating controls should not cover legal links or footer text at the end of the page. */
+.vx-home-storefront:not(.vx-hero-visible) .vx-mobile-shop-cta {
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+@media (max-width: 767px) {
+  .vx-home-storefront:not(.vx-hero-visible) .vx-stylist-launch {
+    bottom: calc(0.75rem + env(safe-area-inset-bottom));
+  }
+}
+
 .vx-footer-visible .vx-mobile-shop-cta,
 .vx-footer-visible .vx-stylist-launch {
   opacity: 0;

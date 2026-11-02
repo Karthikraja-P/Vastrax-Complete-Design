@@ -81,6 +81,7 @@ export default function StorefrontHome() {
   const [activeLookIndex, setActiveLookIndex] = useState(1);
   const [isLookCarouselPaused, setIsLookCarouselPaused] = useState(false);
   const [isFooterVisible, setIsFooterVisible] = useState(false);
+  const [isHeroVisible, setIsHeroVisible] = useState(true);
   const moveLookCarouselBy = useCallback((direction: -1 | 1) => {
     if (collections.length < 2) return;
     const nextActiveIndex = moveLookCarousel(lookCarouselRef.current, collections.length, direction);
@@ -92,6 +93,16 @@ export default function StorefrontHome() {
     const timer = window.setInterval(() => moveLookCarouselBy(1), 2500);
     return () => window.clearInterval(timer);
   }, [collections.length, isLookCarouselPaused, moveLookCarouselBy]);
+
+  useEffect(() => {
+    const hero = document.querySelector(".vx-hero");
+    if (!hero) return;
+    const observer = new IntersectionObserver(([entry]) => {
+      setIsHeroVisible(Boolean(entry?.isIntersecting));
+    }, { threshold: 0.15 });
+    observer.observe(hero);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     const footer = document.querySelector(".vx-footer");
@@ -247,7 +258,7 @@ export default function StorefrontHome() {
   }, []);
 
   return (
-    <div className={`vx-storefront vx-home-storefront min-h-screen bg-surface text-foreground font-sans flex flex-col ${isFooterVisible ? "vx-footer-visible" : ""}`}>
+    <div className={`vx-storefront vx-home-storefront min-h-screen bg-surface text-foreground font-sans flex flex-col ${isFooterVisible ? "vx-footer-visible" : ""} ${isHeroVisible ? "vx-hero-visible" : ""}`}>
       {/* Storefront Header */}
       <header className="vx-header h-16 md:h-20 flex items-center justify-between relative px-3 sm:px-6 md:px-12 sticky top-0 bg-background z-40 border-b border-border/50">
         {/* Left Side: Navigation */}
