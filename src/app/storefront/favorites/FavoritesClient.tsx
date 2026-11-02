@@ -147,7 +147,7 @@ export default function FavoritesPage() {
           )}
           <ThemeToggle />
           <StorefrontInstagramLink />
-          <Link href="/storefront/favorites" aria-label="Favorites" className="relative p-1 text-[#e07a3f] transition-colors">
+          <Link href="/storefront/favorites" aria-label="Favorites" className="relative flex min-h-11 min-w-11 items-center justify-center text-[#e07a3f] transition-colors">
             <Heart className="w-5 h-5 fill-[#e07a3f]" />
           </Link>
           <div className="relative">
@@ -156,7 +156,7 @@ export default function FavoritesPage() {
               aria-label={isLoggedIn ? "Open account menu" : "Open sign in menu"}
               aria-expanded={isUserMenuOpen}
               onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
-              className="flex items-center gap-2 text-muted-foreground hover:text-[#e07a3f] transition-colors"
+              className="flex min-h-11 min-w-11 items-center justify-center gap-2 text-muted-foreground hover:text-[#e07a3f] transition-colors"
             >
               {isLoggedIn ? (
                 <>

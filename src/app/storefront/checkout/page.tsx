@@ -502,7 +502,7 @@ function CheckoutContent() {
               <span className="text-xs font-bold uppercase tracking-widest text-accent">Order Confirmed</span>
               <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight">Thank You For Your Order</h1>
               <p className="text-sm text-muted-foreground max-w-md mx-auto">
-                We&apos;ve received your purchase. A bespoke confirmation email and receipt has been sent to <span className="text-foreground font-medium">{email}</span>.
+                Your order is confirmed. You can review your order details and delivery updates in My Orders.
               </p>
             </div>
 
@@ -531,10 +531,10 @@ function CheckoutContent() {
                 Continue Shopping
               </Link>
               <Link 
-                href="/" 
+                href="/storefront/account?tab=orders"
                 className="w-full sm:w-auto px-8 py-3 bg-background border border-border hover:bg-surface-hover text-foreground font-semibold text-xs uppercase tracking-wider rounded-full transition-colors"
               >
-                View in Admin Orders
+                View My Orders
               </Link>
             </div>
           </div>

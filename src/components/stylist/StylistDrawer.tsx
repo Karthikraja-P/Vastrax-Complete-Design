@@ -246,10 +246,7 @@ export function StylistDrawer({ isOpen: externalIsOpen, onClose: externalOnClose
   const hasOrders = localHasOrders || (signedIn && apiHasOrders);
 
   useEffect(() => {
-    if (!isOpen || !signedIn) {
-      if (!signedIn) setApiFavoritesCount(0);
-      return;
-    }
+    if (!isOpen || !signedIn) return;
     let active = true;
     fetchApi<Array<{ id: string }>>("/users/me/wishlist")
       .then((items) => { if (active) setApiFavoritesCount(Array.isArray(items) ? items.length : 0); })
@@ -662,7 +659,7 @@ export function StylistDrawer({ isOpen: externalIsOpen, onClose: externalOnClose
             const ev = new CustomEvent("open-stylist");
             window.dispatchEvent(ev);
           }}
-          className="vx-stylist-launch fixed bottom-6 right-6 z-40 px-4 py-3 rounded-full bg-gradient-to-r from-accent to-[#e2733d] text-accent-foreground font-medium text-xs uppercase tracking-wider flex items-center gap-2 shadow-[0_0_25px_rgba(224,122,63,0.5)] hover:scale-105 transition-all cursor-pointer"
+          className="vx-stylist-launch fixed bottom-6 right-6 z-40 min-h-11 px-4 py-3 rounded-full bg-gradient-to-r from-accent to-[#e2733d] text-accent-foreground font-medium text-xs uppercase tracking-wider flex items-center gap-2 shadow-[0_0_25px_rgba(224,122,63,0.5)] hover:scale-105 transition-all cursor-pointer"
         >
           <Sparkles className="w-4 h-4" />
           <span>AI Stylist</span>

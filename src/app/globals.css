@@ -289,8 +289,8 @@
 
 .vx-look-control {
   display: grid;
-  width: 2.7rem;
-  height: 2.7rem;
+  width: 44px;
+  height: 44px;
   place-items: center;
   border: 1px solid var(--vx-line);
   border-radius: 999px;

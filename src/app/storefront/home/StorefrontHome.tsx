@@ -289,7 +289,7 @@ export default function StorefrontHome() {
               if (!session) { setAuthMode('signin'); setIsAuthOpen(true); }
               else router.push('/storefront/favorites');
             }}
-            className="relative p-1 text-muted-foreground hover:text-accent transition-colors"
+            className="relative flex min-h-11 min-w-11 items-center justify-center text-muted-foreground hover:text-accent transition-colors"
             aria-label="Favorites"
           >
             <Heart className="w-5 h-5" />
@@ -303,7 +303,7 @@ export default function StorefrontHome() {
               aria-label={isLoggedIn ? "Open account menu" : "Open sign in menu"}
               aria-expanded={isUserMenuOpen}
               onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
-              className="flex items-center gap-2 text-muted-foreground hover:text-accent transition-colors"
+              className="flex min-h-11 min-w-11 items-center justify-center gap-2 text-muted-foreground hover:text-accent transition-colors"
             >
               {isLoggedIn ? (
                 <>
