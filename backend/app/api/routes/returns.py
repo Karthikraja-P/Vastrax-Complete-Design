@@ -219,8 +219,6 @@ def _reverse_shipment_payload(db: Session, case: SalesReturn) -> dict:
 
 
 def _book_reverse_pickup(db: Session, case: SalesReturn, pickup_date: date) -> dict:
-    if case.request_source != "customer":
-        raise HTTPException(409, "Only an approved customer return request can book a reverse pickup")
     if case.status != "approved":
         raise HTTPException(409, "Approve the return before booking a reverse pickup")
     if pickup_date < date.today():
@@ -277,13 +275,13 @@ def review_return(return_id: str, body: ReturnReview, admin: User = Depends(requ
     case = db.get(SalesReturn, return_id)
     if not case or case.status != "requested":
         raise HTTPException(409, "Only a requested return can be reviewed")
-    if body.decision == "approve" and case.request_source == "customer" and not body.pickup_date:
+    if body.decision == "approve" and not body.pickup_date:
         raise HTTPException(422, "Choose a reverse pickup date before approving this return")
     case.status = "approved" if body.decision == "approve" else "rejected"
     case.reviewed_by = admin.id
     case.reviewed_at = datetime.now(timezone.utc)
     db.commit()
-    if body.decision == "approve" and case.request_source == "customer":
+    if body.decision == "approve":
         return _book_reverse_pickup(db, case, body.pickup_date)
     return {"id": case.id, "status": case.status}
 

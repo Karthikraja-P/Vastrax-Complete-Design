@@ -22,10 +22,10 @@ export default function ReturnsPage() {
   useEffect(() => { const t = window.setTimeout(() => void load(), 0); return () => window.clearTimeout(t); }, [load]);
   const createCase = async (event: React.FormEvent) => { event.preventDefault(); if (!orderId || !itemId) return; try { await fetchApi("/erp/returns", { method: "POST", body: JSON.stringify({ order_id: orderId, reason, notes: notes || null, items: [{ order_item_id: itemId, quantity: Number(quantity) }] }) }); setNotes(""); await load(); } catch (e) { setError(e instanceof Error ? e.message : "Could not log return."); } };
   const review = async (item: ReturnCase, decision: "approve" | "reject") => {
-    if (decision === "approve" && item.request_source === "customer" && !window.confirm("Approve this return and create a real Shiprocket reverse pickup?")) return;
+    if (decision === "approve" && !window.confirm("Approve this return and request a Shiprocket reverse pickup?")) return;
     const pickup_date = pickupDates[item.id] || new Date(Date.now() - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
     try {
-      await fetchApi(`/erp/returns/${item.id}/review`, { method: "POST", body: JSON.stringify({ decision, ...(decision === "approve" && item.request_source === "customer" ? { pickup_date } : {}) }) });
+      await fetchApi(`/erp/returns/${item.id}/review`, { method: "POST", body: JSON.stringify({ decision, ...(decision === "approve" ? { pickup_date } : {}) }) });
       await load();
     } catch (e) { setError(e instanceof Error ? e.message : "Return decision saved, but reverse pickup could not be booked. Review the request and retry."); await load(); }
   };
@@ -64,7 +64,7 @@ export default function ReturnsPage() {
     } catch (e) { setError(e instanceof Error ? e.message : "Could not submit refund."); }
   };
   const receive = async (item: ReturnCase) => { const line = item.items.find(row => row.quantity_received < row.quantity_requested); if (!line) return; const left = line.quantity_requested - line.quantity_received; const raw = window.prompt(`Units received for ${line.product_name} · ${line.size} (max ${left})`, String(left)); if (raw === null) return; const qty = Number(raw); if (!Number.isInteger(qty) || qty < 1 || qty > left) { setError(`Enter a whole number from 1 to ${left}.`); return; } const restockRaw = window.prompt(`Sellable units to return to stock (0 to ${qty})`, String(qty)); if (restockRaw === null) return; const restock = Number(restockRaw); if (!Number.isInteger(restock) || restock < 0 || restock > qty) { setError(`Enter a whole number from 0 to ${qty}.`); return; } try { await fetchApi(`/erp/returns/${item.id}/receive`, { method: "POST", body: JSON.stringify({ items: [{ line_id: line.id, quantity_received: qty, quantity_restocked: restock }] }) }); await load(); } catch (e) { setError(e instanceof Error ? e.message : "Could not record returned units."); } };
-  return <main className="min-h-screen bg-background p-5 md:p-8"><div className="mx-auto max-w-6xl space-y-6"><header><Link href="/erp" className="text-sm text-accent">← Operations & finance</Link><h1 className="mt-2 text-3xl font-bold text-foreground">Returns</h1><p className="mt-1 text-sm text-muted-foreground">Review customer return requests, arrange reverse pickup with Shiprocket, track parcels, and reconcile received stock.</p></header>
+  return <main className="min-h-screen bg-background p-5 md:p-8"><div className="mx-auto max-w-6xl space-y-6"><header><Link href="/erp" className="text-sm text-accent">← Operations & finance</Link><h1 className="mt-2 text-3xl font-bold text-foreground">Returns</h1><p className="mt-1 text-sm text-muted-foreground">Log customer return requests after support contact, review each case, book reverse pickup with Shiprocket, track parcels, and reconcile received stock.</p></header>
   {error && <div role="alert" className="rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-400">{error}</div>}
   <form onSubmit={createCase} className={`${card} grid gap-3 md:grid-cols-5`}><select required className={field} value={orderId} onChange={e => { setOrderId(e.target.value); setItemId(""); }}><option value="">Delivered order</option>{orders.map(o => <option key={o.id} value={o.id}>{o.id}</option>)}</select><select required className={field} value={itemId} onChange={e => setItemId(e.target.value)}><option value="">Product item</option>{selectedOrder?.items.map(i => <option key={i.order_item_id} value={i.order_item_id}>{i.product_name} · {i.size} · qty {i.quantity}</option>)}</select><input required aria-label="Return quantity" className={field} type="number" min="1" max={selectedItem?.quantity ?? 1} value={quantity} onChange={e => setQuantity(e.target.value)} /><select className={field} value={reason} onChange={e => setReason(e.target.value)}>{["size", "damaged", "wrong_item", "quality", "other"].map(x => <option key={x} value={x}>{x.replace("_", " ")}</option>)}</select><button disabled={!orderId || !itemId} className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Log return</button><input className={`${field} md:col-span-5`} placeholder="Notes (optional)" value={notes} onChange={e => setNotes(e.target.value)} /><p className="text-xs text-muted-foreground md:col-span-5">Only delivered orders are eligible. This records return receipt and stock disposition; any customer refund must be issued through the existing payment/refund process.</p></form>
   <section className={`${card} space-y-3`}>
@@ -87,8 +87,7 @@ export default function ReturnsPage() {
             )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {item.request_source === "customer" &&
-              (item.status === "requested" || (item.status === "approved" && needsReversePickupRetry(item))) && (
+            {(item.status === "requested" || (item.status === "approved" && needsReversePickupRetry(item))) && (
                 <input
                   aria-label="Reverse pickup date"
                   type="date"
@@ -98,7 +97,7 @@ export default function ReturnsPage() {
                   className="rounded-lg border border-border bg-background px-2 py-2 text-xs text-foreground"
                 />
               )}
-            {item.status === "requested" && item.request_source === "customer" && (
+            {item.status === "requested" && (
               <>
                 <button onClick={() => void review(item, "approve")} className="rounded-lg bg-accent px-3 py-2 text-xs text-white">
                   Approve & book pickup
@@ -108,13 +107,7 @@ export default function ReturnsPage() {
                 </button>
               </>
             )}
-            {item.status === "requested" && item.request_source !== "customer" && (
-              <>
-                <button onClick={() => void review(item, "approve")} className="rounded-lg bg-accent px-3 py-2 text-xs text-white">Approve</button>
-                <button onClick={() => void review(item, "reject")} className="rounded-lg border border-border px-3 py-2 text-xs text-foreground">Reject</button>
-              </>
-            )}
-            {item.status === "approved" && item.request_source === "customer" && needsReversePickupRetry(item) && (
+            {item.status === "approved" && needsReversePickupRetry(item) && (
               <button onClick={() => void retryPickup(item)} className="rounded-lg bg-accent px-3 py-2 text-xs text-white">
                 Retry Shiprocket pickup
               </button>
