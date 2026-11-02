@@ -1033,13 +1033,27 @@
 
   .vx-header .vx-header-nav-search {
     order: 3;
+    box-sizing: border-box;
+    width: 100%;
     flex: 0 0 100%;
-    justify-content: center;
-    gap: 0.75rem;
+    justify-content: space-between;
+    gap: 0;
+    margin-top: 0.2rem;
+    padding: 0.25rem 0.25rem 0;
+    border-top: 1px solid var(--vx-line);
   }
 
   .vx-header .vx-header-nav-search nav {
-    gap: 0.75rem;
+    gap: 1rem;
+  }
+
+  .vx-header .vx-header-nav-search nav a {
+    font-size: 0.8125rem;
+    letter-spacing: 0.01em;
+  }
+
+  .vx-header .vx-header-nav-search > div {
+    margin-left: auto;
   }
 
   .vx-cookie-panel {
