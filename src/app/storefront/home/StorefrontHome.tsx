@@ -17,6 +17,7 @@ import { useCartItems } from "@/hooks/useCartItems";
 import { showToast } from "@/lib/toast";
 import { performSignOut } from "@/lib/auth-utils";
 import StorefrontMobileControls from "@/components/layout/StorefrontMobileControls";
+import StorefrontInstagramLink from "@/components/layout/StorefrontInstagramLink";
 import { storefrontProductImage } from "@/lib/storefront-images";
 
 interface StoreCategory {
@@ -271,6 +272,7 @@ export default function StorefrontHome() {
             <Link href="/" className="rounded-full border border-border px-3 py-2 text-xs font-semibold text-foreground hover:border-accent hover:text-accent">Admin</Link>
           )}
           <ThemeToggle />
+          <StorefrontInstagramLink />
           <button
             onClick={() => {
               if (!session) { setAuthMode('signin'); setIsAuthOpen(true); }

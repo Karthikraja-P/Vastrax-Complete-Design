@@ -1059,6 +1059,12 @@
   }
 }
 
+@media (min-width: 640px) and (max-width: 899px) {
+  .vx-header .vx-header-actions {
+    gap: 1rem !important;
+  }
+}
+
 @media (min-width: 640px) {
   .vx-header .vx-inline-search-toggle {
     display: none;

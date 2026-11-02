@@ -17,6 +17,7 @@ import { useCartItems } from "@/hooks/useCartItems";
 import { showToast } from "@/lib/toast";
 import { performSignOut } from "@/lib/auth-utils";
 import StorefrontMobileControls from "@/components/layout/StorefrontMobileControls";
+import StorefrontInstagramLink from "@/components/layout/StorefrontInstagramLink";
 import { storefrontProductGalleryImage, storefrontProductImage } from "@/lib/storefront-images";
 
 function CollectionsPageContent({ initialCategory, initialSort, initialSearch }: { initialCategory?: string; initialSort?: string; initialSearch?: string }) {
@@ -402,6 +403,7 @@ function CollectionsPageContent({ initialCategory, initialSort, initialSearch }:
             <Link href="/" className="rounded-full border border-border px-3 py-2 text-xs font-semibold text-foreground hover:border-accent hover:text-accent">Admin</Link>
           )}
           <ThemeToggle />
+          <StorefrontInstagramLink />
           <a href="/storefront/favorites" aria-label="Favorites" className="relative inline-flex h-11 w-11 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-[#e07a3f]">
             <Heart className="w-5 h-5" />
           </a>

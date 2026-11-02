@@ -16,6 +16,7 @@ import { addToCart as addCartItem } from "@/lib/cart";
 import { useCartItems } from "@/hooks/useCartItems";
 import { showToast } from "@/lib/toast";
 import StorefrontMobileControls from "@/components/layout/StorefrontMobileControls";
+import StorefrontInstagramLink from "@/components/layout/StorefrontInstagramLink";
 
 export default function FavoritesPage() {
   const { data: session, status } = useSession();
@@ -145,6 +146,7 @@ export default function FavoritesPage() {
             <Link href="/" className="rounded-full border border-border px-3 py-2 text-xs font-semibold text-foreground hover:border-accent hover:text-accent">Admin</Link>
           )}
           <ThemeToggle />
+          <StorefrontInstagramLink />
           <Link href="/storefront/favorites" aria-label="Favorites" className="relative p-1 text-[#e07a3f] transition-colors">
             <Heart className="w-5 h-5 fill-[#e07a3f]" />
           </Link>
