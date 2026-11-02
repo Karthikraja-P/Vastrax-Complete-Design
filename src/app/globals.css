@@ -402,16 +402,17 @@
   transition: opacity 180ms ease, visibility 180ms ease;
 }
 
-/* Floating controls should not cover legal links or footer text at the end of the page. */
-.vx-home-storefront:not(.vx-hero-visible) .vx-mobile-shop-cta {
+/* The hero already has its own CTA. Show the fixed CTA only after the hero leaves view. */
+.vx-home-storefront.vx-hero-visible .vx-mobile-shop-cta {
   opacity: 0;
   pointer-events: none;
   visibility: hidden;
 }
 
 @media (max-width: 767px) {
+  /* Keep the floating stylist above the fixed shop CTA once it appears. */
   .vx-home-storefront:not(.vx-hero-visible) .vx-stylist-launch {
-    bottom: calc(0.75rem + env(safe-area-inset-bottom));
+    bottom: calc(5.6rem + env(safe-area-inset-bottom));
   }
 }
 
@@ -1004,6 +1005,11 @@
   .vx-header .vx-header-actions > a[aria-label] {
     min-width: 44px;
     justify-content: center;
+  }
+
+  /* Keep the mobile header to two tidy rows: brand/actions, then navigation. */
+  .vx-header .vx-header-actions > a[href*="instagram"] span {
+    display: none;
   }
 
   .vx-header .vx-header-brand a {
