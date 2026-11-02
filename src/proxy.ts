@@ -3,6 +3,23 @@ import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 
 export async function proxy(req: NextRequest) {
+  // Cloudflare Tunnel forwards requests to the app over its private HTTP link.
+  // Use Cloudflare's visitor scheme to upgrade public HTTP requests without
+  // mistaking the tunnel's internal connection for an insecure visitor request.
+  const cloudflareVisitor = req.headers.get("cf-visitor");
+  if (cloudflareVisitor) {
+    try {
+      const { scheme } = JSON.parse(cloudflareVisitor) as { scheme?: string };
+      if (scheme === "http") {
+        const secureUrl = req.nextUrl.clone();
+        secureUrl.protocol = "https:";
+        return NextResponse.redirect(secureUrl, 308);
+      }
+    } catch {
+      // Ignore malformed proxy metadata and continue with the normal route.
+    }
+  }
+
   const { pathname } = req.nextUrl;
 
   // 1. Bypass static assets, API calls, and public images
