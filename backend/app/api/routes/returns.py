@@ -204,7 +204,7 @@ def _reverse_shipment_payload(db: Session, case: SalesReturn) -> dict:
         "shipping_state": destination["state"],
         "shipping_country": destination.get("country") or "India",
         "shipping_pincode": int(destination["pincode"]),
-        "shipping_email": destination.get("email") or "support@vastrax.com",
+        "shipping_email": destination.get("email") or "vastrax.shop@gmail.com",
         "shipping_phone": destination_phone,
         "shipping_isd_code": "91",
         "order_items": order_items,

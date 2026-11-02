@@ -204,7 +204,7 @@ def create_shipment_order(order_id: str, customer_info: dict, items: list, total
                 "billing_pincode": pincode,
                 "billing_state": state,
                 "billing_country": "India",
-                "billing_email": customer_info.get("email", "support@vastrax.com"),
+                "billing_email": customer_info.get("email", "vastrax.shop@gmail.com"),
                 "billing_phone": customer_info.get("phone", ""),
                 "shipping_is_billing": True,
                 "order_items": [
