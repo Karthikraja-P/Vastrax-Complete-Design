@@ -13,6 +13,9 @@ export async function proxy(req: NextRequest) {
       if (scheme === "http") {
         const secureUrl = req.nextUrl.clone();
         secureUrl.protocol = "https:";
+        // The tunnel can supply an internal origin host (for example 0.0.0.0:3000).
+        // Redirect public visitors to the storefront's canonical domain instead.
+        secureUrl.host = "vastrax.ai";
         return NextResponse.redirect(secureUrl, 308);
       }
     } catch {
