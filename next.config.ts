@@ -5,6 +5,9 @@ const BACKEND_INTERNAL = process.env.INTERNAL_BACKEND_URL || "http://backend:809
 const nextConfig: NextConfig = {
   output: "standalone",
   poweredByHeader: false,
+  images: {
+    qualities: [75, 90],
+  },
   experimental: {
     // Product images are sent as base64 JSON; allow several original uploads per save.
     proxyClientMaxBodySize: "80mb",

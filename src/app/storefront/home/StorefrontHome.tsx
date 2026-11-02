@@ -386,8 +386,10 @@ export default function StorefrontHome() {
             src="/images/hero_hanger_dresses.webp"
             alt=""
             fill
-            priority
-            unoptimized
+            preload
+            quality={90}
+            placeholder="blur"
+            blurDataURL="data:image/webp;base64,UklGRjYAAABXRUJQVlA4ICoAAADQAQCdASoQAAsABIByJZQCdAD0fKyRgAD+6pbFtzfBBBKWKXH4KWayAAA="
             sizes="100vw"
             aria-hidden="true"
             className="vx-hero-image"
