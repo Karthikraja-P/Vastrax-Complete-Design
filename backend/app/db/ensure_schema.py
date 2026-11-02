@@ -39,9 +39,19 @@ ADDITIVE_COLUMNS = {
     },
     "orders": {
         "payment_method": "VARCHAR(50)",
+        "delivered_at": "DATETIME",
     },
     "erp_inventory_costing_config": {
         "cogs_active_from": "DATETIME",
+    },
+    "erp_sales_returns": {
+        "request_source": "VARCHAR(20) NOT NULL DEFAULT 'admin'",
+        "reverse_order_id": "VARCHAR(50)",
+        "reverse_shipment_id": "VARCHAR(100)",
+        "reverse_awb": "VARCHAR(100)",
+        "reverse_courier": "VARCHAR(100)",
+        "reverse_status": "VARCHAR(100)",
+        "reverse_pickup_date": "VARCHAR(10)",
     },
 }
 

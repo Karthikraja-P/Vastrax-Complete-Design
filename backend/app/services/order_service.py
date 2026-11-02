@@ -255,6 +255,8 @@ class OrderService:
 
         order.status = new_status
         if new_status == "delivered":
+            if not order.delivered_at:
+                order.delivered_at = datetime.now(timezone.utc)
             post_order_revenue(self.db, order)
             post_order_cogs(self.db, order)
         self.db.commit()

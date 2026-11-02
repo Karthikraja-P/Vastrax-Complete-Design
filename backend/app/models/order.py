@@ -28,6 +28,7 @@ class Order(Base):
     shipping_courier_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     shipping_charge: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False, default=Decimal("0.00"))
     placed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now)
 
     user: Mapped["User"] = relationship("User", back_populates="orders")

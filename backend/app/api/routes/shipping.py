@@ -1,6 +1,6 @@
 import hmac
 import logging
-from datetime import date
+from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
@@ -12,11 +12,11 @@ from app.db.database import get_db
 from app.middleware.auth import get_current_user, require_admin
 from app.models.order import Order
 from app.models.user import User
+from app.models.returns import SalesReturn
 from app.services.shiprocket_service import (
     cancel_shipment_by_awb,
     assign_awb,
     check_serviceability,
-    create_return_shipment,
     generate_label,
     generate_manifest,
     schedule_pickup,
@@ -78,11 +78,6 @@ class PickupRequest(BaseModel):
 
 class CancelRequest(BaseModel):
     awb_code: str
-
-
-class ReturnRequest(BaseModel):
-    order_id: str
-    return_data: dict
 
 
 class DispatchRequest(BaseModel):
@@ -174,15 +169,45 @@ def receive_courier_status(
     shipment_id = str(payload.get("shipment_id") or "").strip()
     status_text = str(payload.get("shipment_status") or payload.get("current_status") or "").strip()
     status_id = payload.get("shipment_status_id") or payload.get("current_status_id")
+    return_case = db.query(SalesReturn).filter(SalesReturn.reverse_awb == awb).first() if awb else None
+    if not return_case and shipment_id:
+        return_case = db.query(SalesReturn).filter(SalesReturn.reverse_shipment_id == shipment_id).first()
     if not status_text and status_id is not None:
         try:
-            status_text = _SHIPMENT_STATUS_CODES.get(int(status_id), "")
+            reverse_codes = {
+                21: "RETURN PENDING", 22: "RETURN INITIATED", 23: "RETURN PICKUP QUEUED",
+                24: "RETURN PICKUP ERROR", 25: "RETURN IN TRANSIT", 26: "RETURN DELIVERED",
+                27: "RETURN CANCELLED", 28: "RETURN PICKUP GENERATED", 29: "RETURN CANCELLATION REQUESTED",
+                30: "RETURN PICKUP CANCELLED", 31: "RETURN PICKUP RESCHEDULED", 32: "RETURN PICKED UP", 33: "RETURN LOST",
+                34: "OUT FOR PICKUP", 35: "PICKUP EXCEPTION", 36: "RETURN UNDELIVERED",
+                37: "RETURN DELIVERY DELAYED", 47: "RETURN OUT FOR PICKUP",
+                48: "RETURN OUT FOR DELIVERY", 49: "RETURN PICKUP EXCEPTION", 50: "RETURN UNDELIVERED",
+            }
+            status_text = reverse_codes.get(int(status_id), "") if return_case else _SHIPMENT_STATUS_CODES.get(int(status_id), "")
         except (TypeError, ValueError):
             status_text = ""
     status_text = " ".join(status_text.upper().replace("_", " ").split())[:100]
+    if return_case and status_text == "DELIVERED":
+        status_text = "RETURN DELIVERED"
 
     if not (awb or shipment_id) or not status_text:
         raise HTTPException(status_code=400, detail="Webhook must include an AWB or shipment ID and a status")
+
+    if return_case:
+        terminal_return_statuses = {"RETURN DELIVERED", "RETURN CANCELLED", "RETURN LOST"}
+        previous_return_status = (return_case.reverse_status or "").upper()
+        if previous_return_status not in terminal_return_statuses or status_text == "RETURN DELIVERED":
+            return_case.reverse_status = status_text
+        if awb and not return_case.reverse_awb:
+            return_case.reverse_awb = awb
+        if shipment_id and not return_case.reverse_shipment_id:
+            return_case.reverse_shipment_id = shipment_id
+        if payload.get("courier_name"):
+            return_case.reverse_courier = str(payload["courier_name"])[:100]
+        db.commit()
+        logger.info("Courier return status updated request %s to %s", return_case.id, return_case.reverse_status)
+        return {"received": True, "matched": True, "return_id": return_case.id,
+                "reverse_status": return_case.reverse_status}
 
     order = db.query(Order).filter(Order.shipping_awb == awb).first() if awb else None
     if not order and shipment_id:
@@ -197,6 +222,8 @@ def receive_courier_status(
         order.shipping_status = status_text
         if status_text == "DELIVERED":
             order.status = "delivered"
+            if not order.delivered_at:
+                order.delivered_at = datetime.now(timezone.utc)
         elif status_text in _IN_TRANSIT_STATUSES:
             order.status = "shipped"
     # Preserve the delivered state if an older courier event arrives late.
@@ -324,18 +351,4 @@ def cancel_shipping_shipment(
     result = cancel_shipment_by_awb(body.awb_code)
     if result.get("status") != 200:
         raise HTTPException(status_code=400, detail="Failed to cancel shipment")
-    return result
-
-
-@router.post("/return")
-def create_reverse_return(
-    body: ReturnRequest,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    order = db.query(Order).filter(Order.id == body.order_id).first()
-    _authorize_order_access(order, current_user)
-    result = create_return_shipment(body.order_id, body.return_data)
-    if result.get("error") or result.get("status") != 200:
-        raise HTTPException(status_code=400, detail=result.get("error", "Failed to create return shipment"))
     return result

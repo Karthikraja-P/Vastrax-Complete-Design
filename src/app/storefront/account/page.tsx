@@ -4,7 +4,7 @@ import Image from "next/image";
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Package, User, ChevronRight, Clock, CheckCircle2, Truck, ExternalLink, Plus, LogOut } from "lucide-react";
+import { Package, User, ChevronRight, Clock, CheckCircle2, Truck, ExternalLink, Plus, LogOut, RotateCcw } from "lucide-react";
 import { Header } from "@/components/layout/Header";
 import { CartDrawer } from "@/components/layout/CartDrawer";
 import { StylistDrawer } from "@/components/stylist/StylistDrawer";
@@ -31,8 +31,11 @@ interface OrderItem {
   status: string;
   shippingStatus?: string;
   items: {
+    id: string;
     name: string;
     variant: string;
+    size: string;
+    quantity: number;
     price: string;
     image: string;
   }[];
@@ -59,6 +62,7 @@ interface AccountOrderResponse {
   shipping_awb?: string | null;
   shipping_address?: string | null;
   items?: Array<{
+    id: string;
     product_id: string;
     product_name?: string | null;
     image_url?: string | null;
@@ -67,6 +71,35 @@ interface AccountOrderResponse {
     unit_price: string | number;
   }>;
 }
+
+type CustomerReturnLine = {
+  order_item_id: string;
+  product_name: string;
+  size: string;
+  quantity_requested: number;
+};
+
+type CustomerReturnCase = {
+  id: string;
+  order_id: string;
+  status: string;
+  reason: string;
+  notes: string | null;
+  reverse_awb: string | null;
+  reverse_courier: string | null;
+  reverse_status: string | null;
+  reverse_pickup_date: string | null;
+  items: CustomerReturnLine[];
+};
+
+type TrackingPanel = {
+  loading: boolean;
+  error?: string;
+  status?: string;
+  awb?: string;
+  courier?: string;
+  scans?: Array<{ activity?: string; date?: string; location?: string }>;
+};
 
 export default function CustomerAccountPage() {
   return (
@@ -88,6 +121,15 @@ function CustomerAccountContent() {
   const [customerOrders, setCustomerOrders] = useState<OrderItem[]>([]);
   const [isLoadingOrders, setIsLoadingOrders] = useState(true);
   const [ordersError, setOrdersError] = useState("");
+  const [returnCases, setReturnCases] = useState<CustomerReturnCase[]>([]);
+  const [returnTarget, setReturnTarget] = useState<{ orderId: string; item: OrderItem["items"][number]; remaining: number } | null>(null);
+  const [returnReason, setReturnReason] = useState("size");
+  const [returnQuantity, setReturnQuantity] = useState("1");
+  const [returnNotes, setReturnNotes] = useState("");
+  const [returnError, setReturnError] = useState("");
+  const [returnSubmitting, setReturnSubmitting] = useState(false);
+  const [trackingPanels, setTrackingPanels] = useState<Record<string, TrackingPanel>>({});
+  const [openTrackingKey, setOpenTrackingKey] = useState<string | null>(null);
   
   useEffect(() => {
     const handleOpenStylist = () => setIsStylistOpen(true);
@@ -135,6 +177,9 @@ function CustomerAccountContent() {
     const loadOrders = () => {
       if (requestInFlight || document.visibilityState === "hidden") return;
       requestInFlight = true;
+      fetchApi<CustomerReturnCase[]>("/orders/my/returns")
+        .then((cases) => { if (active) setReturnCases(Array.isArray(cases) ? cases : []); })
+        .catch(() => { if (active) setReturnCases([]); });
       fetchApi<AccountOrderResponse[]>("/orders/my")
         .then((orders) => {
         if (!active) return;
@@ -148,7 +193,10 @@ function CustomerAccountContent() {
           trackingNumber: order.shipping_awb || undefined,
           shippingAddress: order.shipping_address || "Address unavailable",
           items: (order.items || []).map((item) => ({
+            id: item.id,
             name: item.product_name || "VastraX product",
+            size: item.size || "",
+            quantity: item.quantity,
             variant: `${item.size ? `Size ${item.size} · ` : ""}Qty ${item.quantity}`,
             price: `₹${(Number(item.unit_price || 0) * item.quantity).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`,
             image: storefrontProductImage(item.product_id, item.image_url || undefined),
@@ -304,6 +352,79 @@ function CustomerAccountContent() {
       setMarketingError(error instanceof Error ? error.message : "Could not save marketing preferences.");
     } finally {
       setSavingMarketing(false);
+    }
+  };
+
+  const handleSubmitReturn = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!returnTarget) return;
+    setReturnSubmitting(true);
+    setReturnError("");
+    try {
+      const created = await fetchApi<CustomerReturnCase>(`/orders/my/${returnTarget.orderId}/returns`, {
+        method: "POST",
+        body: JSON.stringify({
+          reason: returnReason,
+          notes: returnNotes.trim() || null,
+          items: [{ order_item_id: returnTarget.item.id, quantity: Number(returnQuantity) }],
+        }),
+      });
+      setReturnCases((current) => [created, ...current]);
+      setReturnTarget(null);
+      setReturnNotes("");
+      setReturnQuantity("1");
+    } catch (error) {
+      setReturnError(error instanceof Error ? error.message : "Could not submit the return request.");
+    } finally {
+      setReturnSubmitting(false);
+    }
+  };
+
+  const handleTrackOrder = async (orderId: string) => {
+    const key = `order:${orderId}`;
+    if (openTrackingKey === key) { setOpenTrackingKey(null); return; }
+    setOpenTrackingKey(key);
+    setTrackingPanels((current) => ({ ...current, [key]: { loading: true } }));
+    try {
+      const result = await fetchApi<Record<string, unknown>>(`/orders/my/${orderId}`);
+      const info = (result.tracking_info || {}) as Record<string, unknown>;
+      const data = (info.tracking_data || {}) as Record<string, unknown>;
+      const tracks = Array.isArray(data.shipment_track) ? data.shipment_track as Array<Record<string, unknown>> : [];
+      const first = tracks[0] || {};
+      const rawScans = data.shipment_track_activities || first.shipment_track_activities || first.scans;
+      setTrackingPanels((current) => ({ ...current, [key]: {
+        loading: false,
+        status: String(first.current_status || result.shipping_status || "Tracking update unavailable"),
+        awb: String(first.awb_code || result.shipping_awb || ""),
+        courier: String(first.courier_name || result.shipping_courier || ""),
+        scans: Array.isArray(rawScans) ? rawScans as TrackingPanel["scans"] : [],
+      } }));
+    } catch (error) {
+      setTrackingPanels((current) => ({ ...current, [key]: { loading: false, error: error instanceof Error ? error.message : "Could not load tracking." } }));
+    }
+  };
+
+  const handleTrackReturn = async (returnCase: CustomerReturnCase) => {
+    const key = `return:${returnCase.id}`;
+    if (openTrackingKey === key) { setOpenTrackingKey(null); return; }
+    setOpenTrackingKey(key);
+    setTrackingPanels((current) => ({ ...current, [key]: { loading: true } }));
+    try {
+      const result = await fetchApi<Record<string, unknown>>(`/orders/my/returns/${returnCase.id}/tracking`);
+      const info = (result.tracking || {}) as Record<string, unknown>;
+      const data = (info.tracking_data || {}) as Record<string, unknown>;
+      const tracks = Array.isArray(data.shipment_track) ? data.shipment_track as Array<Record<string, unknown>> : [];
+      const first = tracks[0] || {};
+      const rawScans = data.shipment_track_activities || first.shipment_track_activities || first.scans;
+      setTrackingPanels((current) => ({ ...current, [key]: {
+        loading: false,
+        status: String(first.current_status || result.reverse_status || "Tracking update unavailable"),
+        awb: String(first.awb_code || result.reverse_awb || ""),
+        courier: String(first.courier_name || result.reverse_courier || ""),
+        scans: Array.isArray(rawScans) ? rawScans as TrackingPanel["scans"] : [],
+      } }));
+    } catch (error) {
+      setTrackingPanels((current) => ({ ...current, [key]: { loading: false, error: error instanceof Error ? error.message : "Could not load return tracking." } }));
     }
   };
 
@@ -531,20 +652,93 @@ function CustomerAccountContent() {
                       </div>
 
                       {/* Items Listing */}
-                      <div className="pt-4 space-y-3">
-                        {order.items.map((item, i) => (
-                          <div key={i} className="flex items-center justify-between gap-4">
-                            <div className="flex items-center gap-4">
-                              <Image width={1200} height={900} unoptimized src={item.image} alt={item.name} className="w-12 h-16 object-contain rounded-lg border border-border bg-[#f8f7f4] p-0.5" />
-                              <div>
-                                <h4 className="text-sm font-semibold text-foreground">{item.name}</h4>
-                                <p className="text-xs text-muted-foreground">{item.variant}</p>
+                      <div className="pt-4 space-y-4">
+                        {order.items.map((item, i) => {
+                          const itemReturns = returnCases.filter((entry) =>
+                            entry.order_id === order.id && entry.items.some((line) => line.order_item_id === item.id)
+                          );
+                          const requestedQty = itemReturns.filter((entry) => entry.status !== "rejected").reduce(
+                            (sum, entry) => sum + (entry.items.find((line) => line.order_item_id === item.id)?.quantity_requested || 0), 0
+                          );
+                          const remainingQty = Math.max(0, item.quantity - requestedQty);
+                          const returnFormOpen = returnTarget?.orderId === order.id && returnTarget.item.id === item.id;
+                          return (
+                            <div key={item.id || i} className="rounded-xl border border-border/60 p-3">
+                              <div className="flex items-center justify-between gap-4">
+                                <div className="flex items-center gap-4">
+                                  <Image width={1200} height={900} unoptimized src={item.image} alt={item.name} className="w-12 h-16 object-contain rounded-lg border border-border bg-[#f8f7f4] p-0.5" />
+                                  <div>
+                                    <h4 className="text-sm font-semibold text-foreground">{item.name}</h4>
+                                    <p className="text-xs text-muted-foreground">{item.variant}</p>
+                                  </div>
+                                </div>
+                                <span className="text-sm font-medium text-foreground">{item.price}</span>
                               </div>
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                <button type="button" onClick={() => void handleTrackOrder(order.id)} className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-medium text-foreground hover:border-accent">
+                                  <Truck className="h-3.5 w-3.5" /> Track order
+                                </button>
+                                {delivered && remainingQty > 0 && (
+                                  <button type="button" onClick={() => { setReturnError(""); setReturnQuantity("1"); setReturnTarget({ orderId: order.id, item, remaining: remainingQty }); }} className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-medium text-foreground hover:border-accent">
+                                    <RotateCcw className="h-3.5 w-3.5" /> Request return
+                                  </button>
+                                )}
+                              </div>
+                              {itemReturns.map((entry) => {
+                                const line = entry.items.find((candidate) => candidate.order_item_id === item.id);
+                                const returnKey = `return:${entry.id}`;
+                                const panel = trackingPanels[returnKey];
+                                return (
+                                  <div key={entry.id} className="mt-3 rounded-lg bg-surface-hover/70 p-3 text-xs">
+                                    <p className="font-semibold text-foreground">Return {entry.status.replaceAll("_", " ")} · {entry.reason.replaceAll("_", " ")}{line ? ` · Qty ${line.quantity_requested}` : ""}</p>
+                                    {entry.reverse_status && <p className="mt-1 text-muted-foreground">Reverse pickup: {entry.reverse_status}{entry.reverse_awb ? ` · AWB ${entry.reverse_awb}` : ""}{entry.reverse_courier ? ` · ${entry.reverse_courier}` : ""}</p>}
+                                    {entry.status === "approved" && !entry.reverse_awb && <p className="mt-1 text-muted-foreground">VastraX is arranging the reverse pickup.</p>}
+                                    {entry.reverse_awb && <button type="button" onClick={() => void handleTrackReturn(entry)} className="mt-2 inline-flex items-center gap-1 font-medium text-accent hover:underline"><Truck className="h-3 w-3" /> Track return parcel</button>}
+                                    {openTrackingKey === returnKey && panel && <div className="mt-2 space-y-1 border-t border-border/60 pt-2 text-muted-foreground">
+                                      {panel.loading ? <p>Loading courier updates…</p> : panel.error ? <p role="alert" className="text-red-500">{panel.error}</p> : <>
+                                        <p>{panel.status}{panel.awb ? ` · AWB ${panel.awb}` : ""}{panel.courier ? ` · ${panel.courier}` : ""}</p>
+                                        {(panel.scans || []).slice(0, 5).map((scan, scanIndex) => <p key={scanIndex}>{scan.date ? `${scan.date} · ` : ""}{scan.activity || "Courier update"}{scan.location ? ` · ${scan.location}` : ""}</p>)}
+                                      </>}
+                                    </div>}
+                                  </div>
+                                );
+                              })}
+                              {returnFormOpen && (
+                                <form onSubmit={handleSubmitReturn} className="mt-3 grid gap-3 rounded-lg border border-border bg-surface-hover/50 p-3 sm:grid-cols-2">
+                                  <label className="text-xs text-muted-foreground">Reason
+                                    <select value={returnReason} onChange={(event) => setReturnReason(event.target.value)} className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground">
+                                      <option value="size">Size or fit</option><option value="damaged">Damaged item</option><option value="wrong_item">Wrong item received</option><option value="quality">Quality concern</option><option value="other">Other</option>
+                                    </select>
+                                  </label>
+                                  <label className="text-xs text-muted-foreground">Quantity (up to {returnTarget.remaining})
+                                    <input type="number" min="1" max={returnTarget.remaining} value={returnQuantity} onChange={(event) => setReturnQuantity(event.target.value)} required className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground" />
+                                  </label>
+                                  <label className="text-xs text-muted-foreground sm:col-span-2">Additional details (optional)
+                                    <textarea maxLength={2000} value={returnNotes} onChange={(event) => setReturnNotes(event.target.value)} rows={2} className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground" />
+                                  </label>
+                                  {returnError && <p role="alert" className="text-xs text-red-500 sm:col-span-2">{returnError}</p>}
+                                  <div className="flex flex-wrap items-center justify-between gap-2 sm:col-span-2">
+                                    <p className="text-xs text-muted-foreground sm:max-w-md">Request within 7 days of delivery. For damage claims, send the continuous parcel-opening video to support within 48 hours; see the <Link href="/storefront/refund-policy" className="text-accent underline">Returns & Refunds policy</Link>. VastraX reviews every request before arranging pickup.</p>
+                                    <div className="flex gap-2">
+                                      <button type="button" onClick={() => setReturnTarget(null)} className="rounded-lg border border-border px-3 py-2 text-xs text-foreground">Cancel</button>
+                                      <button disabled={returnSubmitting} className="rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-white disabled:opacity-60">{returnSubmitting ? "Submitting…" : "Submit return request"}</button>
+                                    </div>
+                                  </div>
+                                </form>
+                              )}
                             </div>
-                            <span className="text-sm font-medium text-foreground">{item.price}</span>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
+                      {openTrackingKey === `order:${order.id}` && trackingPanels[`order:${order.id}`] && (() => {
+                        const panel = trackingPanels[`order:${order.id}`];
+                        return <div className="mt-3 rounded-lg border border-border bg-surface-hover/60 p-3 text-xs text-muted-foreground">
+                          {panel.loading ? "Loading courier updates…" : panel.error ? <p role="alert" className="text-red-500">{panel.error}</p> : <>
+                            <p className="font-medium text-foreground">{panel.status}{panel.awb ? ` · AWB ${panel.awb}` : ""}{panel.courier ? ` · ${panel.courier}` : ""}</p>
+                            {(panel.scans || []).slice(0, 5).map((scan, scanIndex) => <p key={scanIndex} className="mt-1">{scan.date ? `${scan.date} · ` : ""}{scan.activity || "Courier update"}{scan.location ? ` · ${scan.location}` : ""}</p>)}
+                          </>}
+                        </div>;
+                      })()}
 
                       <div className="mt-4 pt-4 border-t border-border/40 flex items-center justify-between text-xs text-muted-foreground">
                         <span>Ship to: {order.shippingAddress}</span>

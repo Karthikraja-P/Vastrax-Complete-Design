@@ -413,6 +413,59 @@ def create_return_shipment(order_id: str, return_data: dict) -> dict:
 
 
 
+def get_return_destination() -> dict:
+    """Read the configured seller return address from the Shiprocket account."""
+    token = get_token()
+    if not token:
+        return _failure("Shiprocket authentication unavailable; return destination could not be loaded")
+    try:
+        resp = requests.get(
+            f"{API_BASE}/settings/company/pickup",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=15,
+        )
+        if resp.status_code != 200:
+            return _failure("Could not load the VastraX return address from Shiprocket", resp.status_code)
+        payload = resp.json().get("data") or {}
+        if isinstance(payload, list):
+            locations = [row for row in payload if isinstance(row, dict)]
+            company_name = ""
+        elif isinstance(payload, dict):
+            primary = payload.get("shipping_address")
+            locations = [row for row in primary if isinstance(row, dict)] if isinstance(primary, list) else ([primary] if isinstance(primary, dict) else [])
+            locations.extend(row for row in (payload.get("recent_addresses") or []) if isinstance(row, dict))
+            company_name = payload.get("company_name") or ""
+        else:
+            locations = []
+            company_name = ""
+        expected = _pickup_location().casefold()
+        address = next(
+            (row for row in locations if str(row.get("pickup_location") or "").strip().casefold() == expected),
+            None,
+        )
+        if address is None:
+            return _failure("The configured Shiprocket return pickup location was not found")
+        result = {
+            "name": address.get("name") or company_name,
+            "address": address.get("address"),
+            "address_2": address.get("address_2") or "",
+            "city": address.get("city"),
+            "state": address.get("state"),
+            "country": address.get("country") or "India",
+            "pincode": address.get("pin_code"),
+            "email": address.get("email"),
+            "phone": address.get("phone"),
+            "pickup_location": address.get("pickup_location"),
+        }
+        required = ("name", "address", "city", "state", "pincode", "phone")
+        if any(not str(result.get(key) or "").strip() for key in required):
+            return _failure("The configured Shiprocket return address is missing required contact or address details")
+        return {"status": 200, "data": result}
+    except Exception as exc:
+        logger.error("Could not load Shiprocket return destination: %s", type(exc).__name__)
+        return _failure("Could not load the VastraX return address from Shiprocket")
+
+
 def assign_awb(shipment_id: str, courier_id: int | None = None) -> dict:
     """Assign a carrier and AWB to a previously created Shiprocket shipment."""
     if not str(shipment_id).isdigit():

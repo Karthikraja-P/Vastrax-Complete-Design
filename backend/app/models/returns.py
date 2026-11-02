@@ -20,12 +20,19 @@ class SalesReturn(Base):
     order_id: Mapped[str] = mapped_column(ForeignKey("orders.id"), nullable=False, index=True)
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="requested", index=True)
     reason: Mapped[str] = mapped_column(String(40), nullable=False)
+    request_source: Mapped[str] = mapped_column(String(20), nullable=False, default="admin")
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
     reviewed_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     received_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    reverse_order_id: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
+    reverse_shipment_id: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    reverse_awb: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    reverse_courier: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    reverse_status: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    reverse_pickup_date: Mapped[str | None] = mapped_column(String(10), nullable=True)
 
 
 class SalesReturnLine(Base):

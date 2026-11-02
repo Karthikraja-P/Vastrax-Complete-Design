@@ -1,6 +1,7 @@
 """Admin return authorization, receiving, and stock reconciliation endpoints."""
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
+import re
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -11,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.db.database import get_db
 from app.middleware.auth import require_business_permission
 from app.models.business import StockMovement
+from app.models.address import Address
 from app.models.order import Order
 from app.models.order_item import OrderItem
 from app.models.payment import Payment
@@ -22,6 +24,7 @@ from app.models.user import User
 from app.schemas.payments import RefundIn
 from app.services.payment_service import PaymentService
 from app.services.erp_posting_service import restore_returned_cogs
+from app.services.shiprocket_service import assign_awb, create_return_shipment, get_return_destination, schedule_pickup, track_shipment
 
 router = APIRouter(tags=["erp-returns"], dependencies=[Depends(require_business_permission("erp"))])
 
@@ -40,6 +43,7 @@ class ReturnCreate(BaseModel):
 
 class ReturnReview(BaseModel):
     decision: Literal["approve", "reject"]
+    pickup_date: date | None = None
 
 
 class ReturnReceiptLine(BaseModel):
@@ -71,8 +75,15 @@ def _serialize_return(db: Session, item: SalesReturn) -> dict:
         })
     return {
         "id": item.id, "order_id": item.order_id, "status": item.status, "reason": item.reason,
+        "request_source": item.request_source,
         "notes": item.notes, "requested_at": item.requested_at, "reviewed_at": item.reviewed_at,
         "received_at": item.received_at,
+        "reverse_order_id": item.reverse_order_id,
+        "reverse_shipment_id": item.reverse_shipment_id,
+        "reverse_awb": item.reverse_awb,
+        "reverse_courier": item.reverse_courier,
+        "reverse_status": item.reverse_status,
+        "reverse_pickup_date": item.reverse_pickup_date,
         "payments": payment_rows,
         "items": [{"id": line.id, "order_item_id": line.order_item_id, "product_name": name, "size": size,
                    "quantity_requested": line.quantity_requested, "quantity_received": line.quantity_received,
@@ -129,16 +140,171 @@ def create_return(body: ReturnCreate, admin: User = Depends(require_business_per
     return _serialize_return(db, case)
 
 
+def _reverse_shipment_payload(db: Session, case: SalesReturn) -> dict:
+    order = db.get(Order, case.order_id)
+    user = db.get(User, order.user_id) if order else None
+    address = db.get(Address, order.address_id) if order else None
+    if not order or not user or not address:
+        raise HTTPException(409, "The order's customer or delivery address is unavailable")
+    pickup_phone = re.sub(r"\D", "", user.phone_number or "")
+    if pickup_phone.startswith("91") and len(pickup_phone) == 12:
+        pickup_phone = pickup_phone[2:]
+    if len(pickup_phone) != 10:
+        raise HTTPException(409, "Add a valid 10-digit mobile number to the customer's account before arranging a return pickup")
+
+    destination_result = get_return_destination()
+    if destination_result.get("error") or destination_result.get("status") != 200:
+        raise HTTPException(502, detail=destination_result.get("error", "Could not load the Shiprocket return address"))
+    destination = destination_result["data"]
+    destination_phone = re.sub(r"\D", "", str(destination.get("phone") or ""))
+    if destination_phone.startswith("91") and len(destination_phone) == 12:
+        destination_phone = destination_phone[2:]
+    if len(destination_phone) != 10:
+        raise HTTPException(502, "The Shiprocket return address needs a valid 10-digit phone number")
+
+    rows = db.query(SalesReturnLine, Product, ProductVariant).join(
+        Product, Product.id == SalesReturnLine.product_id
+    ).join(ProductVariant, ProductVariant.id == SalesReturnLine.variant_id).filter(
+        SalesReturnLine.return_id == case.id
+    ).all()
+    if not rows:
+        raise HTTPException(409, "This return request has no items")
+    order_items = []
+    subtotal = Decimal("0.00")
+    for line, product, variant in rows:
+        subtotal += Decimal(line.unit_price) * line.quantity_requested
+        order_items.append({
+            "name": product.name,
+            "sku": variant.sku,
+            "units": line.quantity_requested,
+            "selling_price": float(line.unit_price),
+        })
+
+    first, _, last = (user.full_name or user.email.split("@")[0]).partition(" ")
+    pickup_address = address.address_line1
+    return {
+        "order_id": case.reverse_order_id or case.id,
+        "order_date": order.placed_at.strftime("%Y-%m-%d"),
+        "pickup_customer_name": first,
+        "pickup_last_name": last,
+        "pickup_address": pickup_address,
+        "pickup_address_2": "",
+        "pickup_city": address.city,
+        "pickup_state": address.state,
+        "pickup_country": "India",
+        "pickup_pincode": int(address.pincode),
+        "pickup_email": user.email,
+        "pickup_phone": pickup_phone,
+        "pickup_isd_code": "91",
+        "shipping_customer_name": destination["name"],
+        "shipping_last_name": "",
+        "shipping_address": destination["address"],
+        "shipping_address_2": destination.get("address_2", ""),
+        "shipping_city": destination["city"],
+        "shipping_state": destination["state"],
+        "shipping_country": destination.get("country") or "India",
+        "shipping_pincode": int(destination["pincode"]),
+        "shipping_email": destination.get("email") or "support@vastrax.com",
+        "shipping_phone": destination_phone,
+        "shipping_isd_code": "91",
+        "order_items": order_items,
+        "payment_method": "PREPAID",
+        "total_discount": 0,
+        "sub_total": float(subtotal),
+        "length": 10,
+        "breadth": 10,
+        "height": 5,
+        "weight": 0.5,
+    }
+
+
+def _book_reverse_pickup(db: Session, case: SalesReturn, pickup_date: date) -> dict:
+    if case.request_source != "customer":
+        raise HTTPException(409, "Only an approved customer return request can book a reverse pickup")
+    if case.status != "approved":
+        raise HTTPException(409, "Approve the return before booking a reverse pickup")
+    if pickup_date < date.today():
+        raise HTTPException(422, "Pickup date cannot be in the past")
+    case.reverse_pickup_date = pickup_date.isoformat()
+    db.commit()
+
+    if not case.reverse_shipment_id:
+        payload = _reverse_shipment_payload(db, case)
+        result = create_return_shipment(case.reverse_order_id or case.id, payload)
+        shipment_id = result.get("shipment_id")
+        if result.get("error") or result.get("status") not in (200, 201) or not shipment_id:
+            case.reverse_status = "Return order booking failed"
+            db.commit()
+            raise HTTPException(502, detail=result.get("error", "Shiprocket could not create the reverse shipment"))
+        case.reverse_order_id = str(result.get("order_id") or case.reverse_order_id or case.id)
+        case.reverse_shipment_id = str(shipment_id)
+        case.reverse_status = str(result.get("shipment_status") or result.get("status_text") or "Return order created")[:100]
+        db.commit()
+
+    if not case.reverse_awb:
+        awb_result = assign_awb(case.reverse_shipment_id)
+        if awb_result.get("error") or awb_result.get("status") not in (200, 201) or not awb_result.get("awb_code"):
+            case.reverse_status = "Reverse courier assignment failed"
+            db.commit()
+            raise HTTPException(502, detail=awb_result.get("error", "Shiprocket could not assign a reverse courier"))
+        case.reverse_awb = str(awb_result["awb_code"])
+        case.reverse_courier = str(awb_result.get("courier_name") or "Shiprocket courier")
+        case.reverse_status = "Reverse courier assigned"
+        db.commit()
+
+    if (case.reverse_status or "").casefold() != "return pickup scheduled":
+        pickup_result = schedule_pickup(case.reverse_shipment_id, pickup_date.isoformat())
+        if pickup_result.get("error") or pickup_result.get("status") != 200:
+            case.reverse_status = "Reverse pickup scheduling failed"
+            db.commit()
+            raise HTTPException(502, detail=pickup_result.get("error", "Shiprocket could not schedule the reverse pickup"))
+    case.reverse_status = "Return pickup scheduled"
+    db.commit()
+    return {
+        "id": case.id,
+        "status": case.status,
+        "reverse_order_id": case.reverse_order_id,
+        "reverse_shipment_id": case.reverse_shipment_id,
+        "reverse_awb": case.reverse_awb,
+        "reverse_courier": case.reverse_courier,
+        "reverse_status": case.reverse_status,
+        "reverse_pickup_date": case.reverse_pickup_date,
+    }
+
+
 @router.post("/erp/returns/{return_id}/review")
 def review_return(return_id: str, body: ReturnReview, admin: User = Depends(require_business_permission("erp")), db: Session = Depends(get_db)):
     case = db.get(SalesReturn, return_id)
     if not case or case.status != "requested":
         raise HTTPException(409, "Only a requested return can be reviewed")
+    if body.decision == "approve" and case.request_source == "customer" and not body.pickup_date:
+        raise HTTPException(422, "Choose a reverse pickup date before approving this return")
     case.status = "approved" if body.decision == "approve" else "rejected"
     case.reviewed_by = admin.id
     case.reviewed_at = datetime.now(timezone.utc)
     db.commit()
+    if body.decision == "approve" and case.request_source == "customer":
+        return _book_reverse_pickup(db, case, body.pickup_date)
     return {"id": case.id, "status": case.status}
+
+
+@router.post("/erp/returns/{return_id}/book-pickup")
+def retry_reverse_pickup(return_id: str, pickup_date: date, _: User = Depends(require_business_permission("erp")), db: Session = Depends(get_db)):
+    case = db.get(SalesReturn, return_id)
+    if not case:
+        raise HTTPException(404, "Return request not found")
+    return _book_reverse_pickup(db, case, pickup_date)
+
+
+@router.get("/erp/returns/{return_id}/tracking")
+def admin_return_tracking(return_id: str, _: User = Depends(require_business_permission("erp")), db: Session = Depends(get_db)):
+    case = db.get(SalesReturn, return_id)
+    if not case:
+        raise HTTPException(404, "Return request not found")
+    if not case.reverse_shipment_id:
+        raise HTTPException(409, "No Shiprocket reverse shipment has been booked")
+    return {"reverse_status": case.reverse_status, "reverse_awb": case.reverse_awb,
+            "tracking": track_shipment(case.reverse_shipment_id)}
 
 
 @router.post("/erp/returns/{return_id}/receive")
@@ -146,6 +312,8 @@ def receive_return(return_id: str, body: ReturnReceipt, admin: User = Depends(re
     case = db.get(SalesReturn, return_id)
     if not case or case.status not in ("approved", "partially_received"):
         raise HTTPException(409, "Return must be approved before receiving items")
+    if case.reverse_shipment_id and (case.reverse_status or "").casefold() not in {"return delivered", "return received", "received"}:
+        raise HTTPException(409, "Wait for Shiprocket to confirm the return delivery before receiving the item")
     line_ids = [row.line_id for row in body.items]
     if len(set(line_ids)) != len(line_ids):
         raise HTTPException(422, "Each return line can appear once per receipt")
