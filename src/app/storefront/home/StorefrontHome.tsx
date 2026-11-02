@@ -99,7 +99,7 @@ export default function StorefrontHome() {
     if (!hero) return;
     const observer = new IntersectionObserver(([entry]) => {
       setIsHeroVisible(Boolean(entry?.isIntersecting));
-    }, { threshold: 0.55 });
+    }, { threshold: 0.95 });
     observer.observe(hero);
     return () => observer.disconnect();
   }, []);
