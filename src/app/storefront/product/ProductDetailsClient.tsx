@@ -855,14 +855,14 @@ function ProductContent() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="size-chart-title"
-            className="relative max-h-[88vh] w-full max-w-[380px] overflow-y-auto rounded-2xl bg-white p-4 shadow-2xl"
+            className="relative max-h-[88vh] w-full max-w-[380px] overflow-y-auto rounded-2xl bg-white p-4 text-[#111111] shadow-2xl"
             onClick={(event) => event.stopPropagation()}
           >
             <button
               type="button"
               onClick={() => setIsSizeChartOpen(false)}
               aria-label="Close size chart"
-              className="absolute right-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-white/95 text-foreground shadow"
+              className="absolute right-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-white/95 text-[#111111] shadow"
             >
               <X className="h-5 w-5" />
             </button>
@@ -877,13 +877,13 @@ function ProductContent() {
               />
             ) : product.size_chart?.headers?.length && product.size_chart.rows.length ? (
               <div className="pt-10">
-                <h3 className="mb-4 text-center text-lg font-bold text-foreground">Size Chart</h3>
+                <h3 className="mb-4 text-center text-lg font-bold text-[#111111]">Size Chart</h3>
                 <div className="overflow-x-auto">
-                  <table className="w-full border-collapse text-left text-sm">
-                    <thead><tr className="border-b border-border text-xs font-bold uppercase text-muted-foreground">
+                  <table className="w-full border-collapse text-left text-sm text-[#111111]">
+                    <thead><tr className="border-b border-[#dedede] text-xs font-bold uppercase text-[#51464a]">
                       {product.size_chart.headers.map((header, index) => <th key={index} className="px-2 py-3">{header}</th>)}
                     </tr></thead>
-                    <tbody className="divide-y divide-border/50">
+                    <tbody className="divide-y divide-[#dedede]">
                       {product.size_chart.rows.map((row, index) => (
                         <tr key={index}>
                           {Object.entries(row).map(([key, value]) => <td key={key} className="px-2 py-3">{value}</td>)}
@@ -894,7 +894,7 @@ function ProductContent() {
                 </div>
               </div>
             ) : (
-              <p className="pt-10 text-center text-sm text-muted-foreground">No size chart is available for this product.</p>
+              <p className="pt-10 text-center text-sm text-[#51464a]">No size chart is available for this product.</p>
             )}
           </section>
         </div>
