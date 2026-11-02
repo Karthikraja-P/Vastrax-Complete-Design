@@ -728,6 +728,14 @@ function CheckoutContent() {
                 </div>
               </div>
 
+              <div className="rounded-xl border border-accent/40 bg-accent/5 p-4 text-sm text-foreground">
+                <p className="font-semibold">Important: parcel-opening video for damage claims</p>
+                <p className="mt-1 leading-relaxed text-muted-foreground">
+                  A continuous, unedited parcel-opening video is required documentation for a damage-related replacement or refund request. Start before opening the sealed parcel; show the shipping label, opening, item, and damage in one take. Contact us within 48 hours of delivery. Read the full{" "}
+                  <Link href="/storefront/refund-policy" className="font-semibold text-accent underline underline-offset-4 hover:text-accent/80">Returns &amp; Refunds policy</Link>.
+                </p>
+              </div>
+
               {/* Submit Button */}
               <button 
                 type="submit"

@@ -6,7 +6,7 @@ import { SITE } from "@/lib/site";
 const LINKS = [
   ["Privacy Policy", "/storefront/privacy"],
   ["Terms of Service", "/storefront/terms"],
-  ["Returns & Refunds", "/storefront/refund-policy"],
+  ["Returns & Refunds · parcel video for damage claims", "/storefront/refund-policy"],
   ["Shipping", "/storefront/shipping-policy"],
 ] as const;
 
