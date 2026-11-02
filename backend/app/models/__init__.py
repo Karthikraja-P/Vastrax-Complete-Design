@@ -50,3 +50,4 @@ from .erp_posting_config import ERPPostingConfig
 
 from .marketing_campaign import CRMCampaign, CRMCampaignDelivery, CRMMarketingUnsubscribeToken
 from .store_settings import StoreSettings
+from .rto_receipt import RtoReceipt, RtoReceiptLine

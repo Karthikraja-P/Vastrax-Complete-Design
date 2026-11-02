@@ -1,9 +1,12 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
-import { Home, ChevronRight, ShoppingCart, Clock, Truck, CheckCircle2, Ban, Search, ChevronDown, RotateCcw, Loader2, Eye, X as XIcon, User, MapPin, CreditCard } from "lucide-react";
+import { useState, useEffect, useMemo, useCallback } from "react";
+import { Home, ChevronRight, ShoppingCart, Clock, Truck, CheckCircle2, Ban, Search, ChevronDown, RotateCcw, Loader2, Eye, X as XIcon, User, MapPin, CreditCard, AlertTriangle, RefreshCw } from "lucide-react";
 import Link from "next/link";
-import { ordersApi, OrderItemRecord } from "@/lib/api";
+import { fetchApi, ordersApi, OrderItemRecord } from "@/lib/api";
+
+type NdrCase = { awb: string; order_id: string | null; customer_name?: string | null; ndr_reason?: string | null; ndr_attempt?: number | string | null; ndr_raised_at?: string | null; courier?: string | null; raw_status?: string | null };
+type RtoReceipt = { id: string; order_id: string; status: string; notes?: string | null; shipping_status?: string | null; awb?: string | null; courier?: string | null; received_at?: string | null; items: Array<{ order_item_id: string; product_name: string; size: string; quantity_expected: number; quantity_received: number; quantity_restocked: number }> };
 
 type BackendOrderItemRecord = OrderItemRecord & {
   customer_name?: string | null;
@@ -154,6 +157,104 @@ export default function OrdersPage() {
     }
   };
 
+
+  const [ndrCases, setNdrCases] = useState<NdrCase[]>([]);
+  const [rtoReceipts, setRtoReceipts] = useState<RtoReceipt[]>([]);
+  const [exceptionsLoading, setExceptionsLoading] = useState(false);
+  const [exceptionsError, setExceptionsError] = useState("");
+  const [exceptionActionId, setExceptionActionId] = useState<string | null>(null);
+
+  const loadDeliveryExceptions = useCallback(async () => {
+    setExceptionsLoading(true);
+    try {
+      const [ndr, receipts] = await Promise.all([
+        fetchApi<{ items: NdrCase[] }>("/shipping/admin/ndr"),
+        fetchApi<RtoReceipt[]>("/shipping/admin/rto-receipts"),
+      ]);
+      setNdrCases(Array.isArray(ndr.items) ? ndr.items : []);
+      setRtoReceipts(Array.isArray(receipts) ? receipts : []);
+      setExceptionsError("");
+    } catch (error) {
+      setExceptionsError(error instanceof Error ? error.message : "Could not load Shiprocket delivery exceptions.");
+    } finally {
+      setExceptionsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { const timer = window.setTimeout(() => void loadDeliveryExceptions(), 0); return () => window.clearTimeout(timer); }, [loadDeliveryExceptions]);
+
+  const handleNdrDecision = async (item: NdrCase, action: "re-attempt" | "return") => {
+    if (!item.order_id) return;
+    const message = action === "return"
+      ? `Request Shiprocket to return order ${item.order_id} to origin? This can stop further delivery attempts.`
+      : `Ask Shiprocket to reattempt delivery for order ${item.order_id}?`;
+    if (!window.confirm(message)) return;
+    const comments = window.prompt(
+      "Add a note for Shiprocket",
+      action === "return" ? "VastraX admin requested return to origin after reviewing the NDR." : "VastraX admin requested a delivery reattempt.",
+    );
+    if (!comments?.trim()) return;
+    setExceptionActionId(item.order_id);
+    setExceptionsError("");
+    try {
+      await fetchApi(`/shipping/admin/orders/${encodeURIComponent(item.order_id)}/ndr-action`, {
+        method: "POST",
+        body: JSON.stringify({ action, comments }),
+      });
+      await Promise.all([loadDeliveryExceptions(), loadOrders()]);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Shiprocket did not accept this NDR action.";
+      await loadDeliveryExceptions();
+      setExceptionsError(message);
+    } finally {
+      setExceptionActionId(null);
+    }
+  };
+
+  const handleRtoReceipt = async (receipt: RtoReceipt) => {
+    const items: Array<{ order_item_id: string; quantity_received: number; quantity_restocked: number }> = [];
+    for (const item of receipt.items) {
+      const receivedRaw = window.prompt(
+        `Actual units received for ${item.product_name} / ${item.size} (0-${item.quantity_expected})`,
+        String(item.quantity_expected),
+      );
+      if (receivedRaw === null) return;
+      const quantity_received = Number(receivedRaw);
+      if (!Number.isInteger(quantity_received) || quantity_received < 0 || quantity_received > item.quantity_expected) {
+        setExceptionsError(`Enter a whole received quantity from 0 to ${item.quantity_expected} for ${item.product_name}.`);
+        return;
+      }
+      const restockedRaw = window.prompt(
+        `Sellable units to add back to stock for ${item.product_name} / ${item.size} (0-${quantity_received})`,
+        String(quantity_received),
+      );
+      if (restockedRaw === null) return;
+      const quantity_restocked = Number(restockedRaw);
+      if (!Number.isInteger(quantity_restocked) || quantity_restocked < 0 || quantity_restocked > quantity_received) {
+        setExceptionsError(`Restock quantity must be between 0 and ${quantity_received}.`);
+        return;
+      }
+      items.push({ order_item_id: item.order_item_id, quantity_received, quantity_restocked });
+    }
+    const notes = window.prompt("Receipt notes (optional)", "Count and inspect the returned parcel before restocking.");
+    if (notes === null) return;
+    setExceptionActionId(receipt.order_id);
+    setExceptionsError("");
+    try {
+      await fetchApi(`/shipping/admin/rto-receipts/${encodeURIComponent(receipt.id)}/receive`, {
+        method: "POST",
+        body: JSON.stringify({ notes, items }),
+      });
+      await Promise.all([loadDeliveryExceptions(), loadOrders()]);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not record RTO receipt.";
+      await loadDeliveryExceptions();
+      setExceptionsError(message);
+    } finally {
+      setExceptionActionId(null);
+    }
+  };
+
   const handleDispatchShipment = async (order: OrderRow) => {
     if (!pickupDate) {
       setDispatchError(true);
@@ -276,6 +377,50 @@ export default function OrdersPage() {
 
       {actionError && <p role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400">{actionError}</p>}
 
+
+      <section className="rounded-xl border border-border bg-surface p-4 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground"><AlertTriangle className="h-4 w-4 text-amber-500" /> Shiprocket delivery exceptions &amp; RTO</h2>
+            <p className="mt-1 text-xs text-muted-foreground">Review NDRs before choosing a delivery reattempt or return to origin. RTO stock is added only after staff count and inspect the parcel.</p>
+          </div>
+          <button type="button" onClick={() => void loadDeliveryExceptions()} disabled={exceptionsLoading} className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs text-foreground disabled:opacity-50">
+            <RefreshCw className={`h-3.5 w-3.5 ${exceptionsLoading ? "animate-spin" : ""}`} /> Refresh Shiprocket
+          </button>
+        </div>
+        {exceptionsError && <p role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-400">{exceptionsError}</p>}
+        {exceptionsLoading && ndrCases.length === 0 && <p className="text-xs text-muted-foreground">Loading live NDR cases...</p>}
+        {!exceptionsLoading && ndrCases.length === 0 && !exceptionsError && <p className="text-xs text-muted-foreground">No Shiprocket NDR shipments currently need a decision.</p>}
+        {ndrCases.map((item) => (
+          <article key={item.awb} className="flex flex-col gap-3 rounded-lg border border-border p-3 md:flex-row md:items-center md:justify-between">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-foreground">{item.order_id ? `Order ${item.order_id}` : "Unmatched Shiprocket shipment"} / AWB {item.awb || "-"}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{item.customer_name || "Customer"} / {item.courier || "Courier"} / {item.raw_status || "NDR"}{item.ndr_attempt ? ` / Attempt ${item.ndr_attempt}` : ""}</p>
+              {item.ndr_reason && <p className="mt-1 text-xs text-amber-500">{item.ndr_reason}</p>}
+              {!item.order_id && <p className="mt-1 text-xs text-red-400">This AWB does not match a VastraX order, so actions are disabled.</p>}
+            </div>
+            {item.order_id && (
+              <div className="flex shrink-0 flex-wrap gap-2">
+                <button type="button" disabled={exceptionActionId === item.order_id} onClick={() => void handleNdrDecision(item, "re-attempt")} className="rounded-lg border border-border px-3 py-2 text-xs font-medium text-foreground disabled:opacity-50">Reattempt delivery</button>
+                <button type="button" disabled={exceptionActionId === item.order_id} onClick={() => void handleNdrDecision(item, "return")} className="rounded-lg bg-amber-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">Return to origin</button>
+              </div>
+            )}
+          </article>
+        ))}
+        {rtoReceipts.filter((receipt) => receipt.status === "awaiting_receipt").map((receipt) => (
+          <article key={receipt.id} className="flex flex-col gap-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-foreground">RTO delivered / Order {receipt.order_id} / AWB {receipt.awb || "-"}</p>
+              <p className="mt-1 text-xs text-muted-foreground">Count and inspect the parcel before choosing sellable units to restore to inventory.</p>
+            </div>
+            <button type="button" disabled={exceptionActionId === receipt.order_id} onClick={() => void handleRtoReceipt(receipt)} className="rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">Record parcel and stock</button>
+          </article>
+        ))}
+        {rtoReceipts.filter((receipt) => receipt.status === "received").slice(0, 5).map((receipt) => (
+          <p key={receipt.id} className="text-xs text-emerald-500">RTO for order {receipt.order_id} was inspected and reconciled{receipt.received_at ? ` on ${new Date(receipt.received_at).toLocaleDateString()}` : ""}. Acknowledge receipt in the Shiprocket RTO dashboard if it has not already been acknowledged.</p>
+        ))}
+      </section>
+
       {/* Filters Section */}
       <div className="bg-surface border border-border rounded-xl p-4 mt-6">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
@@ -310,6 +455,7 @@ export default function OrdersPage() {
                 <option value="packed">Packed</option>
                 <option value="shipped">Shipped</option>
                 <option value="delivered">Delivered</option>
+                <option value="returned">Returned</option>
                 <option value="cancelled">Cancelled</option>
               </select>
               <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />

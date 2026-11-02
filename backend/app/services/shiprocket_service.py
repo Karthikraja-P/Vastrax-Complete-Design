@@ -545,3 +545,70 @@ def select_shipping_quote(result: dict) -> dict:
     if not choices:
         return _failure("No Shiprocket courier is available for this pincode")
     return min(choices, key=lambda item: item["rate"])
+
+
+def get_ndr_shipments(page: int = 1, per_page: int = 100, search: str | None = None) -> dict:
+    """Fetch Shiprocket's live non-delivery report for admin review."""
+    token = get_token()
+    if not token:
+        return _failure("Shiprocket authentication unavailable; NDR cases could not be loaded")
+    try:
+        params = {"page": page, "per_page": per_page}
+        if search:
+            params["search"] = search.strip()
+        resp = requests.get(
+            f"{API_BASE}/ndr/all",
+            params=params,
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=20,
+        )
+        try:
+            payload = resp.json()
+        except ValueError:
+            payload = {}
+        if resp.status_code != 200:
+            logger.warning("Shiprocket NDR list returned HTTP %s", resp.status_code)
+            return _failure(str(payload.get("message") or "Shiprocket NDR list is unavailable"), resp.status_code)
+        rows = payload.get("data") or []
+        if isinstance(rows, dict):
+            rows = rows.get("data") or rows.get("shipments") or []
+        if not isinstance(rows, list):
+            rows = []
+        return {"status": 200, "data": rows, "meta": payload.get("meta") or {}}
+    except Exception as exc:
+        logger.error("Shiprocket NDR list request failed: %s", type(exc).__name__)
+        return _failure("Shiprocket NDR list is unavailable")
+
+
+def submit_ndr_action(awb: str, action: str, comments: str, phone: str | None = None, deferred_date: str | None = None) -> dict:
+    """Submit an admin-authorized reattempt or RTO action for a verified NDR AWB."""
+    token = get_token()
+    if not token:
+        return _failure("Shiprocket authentication unavailable; no NDR action was submitted")
+    if action not in {"re-attempt", "return"}:
+        return _failure("Unsupported Shiprocket NDR action", 400)
+    if not awb or not comments.strip():
+        return _failure("A shipment AWB and action comment are required", 400)
+    payload = {"action": action, "comments": comments.strip()[:500]}
+    if phone:
+        payload["phone"] = phone
+    if deferred_date and action == "re-attempt":
+        payload["deferred_date"] = deferred_date
+    try:
+        resp = requests.post(
+            f"{API_BASE}/ndr/{requests.utils.quote(awb, safe='')}/action",
+            json=payload,
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+            timeout=20,
+        )
+        try:
+            data = resp.json()
+        except ValueError:
+            data = {}
+        if resp.status_code not in (200, 201):
+            logger.warning("Shiprocket NDR action returned HTTP %s", resp.status_code)
+            return _failure(str(data.get("message") or "Shiprocket rejected the NDR action"), resp.status_code)
+        return {"status": resp.status_code, "data": data}
+    except Exception as exc:
+        logger.error("Shiprocket NDR action request failed: %s", type(exc).__name__)
+        return _failure("Could not submit the Shiprocket NDR action")

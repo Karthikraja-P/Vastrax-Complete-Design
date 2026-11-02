@@ -1,5 +1,7 @@
 import hmac
 import logging
+import re
+from typing import Literal
 from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, Depends, Header, HTTPException
@@ -11,6 +13,11 @@ from app.core.exceptions import ForbiddenError, NotFoundError
 from app.db.database import get_db
 from app.middleware.auth import get_current_user, require_admin
 from app.models.order import Order
+from app.models.order_item import OrderItem
+from app.models.product_variant import ProductVariant
+from app.models.product import Product
+from app.models.business import StockMovement
+from app.models.rto_receipt import RtoReceipt, RtoReceiptLine
 from app.models.user import User
 from app.models.returns import SalesReturn
 from app.services.shiprocket_service import (
@@ -19,7 +26,9 @@ from app.services.shiprocket_service import (
     check_serviceability,
     generate_label,
     generate_manifest,
+    get_ndr_shipments,
     schedule_pickup,
+    submit_ndr_action,
     track_shipment,
 )
 
@@ -98,7 +107,7 @@ def dispatch_order(
         raise HTTPException(status_code=422, detail="Pickup date cannot be in the past")
     if not order:
         raise NotFoundError("Order not found")
-    if order.status in {"cancelled", "delivered"}:
+    if order.status in {"cancelled", "delivered", "returned"}:
         raise HTTPException(status_code=409, detail="This order cannot be dispatched")
 
     is_cod = (order.payment_method or "").strip().casefold() in {"cod", "cash on delivery"}
@@ -218,17 +227,28 @@ def receive_courier_status(
         return {"received": True, "matched": False}
 
     previous_order_status = (order.status or "").lower()
-    if previous_order_status not in {"cancelled", "delivered"}:
-        order.shipping_status = status_text
-        if status_text == "DELIVERED":
+    incoming_status = status_text
+    rto_statuses = {
+        "RTO INITIATED", "RTO IN TRANSIT", "RTO OUT FOR DELIVERY", "RTO OFD",
+        "RTO NDR", "RTO LOCKED", "RTO DELIVERED", "RTO ACKNOWLEDGED", "RTO RECEIVED",
+    }
+    is_rto_status = incoming_status in rto_statuses
+    if previous_order_status not in {"cancelled", "delivered", "returned"} or (is_rto_status and order.shipping_status != "RTO RECEIVED"):
+        order.shipping_status = incoming_status
+        if incoming_status == "DELIVERED":
             order.status = "delivered"
             if not order.delivered_at:
                 order.delivered_at = datetime.now(timezone.utc)
-        elif status_text in _IN_TRANSIT_STATUSES:
+        elif incoming_status in {"RTO DELIVERED", "RTO ACKNOWLEDGED", "RTO RECEIVED"}:
+            order.status = "returned"
+        elif incoming_status in _IN_TRANSIT_STATUSES:
             order.status = "shipped"
-    # Preserve the delivered state if an older courier event arrives late.
-    elif previous_order_status == "delivered":
+    # Preserve completed order states when an older forward-shipment event arrives late.
+    elif previous_order_status in {"delivered", "returned"}:
         status_text = (order.shipping_status or "DELIVERED").upper()
+
+    if incoming_status in {"RTO DELIVERED", "RTO ACKNOWLEDGED"}:
+        _ensure_rto_receipt(db, order)
 
     if payload.get("courier_name"):
         order.shipping_courier = str(payload["courier_name"])[:100]
@@ -251,6 +271,193 @@ def receive_courier_status(
 
     logger.info("Courier status updated order %s to %s", order.id, status_text)
     return {"received": True, "matched": True, "order_id": order.id, "shipping_status": status_text}
+
+
+
+class NdrActionRequest(BaseModel):
+    action: Literal["re-attempt", "return"]
+    comments: str = Field(min_length=3, max_length=500)
+    phone: str | None = None
+    deferred_date: date | None = None
+
+
+class RtoReceiptLineInput(BaseModel):
+    order_item_id: str
+    quantity_received: int = Field(ge=0, le=100000)
+    quantity_restocked: int = Field(ge=0, le=100000)
+
+
+class RtoReceiptRequest(BaseModel):
+    notes: str | None = Field(default=None, max_length=1000)
+    items: list[RtoReceiptLineInput] = Field(min_length=1, max_length=100)
+
+
+def _ensure_rto_receipt(db: Session, order: Order) -> RtoReceipt:
+    receipt = db.query(RtoReceipt).filter(RtoReceipt.order_id == order.id).with_for_update().first()
+    if receipt:
+        return receipt
+    receipt = RtoReceipt(order_id=order.id, status="awaiting_receipt")
+    db.add(receipt)
+    db.flush()
+    for item in db.query(OrderItem).filter(OrderItem.order_id == order.id).all():
+        db.add(RtoReceiptLine(
+            receipt_id=receipt.id, order_item_id=item.id, product_id=item.product_id,
+            variant_id=item.variant_id, quantity_expected=item.quantity,
+        ))
+    db.flush()
+    return receipt
+
+
+def _serialize_rto_receipt(db: Session, receipt: RtoReceipt) -> dict:
+    order = db.get(Order, receipt.order_id)
+    rows = db.query(RtoReceiptLine, OrderItem, Product.name, ProductVariant.size).join(
+        OrderItem, OrderItem.id == RtoReceiptLine.order_item_id
+    ).join(Product, Product.id == RtoReceiptLine.product_id).join(
+        ProductVariant, ProductVariant.id == RtoReceiptLine.variant_id
+    ).filter(RtoReceiptLine.receipt_id == receipt.id).all()
+    return {
+        "id": receipt.id, "order_id": receipt.order_id, "status": receipt.status,
+        "notes": receipt.notes, "received_at": receipt.received_at,
+        "shipping_status": order.shipping_status if order else None,
+        "awb": order.shipping_awb if order else None,
+        "courier": order.shipping_courier if order else None,
+        "items": [{
+            "order_item_id": line.order_item_id, "product_name": name, "size": size,
+            "quantity_expected": line.quantity_expected, "quantity_received": line.quantity_received,
+            "quantity_restocked": line.quantity_restocked,
+        } for line, _, name, size in rows],
+    }
+
+
+@router.get("/admin/ndr")
+def list_shiprocket_ndr(_: User = Depends(require_admin), db: Session = Depends(get_db)):
+    result = get_ndr_shipments(page=1, per_page=100)
+    if result.get("error") or result.get("status") != 200:
+        raise HTTPException(502, result.get("error", "Shiprocket NDR cases are unavailable"))
+    provider_rows = result.get("data") or []
+    awbs = {
+        str(row.get("awb") or row.get("awb_code") or row.get("awb_number") or "").strip()
+        for row in provider_rows if isinstance(row, dict)
+    }
+    awbs.discard("")
+    order_by_awb = {
+        order.shipping_awb: order for order in db.query(Order).filter(Order.shipping_awb.in_(awbs)).all()
+    } if awbs else {}
+    result_rows = []
+    for row in provider_rows:
+        if not isinstance(row, dict):
+            continue
+        awb = str(row.get("awb") or row.get("awb_code") or row.get("awb_number") or "").strip()
+        order = order_by_awb.get(awb)
+        result_rows.append({
+            "awb": awb, "order_id": order.id if order else None,
+            "order_status": order.status if order else None,
+            "shipping_status": order.shipping_status if order else None,
+            "customer_name": row.get("customer_name") or row.get("name"),
+            "ndr_reason": row.get("ndr_reason") or row.get("reason") or row.get("ndr_reason_text"),
+            "ndr_attempt": row.get("ndr_attempt") or row.get("attempt_count"),
+            "ndr_raised_at": row.get("ndr_raised_at") or row.get("created_at"),
+            "courier": row.get("courier") or row.get("courier_name"),
+            "raw_status": row.get("status") or row.get("current_status"),
+        })
+    return {"items": result_rows, "count": len(result_rows), "unmatched_count": sum(1 for row in result_rows if not row["order_id"])}
+
+
+@router.post("/admin/orders/{order_id}/ndr-action")
+def act_on_shiprocket_ndr(
+    order_id: str,
+    body: NdrActionRequest,
+    _: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    order = db.query(Order).filter(Order.id == order_id).with_for_update().first()
+    if not order or not order.shipping_awb:
+        raise NotFoundError("A Shiprocket AWB is required for an NDR action")
+    if body.phone and not re.fullmatch(r"\+?\d{10,13}", body.phone.strip()):
+        raise HTTPException(422, "Enter a valid customer phone number")
+    if body.deferred_date and body.deferred_date < date.today():
+        raise HTTPException(422, "A reattempt date cannot be in the past")
+    live_ndr = get_ndr_shipments(page=1, per_page=100, search=order.shipping_awb)
+    if live_ndr.get("error") or live_ndr.get("status") != 200:
+        raise HTTPException(502, live_ndr.get("error", "Could not verify the current Shiprocket NDR state"))
+    found = any(
+        isinstance(row, dict) and str(row.get("awb") or row.get("awb_code") or row.get("awb_number") or "").strip() == order.shipping_awb
+        for row in (live_ndr.get("data") or [])
+    )
+    if not found:
+        raise HTTPException(409, "Shiprocket no longer lists this shipment as an actionable NDR case; refresh the order status")
+    result = submit_ndr_action(
+        order.shipping_awb, body.action, body.comments,
+        phone=body.phone.strip() if body.phone else None,
+        deferred_date=body.deferred_date.isoformat() if body.deferred_date else None,
+    )
+    if result.get("error") or result.get("status") not in (200, 201):
+        raise HTTPException(502, result.get("error", "Shiprocket did not accept the NDR action"))
+    order.shipping_status = "NDR REATTEMPT REQUESTED" if body.action == "re-attempt" else "NDR RETURN REQUESTED"
+    db.commit()
+    return {"order_id": order.id, "awb": order.shipping_awb, "action": body.action,
+            "shipping_status": order.shipping_status, "provider": result.get("data") or {}}
+
+
+@router.get("/admin/rto-receipts")
+def list_rto_receipts(_: User = Depends(require_admin), db: Session = Depends(get_db)):
+    receipts = db.query(RtoReceipt).order_by(RtoReceipt.created_at.desc()).limit(200).all()
+    return [_serialize_rto_receipt(db, receipt) for receipt in receipts]
+
+
+@router.post("/admin/rto-receipts/{receipt_id}/receive")
+def receive_rto_parcel(
+    receipt_id: str,
+    body: RtoReceiptRequest,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    receipt = db.query(RtoReceipt).filter(RtoReceipt.id == receipt_id).with_for_update().first()
+    if not receipt:
+        raise NotFoundError("RTO receipt case not found")
+    if receipt.status == "received":
+        raise HTTPException(409, "This RTO parcel has already been received and reconciled")
+    order = db.query(Order).filter(Order.id == receipt.order_id).with_for_update().first()
+    if not order or not any(tag in (order.shipping_status or "").upper() for tag in ("RTO DELIVERED", "RTO ACKNOWLEDGED")):
+        raise HTTPException(409, "Wait until Shiprocket confirms the RTO parcel was delivered to the seller")
+    input_ids = [line.order_item_id for line in body.items]
+    if len(input_ids) != len(set(input_ids)):
+        raise HTTPException(422, "Each order item can be entered only once")
+    lines = {
+        line.order_item_id: line for line in db.query(RtoReceiptLine).filter(
+            RtoReceiptLine.receipt_id == receipt.id
+        ).with_for_update().all()
+    }
+    if set(input_ids) != set(lines):
+        raise HTTPException(422, "Enter received and restock quantities for every item in the returned parcel")
+    for item_input in body.items:
+        line = lines[item_input.order_item_id]
+        if item_input.quantity_received > line.quantity_expected:
+            raise HTTPException(422, "Received quantity cannot exceed the quantity originally shipped")
+        if item_input.quantity_restocked > item_input.quantity_received:
+            raise HTTPException(422, "Restock quantity cannot exceed the quantity received")
+        variant = db.query(ProductVariant).filter(ProductVariant.id == line.variant_id).with_for_update().first()
+        if not variant:
+            raise HTTPException(409, "A returned product size no longer exists")
+        if item_input.quantity_restocked:
+            before = int(variant.stock_qty or 0)
+            variant.stock_qty = before + item_input.quantity_restocked
+            db.add(StockMovement(
+                product_id=line.product_id, variant_id=line.variant_id,
+                quantity_delta=item_input.quantity_restocked, stock_before=before,
+                stock_after=variant.stock_qty, reason="rto_return",
+                reference_id=receipt.id, notes=f"Received back from Shiprocket RTO for order {order.id}",
+                created_by=admin.id,
+            ))
+        line.quantity_received = item_input.quantity_received
+        line.quantity_restocked = item_input.quantity_restocked
+    receipt.status = "received"
+    receipt.notes = body.notes
+    receipt.received_at = datetime.now(timezone.utc)
+    receipt.received_by = admin.id
+    order.shipping_status = "RTO RECEIVED"
+    db.commit()
+    return _serialize_rto_receipt(db, receipt)
 
 
 @router.get("/serviceability")

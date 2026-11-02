@@ -38,6 +38,13 @@ The backend readiness endpoint reports whether live Razorpay configuration is pr
 
 Approval triggers live Shiprocket API calls. If booking fails, the request remains approved with a visible failure status and the admin can retry. The return pickup address and phone are read from the configured Shiprocket pickup location; customer pickup requires a valid 10-digit phone number on the customer's account.
 
-Customer-requested returns are separate from courier RTO for an undelivered outbound order. RTO status callbacks continue to update the original order; they do not create a customer return request.
+## NDR and courier RTO
 
-**Policy decision still required:** the application currently allows return requests for delivered orders and caps each request to the remaining ordered quantity. No return-window or reason-specific policy has been added because the allowed window/conditions have not been specified.
+1. Admin → Orders loads Shiprocket's live NDR list and matches AWBs to VastraX orders.
+2. The admin chooses **Reattempt delivery** or **Return to origin**. VastraX rechecks that the AWB is still in Shiprocket's NDR list, then submits the selected action and admin comment. Return-to-origin is an actual Shiprocket action.
+3. Tracking callbacks update the order through RTO initiated, in transit, and delivered/acknowledged. When the RTO reaches VastraX, an admin counts and inspects every item before choosing received and sellable quantities. Only the sellable quantity is added back to stock, with an ERP stock movement. Duplicate receipt is blocked.
+4. Shiprocket documents acknowledging an RTO in its RTO dashboard after receipt. VastraX records the physical count locally; the admin must still use Shiprocket's dashboard to acknowledge the RTO unless Shiprocket makes an acknowledgement API available to this account.
+
+Customer-requested returns remain a different workflow: they are initiated by the customer and require admin approval before a reverse pickup is booked. Courier RTO is initiated only from an active Shiprocket NDR case.
+
+Customer-requested returns are limited to seven days after delivery and the remaining quantity ordered. The policy's damaged-item evidence requirement remains the parcel-opening video sent to support; in-site video upload is not part of this flow.
