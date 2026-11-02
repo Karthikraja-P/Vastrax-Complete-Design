@@ -92,6 +92,30 @@ type CustomerReturnCase = {
   items: CustomerReturnLine[];
 };
 
+function getReturnCustomerMessage(returnCase: CustomerReturnCase) {
+  const status = returnCase.status.toLowerCase();
+  const reverseStatus = (returnCase.reverse_status || "").toLowerCase();
+  if (status === "rejected") {
+    return "This return request was not approved. Contact VastraX support if you need help.";
+  }
+  if (status === "received") {
+    return "VastraX has recorded the returned item. An admin will inspect it and initiate any eligible refund to your original payment method.";
+  }
+  if (status === "partially_received") {
+    return "Part of your return has arrived. The team will complete the receipt and inspection before processing any eligible refund.";
+  }
+  if (status === "approved" && /failed|error/.test(reverseStatus)) {
+    return "Your return is approved, but pickup booking needs attention. VastraX is resolving this and will update the tracking details here.";
+  }
+  if (status === "approved" && returnCase.reverse_awb) {
+    return "Your return is approved and reverse pickup has been arranged. Track the courier updates below. Refund processing can begin after VastraX receives and inspects the item.";
+  }
+  if (status === "approved") {
+    return "Your return is approved. VastraX is arranging the reverse pickup; updates will appear here. Refund processing can begin after the item is received and inspected.";
+  }
+  return "Your return request has been received and is awaiting VastraX review. If approved, reverse pickup will be arranged through Shiprocket. Any eligible refund is processed only after the item is received and inspected.";
+}
+
 type TrackingPanel = {
   loading: boolean;
   error?: string;
@@ -689,10 +713,10 @@ function CustomerAccountContent() {
                                 const returnKey = `return:${entry.id}`;
                                 const panel = trackingPanels[returnKey];
                                 return (
-                                  <div key={entry.id} className="mt-3 rounded-lg bg-surface-hover/70 p-3 text-xs">
+                                  <div key={entry.id} role="status" className="mt-3 rounded-lg border border-accent/20 bg-surface-hover/70 p-3 text-xs">
                                     <p className="font-semibold text-foreground">Return {entry.status.replaceAll("_", " ")} · {entry.reason.replaceAll("_", " ")}{line ? ` · Qty ${line.quantity_requested}` : ""}</p>
+                                    <p className="mt-1 text-muted-foreground">{getReturnCustomerMessage(entry)}</p>
                                     {entry.reverse_status && <p className="mt-1 text-muted-foreground">Reverse pickup: {entry.reverse_status}{entry.reverse_awb ? ` · AWB ${entry.reverse_awb}` : ""}{entry.reverse_courier ? ` · ${entry.reverse_courier}` : ""}</p>}
-                                    {entry.status === "approved" && !entry.reverse_awb && <p className="mt-1 text-muted-foreground">VastraX is arranging the reverse pickup.</p>}
                                     {entry.reverse_awb && <button type="button" onClick={() => void handleTrackReturn(entry)} className="mt-2 inline-flex items-center gap-1 font-medium text-accent hover:underline"><Truck className="h-3 w-3" /> Track return parcel</button>}
                                     {openTrackingKey === returnKey && panel && <div className="mt-2 space-y-1 border-t border-border/60 pt-2 text-muted-foreground">
                                       {panel.loading ? <p>Loading courier updates…</p> : panel.error ? <p role="alert" className="text-red-500">{panel.error}</p> : <>
