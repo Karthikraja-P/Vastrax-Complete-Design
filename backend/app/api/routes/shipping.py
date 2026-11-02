@@ -1,18 +1,20 @@
 import hmac
 import logging
+from datetime import date
 
 from fastapi import APIRouter, Depends, Header, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.exceptions import ForbiddenError, NotFoundError
 from app.db.database import get_db
-from app.middleware.auth import get_current_user
+from app.middleware.auth import get_current_user, require_admin
 from app.models.order import Order
 from app.models.user import User
 from app.services.shiprocket_service import (
     cancel_shipment_by_awb,
+    assign_awb,
     check_serviceability,
     create_return_shipment,
     generate_label,
@@ -81,6 +83,78 @@ class CancelRequest(BaseModel):
 class ReturnRequest(BaseModel):
     order_id: str
     return_data: dict
+
+
+class DispatchRequest(BaseModel):
+    pickup_date: date
+    courier_id: int | None = Field(default=None, ge=1)
+
+
+@router.post("/admin/orders/{order_id}/dispatch")
+def dispatch_order(
+    order_id: str,
+    body: DispatchRequest,
+    _: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Assign an AWB, schedule collection, and create the Shiprocket manifest."""
+    order = db.query(Order).filter(Order.id == order_id).with_for_update().first()
+    if body.pickup_date < date.today():
+        raise HTTPException(status_code=422, detail="Pickup date cannot be in the past")
+    if not order:
+        raise NotFoundError("Order not found")
+    if order.status in {"cancelled", "delivered"}:
+        raise HTTPException(status_code=409, detail="This order cannot be dispatched")
+
+    is_cod = (order.payment_method or "").strip().casefold() in {"cod", "cash on delivery"}
+    if order.payment_status != "paid" and not is_cod:
+        raise HTTPException(status_code=409, detail="Confirm payment before dispatching this order")
+
+    if not order.shipping_shipment_id:
+        from app.services.order_service import _book_shiprocket
+        user = db.query(User).filter(User.id == order.user_id).first()
+        address = order.address
+        if not user or not address:
+            raise HTTPException(status_code=409, detail="Order customer or delivery address is unavailable")
+        _book_shiprocket(order, user, address)
+        db.commit()
+        if not order.shipping_shipment_id:
+            raise HTTPException(status_code=502, detail="Shiprocket did not create a shipment. Check its credentials and retry.")
+
+    if not order.shipping_awb:
+        awb_result = assign_awb(str(order.shipping_shipment_id), body.courier_id)
+        if awb_result.get("error") or awb_result.get("status") not in (200, 201) or not awb_result.get("awb_code"):
+            raise HTTPException(status_code=502, detail=awb_result.get("error", "Shiprocket could not assign a courier/AWB"))
+        order.shipping_awb = str(awb_result["awb_code"])
+        order.shipping_courier = str(awb_result.get("courier_name") or order.shipping_courier or "Shiprocket courier")
+        order.shipping_courier_id = body.courier_id or awb_result.get("courier_company_id") or order.shipping_courier_id
+        order.shipping_status = "AWB assigned"
+        db.commit()
+
+    normalized_shipping_status = (order.shipping_status or "").strip().casefold()
+    pickup_requested = normalized_shipping_status in {"pickup scheduled", "manifest generated", "shipped", "delivered"}
+    if not pickup_requested:
+        pickup_result = schedule_pickup(str(order.shipping_shipment_id), body.pickup_date.isoformat())
+        if pickup_result.get("error") or pickup_result.get("status") != 200:
+            raise HTTPException(status_code=502, detail=pickup_result.get("error", "AWB assigned, but Shiprocket could not schedule pickup"))
+        order.shipping_status = "Pickup scheduled"
+        db.commit()
+
+    manifest_result = generate_manifest(str(order.shipping_shipment_id))
+    manifest_url = manifest_result.get("manifest_url") or manifest_result.get("data", {}).get("manifest_url")
+    if manifest_result.get("error") or manifest_result.get("status_code") not in (200, 201) or not manifest_url:
+        raise HTTPException(status_code=502, detail=manifest_result.get("error", "Pickup is scheduled, but Shiprocket did not return a manifest"))
+
+    order.shipping_status = "Manifest generated"
+    db.commit()
+    return {
+        "order_id": order.id,
+        "shipment_id": order.shipping_shipment_id,
+        "awb_code": order.shipping_awb,
+        "courier_name": order.shipping_courier,
+        "shipping_status": order.shipping_status,
+        "manifest_url": manifest_url,
+    }
 
 
 @router.post("/status-callback")

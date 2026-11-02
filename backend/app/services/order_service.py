@@ -237,6 +237,8 @@ class OrderService:
             raise BadRequestError(
                 f"Invalid status. Must be one of: {', '.join(sorted(VALID_ADMIN_STATUSES))}"
             )
+        if new_status == "shipped":
+            raise BadRequestError("Shipment status is updated from Shiprocket tracking after courier handover")
         order = self.db.query(Order).filter(Order.id == order_id).first()
         if not order:
             raise NotFoundError("Order not found")
@@ -298,13 +300,17 @@ def _book_shiprocket(order: Order, user: User, address: Address) -> None:
         customer_info=customer_info,
         items=items_to_ship,
         total_amount=float(order.total_amount),
-        payment_method="Cash on Delivery",
+        payment_method=order.payment_method or "Prepaid",
     )
-    if shipment:
-        order.shipping_shipment_id = shipment.get("shipment_id")
-        order.shipping_awb = shipment.get("awb_code")
-        order.shipping_courier = shipment.get("courier_name")
-        order.shipping_status = "Manifested"
+    if shipment.get("error") or not shipment.get("shipment_id"):
+        order.shipping_status = "Shipment booking failed"
+        logger.error("Shiprocket draft order failed for order %s: %s", order.id, shipment.get("error", "missing shipment id"))
+        return
+    order.shipping_shipment_id = str(shipment["shipment_id"])
+    order.shipping_awb = shipment.get("awb_code") or None
+    order.shipping_courier = shipment.get("courier_name") or None
+    order.shipping_courier_id = shipment.get("courier_id") or None
+    order.shipping_status = "Awaiting courier assignment" if not order.shipping_awb else "AWB assigned"
 
 
 def send_order_email_notification(order: Order, user: User, address: Optional[Address] = None) -> None:

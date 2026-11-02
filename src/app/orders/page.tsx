@@ -10,6 +10,10 @@ type BackendOrderItemRecord = OrderItemRecord & {
   customer_email?: string | null;
   payment_method?: string | null;
   shipping_status?: string | null;
+  shipping_shipment_id?: string | null;
+  shipping_awb?: string | null;
+  shipping_courier?: string | null;
+  shipping_courier_id?: number | null;
 };
 
 interface OrderRow {
@@ -32,6 +36,9 @@ interface OrderRow {
   items: unknown[];
   paymentMethod: string;
   isCod: boolean;
+  shipmentId: string;
+  awb: string;
+  courier: string;
 }
 
 export default function OrdersPage() {
@@ -40,6 +47,12 @@ export default function OrdersPage() {
   const [openActionId, setOpenActionId] = useState<string | null>(null);
   const [selectedOrderDetails, setSelectedOrderDetails] = useState<OrderRow | null>(null);
   const [actionError, setActionError] = useState("");
+  const [dispatchMessage, setDispatchMessage] = useState("");
+  const [dispatchError, setDispatchError] = useState(false);
+  const [dispatchingOrderId, setDispatchingOrderId] = useState<string | null>(null);
+  const [manifestUrl, setManifestUrl] = useState("");
+  const [minimumPickupDate] = useState(() => new Date(Date.now() - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 10));
+  const [pickupDate, setPickupDate] = useState(() => new Date(Date.now() - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 10));
 
   // Filters State
   const [searchQuery, setSearchQuery] = useState("");
@@ -85,6 +98,9 @@ export default function OrdersPage() {
             paymentStatus: rawOrder.payment_status || o.paymentStatus || "pending",
             paymentMethod: rawOrder.payment_method || "",
             isCod: ["cod", "cash on delivery"].includes(String(rawOrder.payment_method || "").trim().toLowerCase()),
+            shipmentId: String(rawOrder.shipping_shipment_id || ""),
+            awb: String(rawOrder.shipping_awb || ""),
+            courier: String(rawOrder.shipping_courier || ""),
             shippingAddress: rawOrder.shipping_address || o.shippingAddress || "\u2014",
             date: orderDate ? new Date(orderDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "Recent",
             rawDate: new Date(orderDate || Date.now()).getTime(),
@@ -92,6 +108,8 @@ export default function OrdersPage() {
           };
         });
         setOrders(formatted);
+        setSelectedOrderDetails((current) => current ? formatted.find((order) => order.id === current.id) || current : current);
+        return formatted;
       }
     } catch (err) {
       console.error("Orders load error:", err);
@@ -133,6 +151,32 @@ export default function OrdersPage() {
       setActionError(error instanceof Error ? error.message : "Could not confirm COD collection.");
     } finally {
       setOpenActionId(null);
+    }
+  };
+
+  const handleDispatchShipment = async (order: OrderRow) => {
+    if (!pickupDate) {
+      setDispatchError(true);
+      setDispatchMessage("Choose a pickup date before dispatching.");
+      return;
+    }
+    if (!window.confirm(`Assign a real Shiprocket courier/AWB and schedule pickup for order ${order.orderNumber} on ${pickupDate}?`)) return;
+
+    setDispatchingOrderId(order.id);
+    setDispatchMessage("");
+    setDispatchError(false);
+    setManifestUrl("");
+    try {
+      const result = await ordersApi.dispatchShipment(order.id, pickupDate);
+      setManifestUrl(result.manifest_url);
+      setDispatchMessage(`Courier ${result.courier_name} assigned · AWB ${result.awb_code} · pickup scheduled.`);
+      await loadOrders();
+    } catch (error) {
+      setDispatchError(true);
+      setDispatchMessage(error instanceof Error ? error.message : "Shiprocket dispatch could not be completed.");
+      await loadOrders();
+    } finally {
+      setDispatchingOrderId(null);
     }
   };
 
@@ -422,6 +466,9 @@ export default function OrdersPage() {
                               <button 
                                 onClick={() => {
                                   setSelectedOrderDetails(order);
+                                  setDispatchMessage("");
+                                  setDispatchError(false);
+                                  setManifestUrl("");
                                   setOpenActionId(null);
                                 }}
                                 className="w-full flex items-center gap-2.5 px-3.5 py-2 text-xs font-medium text-foreground hover:bg-surface-hover hover:text-accent transition-colors text-left"
@@ -442,12 +489,6 @@ export default function OrdersPage() {
                                 className="w-full px-3.5 py-1.5 text-xs text-foreground hover:bg-surface-hover hover:text-blue-400 text-left transition-colors"
                               >
                                 → Packed
-                              </button>
-                              <button 
-                                onClick={() => handleUpdateOrderStatus(order.id, "SHIPPED")}
-                                className="w-full px-3.5 py-1.5 text-xs text-foreground hover:bg-surface-hover hover:text-purple-400 text-left transition-colors"
-                              >
-                                → Shipped
                               </button>
                               <button 
                                 onClick={() => handleUpdateOrderStatus(order.id, "DELIVERED")}
@@ -550,6 +591,47 @@ export default function OrdersPage() {
                 <p className="text-xs text-muted-foreground pl-6 leading-relaxed">
                   {selectedOrderDetails.shippingAddress}
                 </p>
+              </div>
+
+              {/* Live Shiprocket dispatch */}
+              <div className="bg-background border border-border/80 rounded-xl p-4 space-y-3">
+                <div className="flex items-center gap-2 text-xs font-bold text-foreground">
+                  <Truck className="w-4 h-4 text-accent" />
+                  <span>Shiprocket Dispatch</span>
+                </div>
+                <div className="space-y-1 pl-6 text-xs text-muted-foreground">
+                  <p>Shipment ID: <span className="font-mono text-foreground">{selectedOrderDetails.shipmentId || "Not booked yet"}</span></p>
+                  <p>Courier: <span className="text-foreground">{selectedOrderDetails.courier || "Not assigned"}</span></p>
+                  <p>AWB: <span className="font-mono text-foreground">{selectedOrderDetails.awb || "Not assigned"}</span></p>
+                  <p>Courier status: <span className="text-foreground">{selectedOrderDetails.shippingStatus || "Awaiting fulfillment"}</span></p>
+                </div>
+                {(selectedOrderDetails.rawStatus === "CONFIRMED" || selectedOrderDetails.rawStatus === "PACKED")
+                  && (selectedOrderDetails.paymentStatus.toLowerCase() === "paid" || selectedOrderDetails.isCod)
+                  && !["manifest generated", "shipped", "delivered"].includes(selectedOrderDetails.shippingStatus.toLowerCase()) && (
+                    <div className="space-y-2 pl-6">
+                      <label className="block text-xs font-medium text-foreground" htmlFor="shiprocket-pickup-date">Pickup date</label>
+                      <input
+                        id="shiprocket-pickup-date"
+                        type="date"
+                        min={minimumPickupDate}
+                        value={pickupDate}
+                        onChange={(event) => setPickupDate(event.target.value)}
+                        className="rounded-lg border border-border bg-surface px-3 py-2 text-xs text-foreground"
+                      />
+                      <button
+                        type="button"
+                        disabled={dispatchingOrderId === selectedOrderDetails.id}
+                        onClick={() => void handleDispatchShipment(selectedOrderDetails)}
+                        className="flex items-center gap-2 rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-white transition-opacity disabled:opacity-60"
+                      >
+                        {dispatchingOrderId === selectedOrderDetails.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Truck className="h-3.5 w-3.5" />}
+                        {selectedOrderDetails.awb ? "Schedule pickup & manifest" : "Assign courier, AWB & pickup"}
+                      </button>
+                    </div>
+                  )}
+                {dispatchMessage && <p role={dispatchError ? "alert" : "status"} className={`break-words pl-6 text-xs ${dispatchError ? "text-red-400" : "text-emerald-400"}`}>{dispatchMessage}</p>}
+                {manifestUrl && <a href={manifestUrl} target="_blank" rel="noreferrer" className="ml-6 inline-block text-xs font-semibold text-accent underline underline-offset-4">Open Shiprocket manifest</a>}
+                <p className="pl-6 text-[11px] leading-relaxed text-muted-foreground">Courier tracking and delivery status update from Shiprocket events after its tracking webhook is configured.</p>
               </div>
 
               {/* Payment Status */}

@@ -386,6 +386,11 @@ export interface OrderItemRecord {
   placed_at?: string;
   payment_status?: string;
   shipping_address?: string;
+  shipping_status?: string | null;
+  shipping_shipment_id?: string | null;
+  shipping_awb?: string | null;
+  shipping_courier?: string | null;
+  shipping_courier_id?: number | null;
 }
 
 interface BackendOrderRecord {
@@ -398,6 +403,11 @@ interface BackendOrderRecord {
   customer_email?: string | null;
   delivery_method?: string | null;
   shipping_address?: string | null;
+  shipping_status?: string | null;
+  shipping_shipment_id?: string | null;
+  shipping_awb?: string | null;
+  shipping_courier?: string | null;
+  shipping_courier_id?: number | null;
   items?: unknown[];
 }
 
@@ -414,6 +424,11 @@ function normalizeOrder(order: BackendOrderRecord): OrderItemRecord {
     createdAt: order.placed_at,
     deliveryMethod: order.delivery_method || "—",
     shippingAddress: order.shipping_address || undefined,
+    shipping_status: order.shipping_status,
+    shipping_shipment_id: order.shipping_shipment_id,
+    shipping_awb: order.shipping_awb,
+    shipping_courier: order.shipping_courier,
+    shipping_courier_id: order.shipping_courier_id,
     items: order.items || [],
   };
 }
@@ -447,6 +462,20 @@ export const ordersApi = {
   async markCodCollected(id: string | number): Promise<{ order_id: string; payment_status: string; amount: string }> {
     return await fetchApi<{ order_id: string; payment_status: string; amount: string }>("/orders/admin/" + id + "/cod-collected", {
       method: "POST",
+    });
+  },
+
+  async dispatchShipment(id: string | number, pickupDate: string): Promise<{
+    order_id: string;
+    shipment_id: string;
+    awb_code: string;
+    courier_name: string;
+    shipping_status: string;
+    manifest_url: string;
+  }> {
+    return await fetchApi(`/shipping/admin/orders/${id}/dispatch`, {
+      method: "POST",
+      body: JSON.stringify({ pickup_date: pickupDate }),
     });
   },
 };
