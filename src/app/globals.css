@@ -410,8 +410,8 @@
 }
 
 @media (max-width: 767px) {
-  /* Keep the floating stylist above the fixed shop CTA once it appears. */
-  .vx-home-storefront:not(.vx-hero-visible) .vx-stylist-launch {
+  /* Keep the floating stylist clear of hero actions and the bottom CTA. */
+  .vx-home-storefront .vx-stylist-launch {
     bottom: calc(5.6rem + env(safe-area-inset-bottom));
   }
 }
