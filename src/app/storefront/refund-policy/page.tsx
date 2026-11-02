@@ -19,7 +19,11 @@ export default function RefundPolicyPage() {
           "A continuous, unedited parcel-opening video is required documentation for a damage-related replacement or refund request. Start recording before opening the sealed parcel, show the shipping label, and keep recording through the opening and clear reveal of the item and damage. Please contact us within 48 hours of delivery and send the video to our support email. If you cannot provide a video, contact us promptly; every claim is reviewed in line with applicable consumer-protection requirements.",
           "If the item is incorrect, contact us within 48 hours of delivery with clear photos of the item and packaging. We will review the issue and arrange an appropriate resolution.",
         ] },
-        { title: "How refunds work", body: ["Approved refunds go back to the original payment method within 5 to 7 business days after we receive and inspect the item. Your bank may take additional time to show the credit. Shipping fees are refunded only when the return is due to our error."] },
+        { title: "How refunds work", body: [
+          "A return request or approval does not start a refund. After the returned parcel reaches VastraX, an admin receives and inspects the product and verifies it against the order and the return request.",
+          "A refund is initiated only after the admin completes that inspection. If the item has not been received or verified, the refund will not be initiated. Once initiated, the refund is sent to the original payment method and typically appears within 5 to 7 business days; your bank may take additional time to show the credit.",
+          "Shipping fees are refunded only when the return is due to our error.",
+        ] },
         { title: "Virtual try-on and 3D previews", body: ["Try-on images and 3D views are visual aids and may differ from the real garment in fit, colour and drape. A difference from a preview alone is not a reason for a refund, but you may still return the item under the terms above."] },
       ]}
     />
