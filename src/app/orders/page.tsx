@@ -71,7 +71,12 @@ export default function OrdersPage() {
     try {
       const data = await ordersApi.list();
       if (data && Array.isArray(data)) {
-        const formatted = data.map((o: OrderItemRecord): OrderRow => {
+        const formatted = data
+          .filter((o: OrderItemRecord) => {
+            const rawOrder = o as BackendOrderItemRecord;
+            return String(rawOrder.payment_status || o.paymentStatus || "").toLowerCase() === "paid";
+          })
+          .map((o: OrderItemRecord): OrderRow => {
           const rawOrder = o as BackendOrderItemRecord;
           const orderDate = o.createdAt || rawOrder.placed_at;
           const rawStatus = String(o.status || "CONFIRMED").toUpperCase();
@@ -107,9 +112,9 @@ export default function OrdersPage() {
             rawDate: new Date(orderDate || Date.now()).getTime(),
             items: o.items || []
           };
-        });
+          });
         setOrders(formatted);
-        setSelectedOrderDetails((current) => current ? formatted.find((order) => order.id === current.id) || current : current);
+        setSelectedOrderDetails((current) => current ? formatted.find((order) => order.id === current.id) || null : null);
         return formatted;
       }
     } catch (err) {

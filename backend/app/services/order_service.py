@@ -185,10 +185,10 @@ class OrderService:
 
     def list_all_orders(self, status_filter: Optional[str] = None) -> list[OrderResponse]:
         q = self.db.query(Order).order_by(Order.placed_at.desc())
-        # Checkout creates an order before payment completes. Keep only paid or
-        # refunded prepaid orders in the admin queue, and hide legacy COD records.
+        # Checkout creates an order before payment completes. Admin order lists
+        # contain only successfully paid orders; pending attempts are not operational orders.
         cod_method = func.lower(func.coalesce(Order.payment_method, ""))
-        q = q.filter(Order.payment_status.in_(("paid", "refunded")))
+        q = q.filter(func.lower(func.coalesce(Order.payment_status, "")) == "paid")
         q = q.filter(~cod_method.in_(("cod", "cash on delivery")))
         if status_filter:
             q = q.filter(Order.status == status_filter)
