@@ -250,7 +250,10 @@ def _book_shiprocket(order: Order, user: User, address: Address) -> None:
     from app.services.shiprocket_service import create_shipment_order
     customer_info = {
         "name": user.full_name or "Valued Customer",
-        "address": f"{address.address_line1}, {address.city}, {address.state}",
+        "address": address.address_line1,
+        "address_line2": "",
+        "city": address.city,
+        "state": address.state,
         "pincode": address.pincode,
         "phone": user.phone_number or "9999999999",
         "email": user.email,

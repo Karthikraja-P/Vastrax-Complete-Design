@@ -234,7 +234,11 @@ def create_shipment_order(order_id: str, customer_info: dict, items: list, total
                 return data
             try:
                 error = resp.json()
-                return _failure(str(error.get("message") or error.get("errors") or "Shiprocket rejected shipment creation"), resp.status_code)
+                message = str(error.get("message") or "Shiprocket rejected shipment creation")
+                validation_errors = error.get("errors")
+                if validation_errors:
+                    message = f"{message}: {validation_errors}"
+                return _failure(message, resp.status_code)
             except ValueError:
                 return _failure("Shiprocket rejected shipment creation", resp.status_code)
         except Exception as e:
