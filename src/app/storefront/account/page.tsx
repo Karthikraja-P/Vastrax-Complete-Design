@@ -246,6 +246,8 @@ function CustomerAccountContent() {
   const [isLoadingAddresses, setIsLoadingAddresses] = useState(true);
   const [isAddingAddress, setIsAddingAddress] = useState(searchParams.get("showAddressForm") === "1");
   const [addressError, setAddressError] = useState("");
+  const [updatingDefaultAddressId, setUpdatingDefaultAddressId] = useState<string | null>(null);
+  const [addressStatus, setAddressStatus] = useState("");
   const [isSavingAddress, setIsSavingAddress] = useState(false);
   const [addressForm, setAddressForm] = useState({
     label: "Home",
@@ -299,14 +301,19 @@ function CustomerAccountContent() {
 
   const setDefaultAddress = async (addressId: string) => {
     setAddressError("");
+    setAddressStatus("");
+    setUpdatingDefaultAddressId(addressId);
     try {
       await fetchApi<AccountAddress>("/users/me/addresses/" + addressId, {
         method: "PUT",
         body: JSON.stringify({ is_default: true }),
       });
       setAddresses((current) => current.map((entry) => ({ ...entry, is_default: entry.id === addressId })));
+      setAddressStatus("Default delivery address updated.");
     } catch (error) {
       setAddressError(error instanceof Error ? error.message : "Could not update the default address.");
+    } finally {
+      setUpdatingDefaultAddressId(null);
     }
   };
 
@@ -810,6 +817,7 @@ function CustomerAccountContent() {
                     )}
                   </div>
                   {addressError && <p role="alert" className="text-sm text-red-400">{addressError}</p>}
+                  {addressStatus && <p role="status" className="text-sm text-emerald-600 dark:text-emerald-400">{addressStatus}</p>}
                   {isAddingAddress && (
                     <form onSubmit={handleSaveAddress} className="rounded-xl border border-border/70 bg-background p-5 space-y-4">
                       <h4 className="font-semibold text-foreground">Add delivery address</h4>
@@ -885,9 +893,15 @@ function CustomerAccountContent() {
                           <div className="flex items-start justify-between gap-3">
                             <label className="flex cursor-pointer items-start gap-3">
                               <input type="radio" name="default-delivery-address" checked={entry.is_default}
-                                onChange={() => void setDefaultAddress(entry.id)} className="mt-1 accent-accent" />
+                                disabled={Boolean(updatingDefaultAddressId)}
+                                onChange={() => void setDefaultAddress(entry.id)}
+                                aria-label={entry.is_default ? entry.label + " is the default delivery address" : "Set " + entry.label + " as the default delivery address"}
+                                className="mt-1 h-4 w-4 accent-accent disabled:opacity-60" />
                               <span>
-                                <span className="block font-semibold text-foreground">{entry.label}{entry.is_default ? " · Default" : ""}</span>
+                                <span className="block font-semibold text-foreground">{entry.label}</span>
+                                <span className={entry.is_default ? "mt-1 inline-flex rounded-full bg-accent/10 px-2 py-0.5 text-xs font-semibold text-accent" : "mt-1 block text-xs font-medium text-accent hover:underline"}>
+                                  {updatingDefaultAddressId === entry.id ? "Updating…" : entry.is_default ? "Default delivery address" : "Set as default"}
+                                </span>
                                 <span className="mt-1 block text-sm text-muted-foreground">{entry.address_line1}</span>
                                 <span className="block text-sm text-muted-foreground">{entry.city}, {entry.state} {entry.pincode}</span>
                               </span>
