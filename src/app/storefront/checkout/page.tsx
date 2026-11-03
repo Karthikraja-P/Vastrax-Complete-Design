@@ -13,6 +13,7 @@ import { reportBackendReachable, reportBackendUnreachable } from "@/lib/backendS
 import { clearCart } from "@/lib/cart";
 import { useCartItems } from "@/hooks/useCartItems";
 import { showToast } from "@/lib/toast";
+import { SHIPPING_CHARGE } from "@/lib/pricing";
 
 const BACKEND_BASE = "/api/v1";
 
@@ -194,8 +195,8 @@ function CheckoutContent() {
   })), [cartItems]);
 
   const subtotal = items.reduce((acc, item) => acc + item.price * item.quantity, 0);
-  const tax = subtotal * 0.08;
-  const total = subtotal + tax;
+  const shipping = items.length > 0 ? SHIPPING_CHARGE : 0;
+  const total = subtotal + shipping;
 
   const getEffectiveToken = () => {
     return session?.accessToken || localToken || (typeof window !== "undefined" ? localStorage.getItem("vastrax_token") : null);
@@ -791,11 +792,7 @@ function CheckoutContent() {
                   </div>
                   <div className="flex justify-between text-muted-foreground">
                     <span>Shipping</span>
-                    <span className="text-foreground font-medium">Quote pending</span>
-                  </div>
-                  <div className="flex justify-between text-muted-foreground">
-                    <span>Estimated Sales Tax (8%)</span>
-                    <span className="text-foreground font-medium">₹{tax.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    <span className="text-foreground font-medium">₹{shipping.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                   </div>
                   <div className="flex justify-between text-base font-extrabold text-foreground pt-3 border-t border-border">
                     <span>Total Amount</span>

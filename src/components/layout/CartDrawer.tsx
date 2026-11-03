@@ -4,6 +4,7 @@ import Link from "next/link";
 import { CartItem, updateCartQuantity as updateQty, removeFromCart as removeItemFromCart } from "@/lib/cart";
 import { useCartItems } from "@/hooks/useCartItems";
 import { showToast } from "@/lib/toast";
+import { SHIPPING_CHARGE } from "@/lib/pricing";
 
 export type { CartItem };
 
@@ -32,7 +33,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
 
   const subtotal = cartItems.reduce((acc, item) => acc + item.price * item.quantity, 0);
 
-  const shipping = subtotal >= 1999 || subtotal === 0 ? 0 : 99;
+  const shipping = cartItems.length === 0 ? 0 : SHIPPING_CHARGE;
   const total = subtotal + shipping;
 
   if (!isOpen) return null;
@@ -146,7 +147,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                 <span className="text-foreground font-medium">₹{subtotal.toLocaleString('en-IN')}</span>
               </div>
               <div className="flex justify-between text-muted-foreground">
-                <span>Estimated Shipping</span>
+                <span>Shipping</span>
                 <span className="text-foreground font-medium">{shipping === 0 ? "Free" : `₹${shipping.toLocaleString('en-IN')}`}</span>
               </div>
               <div className="flex justify-between text-sm font-bold text-foreground pt-2 border-t border-border">

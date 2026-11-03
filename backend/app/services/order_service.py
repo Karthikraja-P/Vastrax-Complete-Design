@@ -27,7 +27,7 @@ VALID_ADMIN_STATUSES = {"packed", "shipped", "delivered", "cancelled"}
 _inventory_lock = threading.Lock()
 
 
-SHIPPING = {"standard": 0, "express": 150, "concierge": 350}  # mirrors checkout; tax is 8% of subtotal
+SHIPPING_CHARGE = Decimal("80.00")
 
 
 class OrderService:
@@ -69,8 +69,8 @@ class OrderService:
             if i.product_id not in prices:
                 raise NotFoundError(f"Product {i.product_id} not found")
         subtotal = sum((Decimal(prices[i.product_id]) * i.quantity for i in payload.items), Decimal("0"))
-        shipping = Decimal(SHIPPING.get(payload.delivery_method, 350))
-        total = (subtotal * Decimal("1.08") + shipping).quantize(Decimal("0.01"))
+        shipping = SHIPPING_CHARGE
+        total = (subtotal + shipping).quantize(Decimal("0.01"))
 
         order_id = f"VX-{datetime.now(timezone.utc).year}-{uuid.uuid4().hex[:10].upper()}"
         is_cod = payload.payment_method.strip().casefold() in ("cash on delivery", "cod")
@@ -80,6 +80,7 @@ class OrderService:
             user_id=user.id,
             address_id=payload.address_id,
             total_amount=total,
+            shipping_charge=shipping,
             status="confirmed" if is_cod else "pending",
             payment_status="pending",
             payment_method=payload.payment_method,
