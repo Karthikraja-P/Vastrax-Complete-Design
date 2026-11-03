@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { Home, ChevronRight, ShoppingCart, Clock, Truck, CheckCircle2, Ban, Search, ChevronDown, RotateCcw, Loader2, Eye, X as XIcon, User, MapPin, CreditCard, AlertTriangle, RefreshCw } from "lucide-react";
 import Link from "next/link";
+import { createPortal } from "react-dom";
 import { fetchApi, ordersApi, OrderItemRecord } from "@/lib/api";
 
 type NdrCase = { awb: string; order_id: string | null; customer_name?: string | null; ndr_reason?: string | null; ndr_attempt?: number | string | null; ndr_raised_at?: string | null; courier?: string | null; raw_status?: string | null };
@@ -47,6 +48,7 @@ export default function OrdersPage() {
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [openActionId, setOpenActionId] = useState<string | null>(null);
+  const [actionMenuPosition, setActionMenuPosition] = useState<{ top: number; left: number } | null>(null);
   const [selectedOrderDetails, setSelectedOrderDetails] = useState<OrderRow | null>(null);
   const [actionError, setActionError] = useState("");
   const [dispatchMessage, setDispatchMessage] = useState("");
@@ -145,6 +147,7 @@ export default function OrdersPage() {
       setActionError(error instanceof Error ? error.message : "Could not update the order status.");
     } finally {
       setOpenActionId(null);
+      setActionMenuPosition(null);
     }
   };
 
@@ -587,49 +590,57 @@ export default function OrdersPage() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right relative">
                       <div className="relative inline-block text-left">
-                        <button 
-                          onClick={() => setOpenActionId(openActionId === String(order.id || index) ? null : String(order.id || index))}
+                        <button
+                          type="button"
+                          aria-haspopup="menu"
+                          aria-expanded={openActionId === String(order.id ?? `row-${index}`)}
+                          onClick={(event) => {
+                            const actionKey = String(order.id ?? `row-${index}`);
+                            if (openActionId === actionKey) {
+                              setOpenActionId(null);
+                              setActionMenuPosition(null);
+                              return;
+                            }
+                            const rect = event.currentTarget.getBoundingClientRect();
+                            const menuHeight = 156;
+                            const top = rect.bottom + menuHeight + 8 > window.innerHeight
+                              ? Math.max(8, rect.top - menuHeight - 8)
+                              : rect.bottom + 6;
+                            const left = Math.max(8, Math.min(rect.right - 176, window.innerWidth - 184));
+                            setActionMenuPosition({ top, left });
+                            setOpenActionId(actionKey);
+                          }}
                           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-background border border-border hover:bg-surface-hover text-xs font-medium text-foreground transition-colors ml-auto"
                         >
                           Actions
                           <ChevronDown className="w-3 h-3 text-muted-foreground" />
                         </button>
-
-                        {/* Action Dropdown */}
-                        {openActionId === (order.id || index) && (
+                        {openActionId === String(order.id ?? `row-${index}`) && actionMenuPosition && typeof document !== "undefined" && createPortal(
                           <>
-                            <div className="fixed inset-0 z-30" onClick={() => setOpenActionId(null)} />
-                            <div className="absolute right-0 top-full mt-1.5 w-44 bg-background border border-border rounded-xl shadow-2xl py-1 z-40 animate-in fade-in zoom-in-95 duration-150">
-                              <button 
+                            <div className="fixed inset-0 z-[80]" onClick={() => { setOpenActionId(null); setActionMenuPosition(null); }} />
+                            <div role="menu" style={{ top: actionMenuPosition.top, left: actionMenuPosition.left }} className="fixed z-[81] w-44 bg-background border border-border rounded-xl shadow-2xl py-1 animate-in fade-in zoom-in-95 duration-150">
+                              <button
+                                type="button"
+                                role="menuitem"
                                 onClick={() => {
                                   setSelectedOrderDetails(order);
                                   setDispatchMessage("");
                                   setDispatchError(false);
                                   setManifestUrl("");
                                   setOpenActionId(null);
+                                  setActionMenuPosition(null);
                                 }}
                                 className="w-full flex items-center gap-2.5 px-3.5 py-2 text-xs font-medium text-foreground hover:bg-surface-hover hover:text-accent transition-colors text-left"
                               >
                                 <Eye className="w-3.5 h-3.5 text-muted-foreground" /> View Details
                               </button>
                               <div className="h-px bg-border/40 my-1" />
-                              <div className="px-3.5 py-1 text-[10px] uppercase font-bold text-muted-foreground tracking-wider">
-                                Set Status
-                              </div>
-                              <button
-                                onClick={() => handleUpdateOrderStatus(order.id, "PACKED")}
-                                className="w-full px-3.5 py-1.5 text-xs text-foreground hover:bg-surface-hover hover:text-blue-400 text-left transition-colors"
-                              >
-                                → Packed
-                              </button>
-                              <button 
-                                onClick={() => handleUpdateOrderStatus(order.id, "DELIVERED")}
-                                className="w-full px-3.5 py-1.5 text-xs text-foreground hover:bg-surface-hover hover:text-emerald-400 text-left transition-colors"
-                              >
-                                → Delivered
-                              </button>
+                              <div className="px-3.5 py-1 text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Set Status</div>
+                              <button type="button" role="menuitem" onClick={() => void handleUpdateOrderStatus(order.id, "PACKED")} className="w-full px-3.5 py-1.5 text-xs text-foreground hover:bg-surface-hover hover:text-blue-400 text-left transition-colors">→ Packed</button>
+                              <button type="button" role="menuitem" onClick={() => void handleUpdateOrderStatus(order.id, "DELIVERED")} className="w-full px-3.5 py-1.5 text-xs text-foreground hover:bg-surface-hover hover:text-emerald-400 text-left transition-colors">→ Delivered</button>
                             </div>
-                          </>
+                          </>,
+                          document.body,
                         )}
                       </div>
                     </td>
