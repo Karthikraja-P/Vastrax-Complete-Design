@@ -161,26 +161,13 @@
   animation: vx-offer-glint 7s ease-in-out infinite;
 }
 
-.vx-offer-ribbon-label,
-.vx-offer-ribbon-link {
+.vx-offer-ribbon-label {
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
   gap: 0.35rem;
-}
-
-.vx-offer-ribbon-label {
   text-transform: uppercase;
   letter-spacing: 0.12em;
-}
-
-.vx-offer-ribbon-link {
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-
-.vx-offer-ribbon:hover .vx-offer-ribbon-link {
-  text-decoration-thickness: 2px;
 }
 
 @keyframes vx-offer-glint {
@@ -196,9 +183,6 @@
     font-size: 0.7rem;
   }
 
-  .vx-offer-ribbon-link {
-    gap: 0.15rem;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {

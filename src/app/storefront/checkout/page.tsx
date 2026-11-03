@@ -794,7 +794,7 @@ function CheckoutContent() {
                     <span>Shipping</span>
                     <span className="text-foreground font-medium">{shipping === 0 ? "Free" : `₹${shipping.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}</span>
                   </div>
-                  <p className="text-right text-[11px] text-muted-foreground">₹80 flat shipping across India · free above ₹1,499</p>
+                  <p className="text-right text-[11px] text-muted-foreground">₹80 flat shipping across India · <Link href="/storefront/offers" className="font-semibold text-accent underline underline-offset-2">Offers</Link>: free shipping above ₹1,499</p>
                   <div className="flex justify-between text-base font-extrabold text-foreground pt-3 border-t border-border">
                     <span>Total Amount</span>
                     <span className="text-accent">₹{total.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>

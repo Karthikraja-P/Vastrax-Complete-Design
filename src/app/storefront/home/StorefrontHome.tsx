@@ -266,7 +266,6 @@ export default function StorefrontHome() {
           <nav aria-label="Store navigation" className="flex items-center gap-2 sm:gap-4 2xl:gap-8">
             <Link href="/storefront/home" className="text-xs sm:text-sm 2xl:text-lg font-medium hover:text-accent transition-colors">Home</Link>
             <Link href="/storefront/collections?gender=Women" className="text-xs sm:text-sm 2xl:text-lg font-medium hover:text-accent transition-colors">Collections</Link>
-            <Link href="/storefront/offers" className="hidden lg:inline-flex text-xs sm:text-sm 2xl:text-lg font-medium hover:text-accent transition-colors">Offers</Link>
           </nav>
           <StorefrontMobileControls showMenu={false} inlineSearch />
         </div>
@@ -380,11 +379,10 @@ export default function StorefrontHome() {
         </div>
       </header>
 
-      <Link href="/storefront/offers" className="vx-offer-ribbon" aria-label="Offers: free shipping on orders above ₹1,499 across India. View offer details.">
+      <aside className="vx-offer-ribbon" aria-label="Current offer">
         <span className="vx-offer-ribbon-label"><Sparkles aria-hidden="true" className="h-4 w-4" /> Offers</span>
         <span>Free shipping on orders above ₹1,499 across India</span>
-        <span className="vx-offer-ribbon-link">View offer <ArrowRight aria-hidden="true" className="h-4 w-4" /></span>
-      </Link>
+      </aside>
 
       {/* Hero Section Wrapper with Gap */}
       <main className="flex-1 bg-surface px-2 pb-2 md:px-4 md:pb-4 pt-4" id="main-content">
