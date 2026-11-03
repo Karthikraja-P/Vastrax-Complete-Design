@@ -697,6 +697,7 @@ function CollectionsPageContent({ initialCategory, initialSort, initialSearch }:
                               {product.isSale && <span className="vx-product-badge">Sale</span>}
                               {product.isNew && <span className="vx-product-badge">New</span>}
                             </div>
+                            <p className="mt-1 text-[10px] leading-tight text-muted-foreground">Inclusive of all taxes</p>
                           </div>
 
                           {/* Action Button: Notify if out of stock, else Add to Bag */}

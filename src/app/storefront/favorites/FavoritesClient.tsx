@@ -295,6 +295,7 @@ export default function FavoritesPage() {
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-lg font-bold">₹{product.price.toLocaleString()}</span>
                     </div>
+                    <p className="mt-1 text-[10px] leading-tight text-muted-foreground">Inclusive of all taxes</p>
                   </div>
 
                   <button
