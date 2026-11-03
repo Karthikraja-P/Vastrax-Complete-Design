@@ -68,8 +68,8 @@ export default function OrdersPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 10;
 
-  const loadOrders = async () => {
-    setLoading(true);
+  const loadOrders = useCallback(async (showLoading = true) => {
+    if (showLoading) setLoading(true);
     try {
       const data = await ordersApi.list();
       if (data && Array.isArray(data)) {
@@ -121,13 +121,22 @@ export default function OrdersPage() {
     } catch (err) {
       console.error("Orders load error:", err);
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    void Promise.resolve().then(loadOrders);
-  }, []);
+    void Promise.resolve().then(() => loadOrders());
+    const refreshVisibleOrders = () => {
+      if (document.visibilityState === "visible") void loadOrders(false);
+    };
+    const interval = window.setInterval(refreshVisibleOrders, 30_000);
+    window.addEventListener("focus", refreshVisibleOrders);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refreshVisibleOrders);
+    };
+  }, [loadOrders]);
 
   const handleResetFilters = () => {
     setSearchQuery("");
@@ -574,9 +583,16 @@ export default function OrdersPage() {
                            </svg>
                            <span className="relative text-[8px] font-bold">{order.progress}</span>
                         </div>
-                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${order.statusColor}`}>
-                          {order.status}
-                        </span>
+                        <div className="flex min-w-0 flex-col items-start gap-1">
+                          <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${order.statusColor}`}>
+                            {order.status}
+                          </span>
+                          {order.shipmentId && (
+                            <span className="max-w-[180px] truncate text-[10px] text-muted-foreground" title={`Shiprocket: ${order.shippingStatus || "Waiting for update"}`}>
+                              Courier: {order.shippingStatus || "Waiting for update"}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
