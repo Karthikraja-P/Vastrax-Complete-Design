@@ -8,6 +8,7 @@ const PUBLIC_PAGES = [
   ["/storefront/privacy", "yearly"],
   ["/storefront/refund-policy", "yearly"],
   ["/storefront/shipping-policy", "yearly"],
+  ["/storefront/offers", "weekly"],
 ] as const;
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {

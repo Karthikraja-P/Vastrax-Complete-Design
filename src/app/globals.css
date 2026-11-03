@@ -140,6 +140,74 @@
   box-shadow: 0 1px 0 rgb(41 35 31 / 5%);
 }
 
+.vx-offer-ribbon {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(0.5rem, 2vw, 1.5rem);
+  overflow: hidden;
+  padding: 0.55rem 1rem;
+  background: linear-gradient(105deg, #873b1f 0%, #a84d25 38%, #c16b3e 58%, #873b1f 100%);
+  background-size: 220% 100%;
+  color: #fff;
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.015em;
+  text-align: center;
+  text-decoration: none;
+  animation: vx-offer-glint 7s ease-in-out infinite;
+}
+
+.vx-offer-ribbon-label,
+.vx-offer-ribbon-link {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.vx-offer-ribbon-label {
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.vx-offer-ribbon-link {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.vx-offer-ribbon:hover .vx-offer-ribbon-link {
+  text-decoration-thickness: 2px;
+}
+
+@keyframes vx-offer-glint {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+@media (max-width: 640px) {
+  .vx-offer-ribbon {
+    min-height: 48px;
+    gap: 0.45rem;
+    padding: 0.5rem 0.65rem;
+    font-size: 0.7rem;
+  }
+
+  .vx-offer-ribbon-link {
+    gap: 0.15rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vx-offer-ribbon {
+    animation: none;
+    background-position: center;
+  }
+}
+
 .vx-header nav a,
 .vx-header > div > a,
 .vx-header button {
