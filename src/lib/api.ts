@@ -459,12 +459,6 @@ export const ordersApi = {
       body: JSON.stringify({ status }),
     });
   },
-  async markCodCollected(id: string | number): Promise<{ order_id: string; payment_status: string; amount: string }> {
-    return await fetchApi<{ order_id: string; payment_status: string; amount: string }>("/orders/admin/" + id + "/cod-collected", {
-      method: "POST",
-    });
-  },
-
   async dispatchShipment(id: string | number, pickupDate: string): Promise<{
     order_id: string;
     shipment_id: string;

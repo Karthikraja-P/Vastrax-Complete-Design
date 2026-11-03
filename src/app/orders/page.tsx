@@ -38,7 +38,6 @@ interface OrderRow {
   rawDate: number;
   items: unknown[];
   paymentMethod: string;
-  isCod: boolean;
   shipmentId: string;
   awb: string;
   courier: string;
@@ -100,7 +99,6 @@ export default function OrdersPage() {
             statusColor,
             paymentStatus: rawOrder.payment_status || o.paymentStatus || "pending",
             paymentMethod: rawOrder.payment_method || "",
-            isCod: ["cod", "cash on delivery"].includes(String(rawOrder.payment_method || "").trim().toLowerCase()),
             shipmentId: String(rawOrder.shipping_shipment_id || ""),
             awb: String(rawOrder.shipping_awb || ""),
             courier: String(rawOrder.shipping_courier || ""),
@@ -140,18 +138,6 @@ export default function OrdersPage() {
       await loadOrders();
     } catch (error) {
       setActionError(error instanceof Error ? error.message : "Could not update the order status.");
-    } finally {
-      setOpenActionId(null);
-    }
-  };
-
-  const handleCollectCod = async (orderId: string) => {
-    setActionError("");
-    try {
-      await ordersApi.markCodCollected(orderId);
-      await loadOrders();
-    } catch (error) {
-      setActionError(error instanceof Error ? error.message : "Could not confirm COD collection.");
     } finally {
       setOpenActionId(null);
     }
@@ -621,11 +607,6 @@ export default function OrdersPage() {
                               >
                                 <Eye className="w-3.5 h-3.5 text-muted-foreground" /> View Details
                               </button>
-                              {order.isCod && order.rawStatus === "DELIVERED" && order.paymentStatus.toLowerCase() !== "paid" && (
-                                <button onClick={() => handleCollectCod(order.id)} className="w-full px-3.5 py-2 text-xs font-semibold text-emerald-400 hover:bg-surface-hover text-left transition-colors">
-                                  Confirm COD cash collected
-                                </button>
-                              )}
                               <div className="h-px bg-border/40 my-1" />
                               <div className="px-3.5 py-1 text-[10px] uppercase font-bold text-muted-foreground tracking-wider">
                                 Set Status
@@ -752,7 +733,7 @@ export default function OrdersPage() {
                   <p>Courier status: <span className="text-foreground">{selectedOrderDetails.shippingStatus || "Awaiting fulfillment"}</span></p>
                 </div>
                 {(selectedOrderDetails.rawStatus === "CONFIRMED" || selectedOrderDetails.rawStatus === "PACKED")
-                  && (selectedOrderDetails.paymentStatus.toLowerCase() === "paid" || selectedOrderDetails.isCod)
+                  && selectedOrderDetails.paymentStatus.toLowerCase() === "paid"
                   && !["manifest generated", "shipped", "delivered"].includes(selectedOrderDetails.shippingStatus.toLowerCase()) && (
                     <div className="space-y-2 pl-6">
                       <label className="block text-xs font-medium text-foreground" htmlFor="shiprocket-pickup-date">Pickup date</label>

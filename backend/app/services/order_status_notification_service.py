@@ -22,8 +22,7 @@ STATUS_COPY = {
 
 
 def _can_notify(order: Order) -> bool:
-    is_cod = str(order.payment_method or "").strip().casefold() in {"cod", "cash on delivery"}
-    return bool(order.user and order.user.email and (order.payment_status == "paid" or is_cod))
+    return bool(order.user and order.user.email and order.payment_status == "paid")
 
 
 def _reserve_notification(db: Session, order: Order, status_key: str) -> str | None:

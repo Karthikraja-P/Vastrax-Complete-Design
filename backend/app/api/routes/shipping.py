@@ -73,7 +73,6 @@ def _authorize_order_access(order: Order | None, current_user: User) -> Order:
 class ShippingRatesRequest(BaseModel):
     delivery_pincode: str
     weight: float = 0.5
-    cod: bool = False
 
 
 class LabelRequest(BaseModel):
@@ -110,8 +109,7 @@ def dispatch_order(
     if order.status in {"cancelled", "delivered", "returned"}:
         raise HTTPException(status_code=409, detail="This order cannot be dispatched")
 
-    is_cod = (order.payment_method or "").strip().casefold() in {"cod", "cash on delivery"}
-    if order.payment_status != "paid" and not is_cod:
+    if order.payment_status != "paid":
         raise HTTPException(status_code=409, detail="Confirm payment before dispatching this order")
 
     if not order.shipping_shipment_id:
@@ -483,20 +481,19 @@ def receive_rto_parcel(
 def check_shipping_serviceability(
     pincode: str = "400001",
     weight: float = 0.5,
-    cod: bool = False,
     body: dict = None,
 ):
     target_pincode = (body.get("delivery_pincode") or body.get("pincode") if body else None) or pincode
     clean_pincode = str(target_pincode).strip()
-    return check_serviceability(clean_pincode, weight, cod)
+    return check_serviceability(clean_pincode, weight)
 
 
 @router.post("/rates")
 @router.get("/rates")
-def get_shipping_rates(body: ShippingRatesRequest = None, pincode: str = "400001", weight: float = 0.5, cod: bool = False):
+def get_shipping_rates(body: ShippingRatesRequest = None, pincode: str = "400001", weight: float = 0.5):
     delivery_pincode = body.delivery_pincode if body else pincode
     clean_pincode = delivery_pincode.strip()
-    result = check_serviceability(clean_pincode, body.weight if body else weight, body.cod if body else cod)
+    result = check_serviceability(clean_pincode, body.weight if body else weight)
     return result
 
 

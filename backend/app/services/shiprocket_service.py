@@ -91,7 +91,7 @@ def get_token() -> str:
         logger.error("Shiprocket authentication request failed: %s", type(e).__name__)
         return None
 
-def check_serviceability(delivery_pincode: str, total_weight: float = 0.5, cod: bool = False) -> dict:
+def check_serviceability(delivery_pincode: str, total_weight: float = 0.5) -> dict:
     """
     Get shipping rates and estimated delivery dates from Shiprocket.
     Falls back to high-quality simulated data if auth token is unavailable.
@@ -109,7 +109,7 @@ def check_serviceability(delivery_pincode: str, total_weight: float = 0.5, cod: 
                 "pickup_postcode": pickup_pincode,
                 "delivery_postcode": delivery_pincode,
                 "weight": total_weight,
-                "cod": 1 if cod else 0
+                "cod": 0
             }
             headers = {"Authorization": f"Bearer {token}"}
             resp = requests.get(url, params=params, headers=headers, timeout=10)
@@ -168,7 +168,7 @@ def check_serviceability(delivery_pincode: str, total_weight: float = 0.5, cod: 
         }
     }
 
-def create_shipment_order(order_id: str, customer_info: dict, items: list, total_amount: float, payment_method: str = "Prepaid", weight: float = 0.5) -> dict:
+def create_shipment_order(order_id: str, customer_info: dict, items: list, total_amount: float, weight: float = 0.5) -> dict:
     """
     Create a draft shipment in Shiprocket for a customer order.
     """
@@ -216,7 +216,7 @@ def create_shipment_order(order_id: str, customer_info: dict, items: list, total
                     }
                     for it in items
                 ],
-                "payment_method": "COD" if payment_method in ("Cash on Delivery", "COD") else "Prepaid",
+                "payment_method": "Prepaid",
                 "sub_total": sum(float(it.get("unit_price", 0)) * int(it.get("quantity", 1)) for it in items),
                 "length": 10,
                 "breadth": 10,
