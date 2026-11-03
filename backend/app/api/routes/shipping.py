@@ -228,6 +228,7 @@ def receive_courier_status(
 
     previous_order_status = (order.status or "").lower()
     incoming_status = status_text
+    notification_status = None
     rto_statuses = {
         "RTO INITIATED", "RTO IN TRANSIT", "RTO OUT FOR DELIVERY", "RTO OFD",
         "RTO NDR", "RTO LOCKED", "RTO DELIVERED", "RTO ACKNOWLEDGED", "RTO RECEIVED",
@@ -237,15 +238,26 @@ def receive_courier_status(
         order.shipping_status = incoming_status
         if incoming_status == "DELIVERED":
             order.status = "delivered"
+            notification_status = "delivered"
             if not order.delivered_at:
                 order.delivered_at = datetime.now(timezone.utc)
+        elif incoming_status == "OUT FOR DELIVERY":
+            notification_status = "out_for_delivery"
+            if order.status not in {"delivered", "returned", "cancelled"}:
+                order.status = "shipped"
         elif incoming_status in {"RTO DELIVERED", "RTO ACKNOWLEDGED", "RTO RECEIVED"}:
             order.status = "returned"
+        elif incoming_status == "PACKED":
+            order.status = "packed"
+            notification_status = "packed"
         elif incoming_status in _IN_TRANSIT_STATUSES:
             order.status = "shipped"
+            notification_status = "shipped"
     # Preserve completed order states when an older forward-shipment event arrives late.
     elif previous_order_status in {"delivered", "returned"}:
         status_text = (order.shipping_status or "DELIVERED").upper()
+        if previous_order_status == "delivered" and incoming_status == "DELIVERED":
+            notification_status = "delivered"
 
     if incoming_status in {"RTO DELIVERED", "RTO ACKNOWLEDGED"}:
         _ensure_rto_receipt(db, order)
@@ -259,6 +271,12 @@ def receive_courier_status(
 
     became_delivered = previous_order_status != "delivered" and order.status == "delivered"
     db.commit()
+    if notification_status:
+        try:
+            from app.services.order_status_notification_service import send_order_status_notification
+            send_order_status_notification(db, order, notification_status)
+        except Exception:
+            logger.exception("Could not send customer status email for order %s", order.id)
     if became_delivered:
         try:
             from app.services.erp_posting_service import post_order_cogs, post_order_revenue

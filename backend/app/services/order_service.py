@@ -264,6 +264,12 @@ class OrderService:
         self.db.commit()
         self.db.refresh(order)
         logger.info("Admin updated order %s to: %s", order_id, new_status)
+        if new_status in {"packed", "delivered"}:
+            try:
+                from app.services.order_status_notification_service import send_order_status_notification
+                send_order_status_notification(self.db, order, new_status)
+            except Exception:
+                logger.exception("Order %s was updated, but its customer status email failed", order.id)
         return self._to_response(order)
 
 
