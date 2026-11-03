@@ -515,7 +515,7 @@ def _get_shipping_estimate(db: Session, pincode: str) -> Dict[str, Any]:
         "serviceable": True,
         "standard_delivery": "3 - 5 business days",
         "express_delivery": "1 - 2 business days",
-        "shipping_fee": "₹80 flat per order.",
+        "shipping_fee": "₹80 flat across India; free on orders above ₹1,499.",
     }
 
 

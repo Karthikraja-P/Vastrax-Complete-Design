@@ -13,7 +13,7 @@ import { reportBackendReachable, reportBackendUnreachable } from "@/lib/backendS
 import { clearCart } from "@/lib/cart";
 import { useCartItems } from "@/hooks/useCartItems";
 import { showToast } from "@/lib/toast";
-import { SHIPPING_CHARGE } from "@/lib/pricing";
+import { getShippingCharge } from "@/lib/pricing";
 
 const BACKEND_BASE = "/api/v1";
 
@@ -195,7 +195,7 @@ function CheckoutContent() {
   })), [cartItems]);
 
   const subtotal = items.reduce((acc, item) => acc + item.price * item.quantity, 0);
-  const shipping = items.length > 0 ? SHIPPING_CHARGE : 0;
+  const shipping = getShippingCharge(subtotal, items.length > 0);
   const total = subtotal + shipping;
 
   const getEffectiveToken = () => {
@@ -792,8 +792,9 @@ function CheckoutContent() {
                   </div>
                   <div className="flex justify-between text-muted-foreground">
                     <span>Shipping</span>
-                    <span className="text-foreground font-medium">₹{shipping.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    <span className="text-foreground font-medium">{shipping === 0 ? "Free" : `₹${shipping.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}</span>
                   </div>
+                  <p className="text-right text-[11px] text-muted-foreground">₹80 flat shipping across India · free above ₹1,499</p>
                   <div className="flex justify-between text-base font-extrabold text-foreground pt-3 border-t border-border">
                     <span>Total Amount</span>
                     <span className="text-accent">₹{total.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>

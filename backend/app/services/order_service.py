@@ -28,6 +28,7 @@ _inventory_lock = threading.Lock()
 
 
 SHIPPING_CHARGE = Decimal("80.00")
+FREE_SHIPPING_THRESHOLD = Decimal("1499.00")
 
 
 class OrderService:
@@ -69,7 +70,7 @@ class OrderService:
             if i.product_id not in prices:
                 raise NotFoundError(f"Product {i.product_id} not found")
         subtotal = sum((Decimal(prices[i.product_id]) * i.quantity for i in payload.items), Decimal("0"))
-        shipping = SHIPPING_CHARGE
+        shipping = Decimal("0.00") if subtotal > FREE_SHIPPING_THRESHOLD else SHIPPING_CHARGE
         total = (subtotal + shipping).quantize(Decimal("0.01"))
 
         order_id = f"VX-{datetime.now(timezone.utc).year}-{uuid.uuid4().hex[:10].upper()}"

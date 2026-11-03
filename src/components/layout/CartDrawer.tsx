@@ -4,7 +4,7 @@ import Link from "next/link";
 import { CartItem, updateCartQuantity as updateQty, removeFromCart as removeItemFromCart } from "@/lib/cart";
 import { useCartItems } from "@/hooks/useCartItems";
 import { showToast } from "@/lib/toast";
-import { SHIPPING_CHARGE } from "@/lib/pricing";
+import { getShippingCharge } from "@/lib/pricing";
 
 export type { CartItem };
 
@@ -33,7 +33,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
 
   const subtotal = cartItems.reduce((acc, item) => acc + item.price * item.quantity, 0);
 
-  const shipping = cartItems.length === 0 ? 0 : SHIPPING_CHARGE;
+  const shipping = getShippingCharge(subtotal, cartItems.length > 0);
   const total = subtotal + shipping;
 
   if (!isOpen) return null;
@@ -150,6 +150,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                 <span>Shipping</span>
                 <span className="text-foreground font-medium">{shipping === 0 ? "Free" : `₹${shipping.toLocaleString('en-IN')}`}</span>
               </div>
+              {cartItems.length > 0 && <p className="text-right text-[11px] text-muted-foreground">₹80 flat shipping across India · free above ₹1,499</p>}
               <div className="flex justify-between text-sm font-bold text-foreground pt-2 border-t border-border">
                 <span>Estimated Total</span>
                 <span className="text-accent text-base font-extrabold">₹{total.toLocaleString('en-IN')}</span>
