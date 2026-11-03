@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useMemo } from "react";
-import { Home, ChevronRight, UserMinus, RotateCcw, RotateCw, Trash2, ArrowLeft, AlertCircle, Loader2 } from "lucide-react";
+import { useState, useMemo, useEffect, useCallback } from "react";
+import { usersApi, UserRecord } from "@/lib/api";
+import { Home, ChevronRight, UserMinus, RotateCcw, RotateCw, ArrowLeft, Loader2 } from "lucide-react";
 import Link from "next/link";
 
 interface DeletedUser {
@@ -14,16 +15,11 @@ interface DeletedUser {
 }
 
 export default function DeletedUsersPage() {
-  const [deletedUsers, setDeletedUsers] = useState<DeletedUser[]>([
-    { id: "del-usr-1", name: "Mia Wright", email: "mia.wright@example.com", phone: "+1 (555) 666-8888", status: "Verified", deletedAt: "2 days ago" },
-    { id: "del-usr-2", name: "Ethan King", email: "ethan.king@example.com", phone: "+1 (555) 222-4444", status: "Verified", deletedAt: "5 days ago" },
-    { id: "del-usr-3", name: "Isabella Allen", email: "isabella.allen@example.com", phone: "+1 (555) 000-1111", status: "Unverified", deletedAt: "1 week ago" }
-  ]);
+  const [deletedUsers, setDeletedUsers] = useState<DeletedUser[]>([]);
 
   const [nameFilter, setNameFilter] = useState("");
   const [emailFilter, setEmailFilter] = useState("");
   const [userToRestore, setUserToRestore] = useState<DeletedUser | null>(null);
-  const [userToPurge, setUserToPurge] = useState<DeletedUser | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
 
@@ -31,10 +27,10 @@ export default function DeletedUsersPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 10;
 
-  const showToast = (msg: string) => {
+  const showToast = useCallback((msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3500);
-  };
+  }, []);
 
   const handleResetFilters = () => {
     setNameFilter("");
@@ -42,24 +38,41 @@ export default function DeletedUsersPage() {
     setCurrentPage(1);
   };
 
-  const handleRestoreUser = (user: DeletedUser) => {
+  const loadDeletedUsers = useCallback(async () => {
     setIsProcessing(true);
-    setTimeout(() => {
-      setDeletedUsers(prev => prev.filter(u => u.id !== user.id));
-      setUserToRestore(null);
+    try {
+      const rows = await usersApi.listDeleted();
+      setDeletedUsers(rows.map((user: UserRecord) => ({
+        id: String(user.id),
+        name: user.full_name || `${user.first_name || ""} ${user.last_name || ""}`.trim() || "Customer",
+        email: user.email || "—",
+        phone: user.phone_number || user.phone || "—",
+        status: "Inactive",
+        deletedAt: user.updated_at ? new Date(user.updated_at).toLocaleDateString() : "—",
+      })));
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Could not load deleted users.");
+    } finally {
       setIsProcessing(false);
-      showToast(`User account "${user.name}" has been restored to active users.`);
-    }, 400);
-  };
+    }
+  }, [showToast]);
 
-  const handlePurgeUser = (user: DeletedUser) => {
+  useEffect(() => {
+    void Promise.resolve().then(loadDeletedUsers);
+  }, [loadDeletedUsers]);
+
+  const handleRestoreUser = async (user: DeletedUser) => {
     setIsProcessing(true);
-    setTimeout(() => {
-      setDeletedUsers(prev => prev.filter(u => u.id !== user.id));
-      setUserToPurge(null);
+    try {
+      await usersApi.restore(user.id);
+      setUserToRestore(null);
+      await loadDeletedUsers();
+      showToast(`User account "${user.name}" has been restored to active users.`);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Could not restore this user.");
+    } finally {
       setIsProcessing(false);
-      showToast(`User account "${user.name}" was permanently purged.`);
-    }, 400);
+    }
   };
 
   // Filtered List
@@ -209,15 +222,7 @@ export default function DeletedUsersPage() {
                           Restore
                         </button>
                         
-                        {/* Purge Button */}
-                        <button
-                          onClick={() => setUserToPurge(user)}
-                          title="Purge Permanently"
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 text-red-500 text-xs font-semibold transition-colors"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                          Purge
-                        </button>
+
                       </div>
                     </td>
                   </tr>
@@ -301,38 +306,7 @@ export default function DeletedUsersPage() {
         </div>
       )}
 
-      {/* Purge User Modal */}
-      {userToPurge && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm" onClick={() => !isProcessing && setUserToPurge(null)} />
-          <div className="relative bg-surface border border-border rounded-2xl p-6 max-w-md w-full shadow-2xl animate-in zoom-in-95 duration-200 text-center">
-            <div className="w-14 h-14 rounded-full border border-red-500/30 bg-red-500/10 flex items-center justify-center mb-4 text-red-500 mx-auto">
-              <AlertCircle className="w-7 h-7" />
-            </div>
-            <h2 className="text-lg font-bold text-foreground mb-2">Permanently Purge &ldquo;{userToPurge.name}&rdquo;?</h2>
-            <p className="text-xs text-muted-foreground mb-6 leading-relaxed">
-              This will permanently delete this client account record. This action cannot be undone.
-            </p>
-            <div className="flex items-center justify-center gap-3">
-              <button
-                onClick={() => handlePurgeUser(userToPurge)}
-                disabled={isProcessing}
-                className="flex-1 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-white font-semibold text-xs transition-colors flex items-center justify-center gap-2"
-              >
-                {isProcessing && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                Purge Permanently
-              </button>
-              <button
-                onClick={() => setUserToPurge(null)}
-                disabled={isProcessing}
-                className="flex-1 py-2.5 rounded-xl bg-background border border-border hover:bg-surface-hover text-foreground font-medium text-xs transition-colors"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+
 
     </div>
   );

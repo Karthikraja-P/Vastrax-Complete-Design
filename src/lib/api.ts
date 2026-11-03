@@ -675,6 +675,7 @@ export interface UserRecord {
   role?: string;
   is_active?: boolean;
   created_at?: string;
+  updated_at?: string;
   tryon_count?: number;
   chat_message_count?: number;
   [key: string]: unknown;
@@ -689,6 +690,16 @@ export const usersApi = {
       console.error("Failed to fetch users:", err);
       return [];
     }
+  },
+  async listDeleted(): Promise<UserRecord[]> {
+    const res = await fetchApi<UserRecord[]>("/users/admin/deleted");
+    return Array.isArray(res) ? res : [];
+  },
+  async moveToTrash(id: string | number): Promise<void> {
+    await fetchApi(`/users/admin/${encodeURIComponent(String(id))}`, { method: "DELETE" });
+  },
+  async restore(id: string | number): Promise<UserRecord> {
+    return await fetchApi<UserRecord>(`/users/admin/${encodeURIComponent(String(id))}/restore`, { method: "PUT" });
   },
 };
 

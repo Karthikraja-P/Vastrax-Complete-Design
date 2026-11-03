@@ -211,7 +211,22 @@ class UserService:
         return tryon_counts, chat_counts
 
     def list_customers(self) -> list[UserResponse]:
-        users = self.db.query(User).all()
+        users = self.db.query(User).filter(User.is_active.is_(True)).order_by(User.created_at.desc()).all()
+        tryon_counts, chat_counts = self._usage_counts([u.id for u in users])
+        return [
+            UserResponse.model_validate(u).model_copy(
+                update={
+                    "tryon_count": tryon_counts.get(u.id, 0),
+                    "chat_message_count": chat_counts.get(u.id, 0),
+                }
+            )
+            for u in users
+        ]
+
+    def list_deleted_customers(self) -> list[UserResponse]:
+        users = self.db.query(User).filter(
+            User.is_active.is_(False), User.role != "admin"
+        ).order_by(User.updated_at.desc()).all()
         tryon_counts, chat_counts = self._usage_counts([u.id for u in users])
         return [
             UserResponse.model_validate(u).model_copy(

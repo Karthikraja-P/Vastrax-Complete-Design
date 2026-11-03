@@ -198,6 +198,46 @@ def remove_from_wishlist(
 def admin_customers(_: User = Depends(require_admin), db: Session = Depends(get_db)):
     return UserService(db).list_customers()
 
+
+@router.get("/admin/deleted")
+def admin_deleted_customers(_: User = Depends(require_admin), db: Session = Depends(get_db)):
+    return UserService(db).list_deleted_customers()
+
+
+@router.delete("/admin/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+def admin_deactivate_customer(
+    user_id: str,
+    _: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(404, "User not found")
+    if user.role == "admin":
+        raise HTTPException(409, "Administrator accounts cannot be moved to Deleted Users")
+    user.is_active = False
+    user.refresh_token_hash = None
+    user.sms_session_id = None
+    db.commit()
+    return None
+
+
+@router.put("/admin/{user_id}/restore")
+def admin_restore_customer(
+    user_id: str,
+    _: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    user = db.query(User).filter(User.id == user_id, User.role != "admin").first()
+    if not user:
+        raise HTTPException(404, "Deleted user not found")
+    user.is_active = True
+    user.refresh_token_hash = None
+    user.sms_session_id = None
+    db.commit()
+    return UserService(db).get_customer_detail(user.id)
+
+
 @router.get("/admin/admins")
 def admin_admins(_: User = Depends(require_admin), db: Session = Depends(get_db)):
     return UserService(db).list_admins()

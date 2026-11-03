@@ -70,51 +70,20 @@ export default function AllUsersPage() {
     setLoading(true);
     try {
       const data = await usersApi.listAll();
-      if (data && Array.isArray(data) && data.length > 0) {
-        const mapped = data.map((u): AdminUserRow => ({
-          id: String(u.id),
-          firstName: u.first_name || '',
-          lastName: u.last_name || '',
-          name: `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.full_name || u.name || (u.role === 'admin' ? 'System Administrator' : 'Elena Rostova'),
-          email: u.email || '—',
-          phone: u.phone_number || u.phone || (u.role === 'admin' ? '+1 (800) 827-8729' : '+1 (555) 234-5678'),
-          role: u.role || 'customer',
-          status: u.is_active !== false ? "Verified" : "Unverified",
-          date: u.created_at ? new Date(u.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "Recent",
-          tryonCount: u.tryon_count || 0,
-          chatCount: u.chat_message_count || 0,
-        }));
-        setUsersData(mapped);
-      } else {
-        setUsersData([
-          {
-            id: "usr-admin-01",
-            firstName: "System",
-            lastName: "Administrator",
-            name: "System Administrator",
-            email: "admin@vastrax.luxury",
-            phone: "+1 (800) 827-8729",
-            role: "admin",
-            status: "Verified",
-            date: "Aug 20, 2026",
-            tryonCount: 0,
-            chatCount: 0
-          },
-          {
-            id: "usr-customer-01",
-            firstName: "Elena",
-            lastName: "Rostova",
-            name: "Elena Rostova",
-            email: "customer@vastrax.luxury",
-            phone: "+1 (555) 234-5678",
-            role: "customer",
-            status: "Verified",
-            date: "Aug 20, 2026",
-            tryonCount: 0,
-            chatCount: 0
-          }
-        ]);
-      }
+      const mapped = data.map((u): AdminUserRow => ({
+        id: String(u.id),
+        firstName: u.first_name || '',
+        lastName: u.last_name || '',
+        name: `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.full_name || u.name || (u.role === 'admin' ? 'System Administrator' : 'Elena Rostova'),
+        email: u.email || '—',
+        phone: u.phone_number || u.phone || (u.role === 'admin' ? '+1 (800) 827-8729' : '+1 (555) 234-5678'),
+        role: u.role || 'customer',
+        status: u.is_active !== false ? "Verified" : "Unverified",
+        date: u.created_at ? new Date(u.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "Recent",
+        tryonCount: u.tryon_count || 0,
+        chatCount: u.chat_message_count || 0,
+      }));
+      setUsersData(mapped);
     } catch (error) {
       console.error("Users load error:", error);
     } finally {
@@ -175,12 +144,20 @@ export default function AllUsersPage() {
     setOpenActionId(null);
   };
 
-  const handleDeleteUser = () => {
+  const handleDeleteUser = async () => {
     if (!userToDelete) return;
-    setUsersData(prev => prev.filter(u => u.id !== userToDelete.id));
-    showToast(`User ${userToDelete.name} moved to trash.`);
-    setUserToDelete(null);
-    setOpenActionId(null);
+    setIsProcessing(true);
+    try {
+      await usersApi.moveToTrash(userToDelete.id);
+      await loadUsers();
+      showToast(`User ${userToDelete.name} moved to Deleted Users.`);
+      setUserToDelete(null);
+      setOpenActionId(null);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Could not move this user to Deleted Users.");
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   // Filtered Users
@@ -448,7 +425,7 @@ export default function AllUsersPage() {
                                 {user.status === "Verified" ? "Set Unverified" : "Mark as Verified"}
                               </button>
                               <div className="h-px bg-border/40 my-1" />
-                              <button 
+                              {user.role !== "admin" && <button
                                 onClick={() => {
                                   setUserToDelete(user);
                                   setOpenActionId(null);
@@ -456,7 +433,7 @@ export default function AllUsersPage() {
                                 className="w-full flex items-center gap-2.5 px-3.5 py-2 text-xs font-medium text-red-500 hover:bg-red-500/10 transition-colors text-left"
                               >
                                 <Trash2 className="w-3.5 h-3.5" /> Move to Trash
-                              </button>
+                              </button>}
                             </div>
                           </>
                         )}
