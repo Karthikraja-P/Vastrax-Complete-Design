@@ -196,12 +196,12 @@ def remove_from_wishlist(
 
 @router.get("/admin")
 def admin_customers(_: User = Depends(require_admin), db: Session = Depends(get_db)):
-    return UserService(db).list_customers()
+    return UserService(db).list_admin_staff()
 
 
 @router.get("/admin/deleted")
 def admin_deleted_customers(_: User = Depends(require_admin), db: Session = Depends(get_db)):
-    return UserService(db).list_deleted_customers()
+    return UserService(db).list_deleted_admin_staff()
 
 
 @router.delete("/admin/{user_id}", status_code=status.HTTP_204_NO_CONTENT)

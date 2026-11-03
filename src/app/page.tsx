@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { Bell, ChevronDown, Download, Home, ChevronRight, TrendingUp, Loader2, ShoppingCart, RotateCcw, Users, Package } from "lucide-react";
 import { NotchedCard } from "@/components/admin/NotchedCard";
-import { analyticsApi, ordersApi, usersApi, productsApi, OrderItemRecord, AnalyticsInsights } from "@/lib/api";
+import { analyticsApi, ordersApi, fetchApi, productsApi, OrderItemRecord, AnalyticsInsights } from "@/lib/api";
 import Link from "next/link";
 
 export default function Dashboard() {
@@ -17,13 +17,13 @@ export default function Dashboard() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [ords, usersList, prods] = await Promise.all([
+      const [ords, customerSummary, prods] = await Promise.all([
         ordersApi.list().catch(() => []),
-        usersApi.listAll().catch(() => []),
+        fetchApi<{ customers: number }>("/crm/overview").catch(() => ({ customers: 0 })),
         productsApi.list({ published_only: false }).catch(() => [])
       ]);
       setOrders(ords || []);
-      setUsersCount(Array.isArray(usersList) ? usersList.length : 0);
+      setUsersCount(customerSummary.customers || 0);
       setProductsCount(Array.isArray(prods) ? prods.length : 0);
     } catch (err) {
       console.error("Dashboard data load error:", err);

@@ -83,7 +83,7 @@ export default function AdminManagementPage() {
         const data = await usersApi.listAll();
         if (data && Array.isArray(data)) {
           const mapped = data
-            .filter((u: UserRecord) => u.role === 'admin' || u.role === 'Admin' || u.role === 'Super Admin' || u.role === 'super_admin' || u.role === 'manager')
+            .filter((u: UserRecord) => ['admin', 'super admin', 'super_admin', 'manager', 'management'].includes(String(u.role || '').toLowerCase()))
             .map((admin): AdminRow => ({
               id: String(admin.id),
               name: `${admin.first_name || ''} ${admin.last_name || ''}`.trim() || admin.full_name || admin.name || "System Administrator",

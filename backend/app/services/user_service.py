@@ -1,10 +1,11 @@
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import ConflictError, NotFoundError, UnauthorizedError
 from app.core.logging import get_logger
 from app.core.security import hash_password, verify_password
 from app.models.address import Address
+from app.models.business_team import BusinessTeamPermission
 from app.models.chat_message import ChatMessage
 from app.models.product import Product
 from app.models.tryon_session import TryonSession
@@ -210,12 +211,17 @@ class UserService:
         )
         return tryon_counts, chat_counts
 
-    def list_customers(self) -> list[UserResponse]:
-        users = self.db.query(User).filter(User.is_active.is_(True)).order_by(User.created_at.desc()).all()
+    def list_admin_staff(self) -> list[UserResponse]:
+        team_user_ids = self.db.query(BusinessTeamPermission.user_id).distinct()
+        users = self.db.query(User).filter(
+            User.is_active.is_(True),
+            or_(func.lower(User.role) == "admin", User.id.in_(team_user_ids)),
+        ).order_by(User.created_at.desc()).all()
         tryon_counts, chat_counts = self._usage_counts([u.id for u in users])
         return [
             UserResponse.model_validate(u).model_copy(
                 update={
+                    "role": u.role if str(u.role).lower() == "admin" else "management",
                     "tryon_count": tryon_counts.get(u.id, 0),
                     "chat_message_count": chat_counts.get(u.id, 0),
                 }
@@ -223,14 +229,18 @@ class UserService:
             for u in users
         ]
 
-    def list_deleted_customers(self) -> list[UserResponse]:
+    def list_deleted_admin_staff(self) -> list[UserResponse]:
+        team_user_ids = self.db.query(BusinessTeamPermission.user_id).distinct()
         users = self.db.query(User).filter(
-            User.is_active.is_(False), User.role != "admin"
+            User.is_active.is_(False),
+            func.lower(User.role) != "admin",
+            User.id.in_(team_user_ids),
         ).order_by(User.updated_at.desc()).all()
         tryon_counts, chat_counts = self._usage_counts([u.id for u in users])
         return [
             UserResponse.model_validate(u).model_copy(
                 update={
+                    "role": "management",
                     "tryon_count": tryon_counts.get(u.id, 0),
                     "chat_message_count": chat_counts.get(u.id, 0),
                 }
