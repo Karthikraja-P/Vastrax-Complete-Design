@@ -525,27 +525,56 @@ def generate_manifest(shipment_id: str) -> dict:
         return _failure("Shiprocket manifest generation failed")
 
 
-def select_shipping_quote(result: dict) -> dict:
-    """Select the cheapest live serviceability result and normalize its amount."""
+def normalize_courier_options(result: dict) -> list[dict]:
+    """Normalize Shiprocket serviceability results for an admin courier choice."""
     data = result.get("data") or {}
     companies = data.get("available_courier_companies") or result.get("available_courier_companies") or []
-    choices = []
+    recommended_ids = {
+        str(value)
+        for value in (
+            data.get("recommended_courier_company_id"),
+            data.get("shiprocket_recommended_courier_id"),
+            result.get("recommended_courier_company_id"),
+            result.get("shiprocket_recommended_courier_id"),
+        )
+        if value is not None
+    }
+    options = []
     for courier in companies:
         try:
-            price = courier.get("rate") or courier.get("freight_charge")
+            courier_id = int(courier.get("courier_company_id"))
+            price = courier.get("rate")
+            if price is None:
+                price = courier.get("freight_charge")
             if price is None:
                 continue
             amount = float(price)
             if amount < 0:
                 continue
-            choices.append({
-                "courier_id": int(courier.get("courier_company_id") or courier.get("id")),
+            options.append({
+                "courier_id": courier_id,
                 "courier_name": str(courier.get("courier_name") or "Shiprocket courier"),
                 "rate": amount,
                 "etd": courier.get("etd") or courier.get("estimated_delivery_days"),
+                "estimated_delivery_days": courier.get("estimated_delivery_days"),
+                "delivery_performance": courier.get("delivery_performance"),
+                "pickup_performance": courier.get("pickup_performance"),
+                "rating": courier.get("rating"),
+                "recommended": str(courier_id) in recommended_ids,
             })
         except (TypeError, ValueError):
             continue
+    if not options:
+        return []
+    lowest_rate = min(option["rate"] for option in options)
+    for option in options:
+        option["lowest_rate"] = option["rate"] == lowest_rate
+    return sorted(options, key=lambda item: (not item["recommended"], item["rate"]))
+
+
+def select_shipping_quote(result: dict) -> dict:
+    """Return the lowest-priced live option for callers that require one quote."""
+    choices = normalize_courier_options(result)
     if not choices:
         return _failure("No Shiprocket courier is available for this pincode")
     return min(choices, key=lambda item: item["rate"])

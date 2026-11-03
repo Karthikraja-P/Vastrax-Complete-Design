@@ -27,6 +27,7 @@ from app.services.shiprocket_service import (
     generate_label,
     generate_manifest,
     get_ndr_shipments,
+    normalize_courier_options,
     schedule_pickup,
     submit_ndr_action,
     track_shipment,
@@ -93,6 +94,32 @@ class DispatchRequest(BaseModel):
     courier_id: int | None = Field(default=None, ge=1)
 
 
+@router.get("/admin/orders/{order_id}/couriers")
+def available_order_couriers(
+    order_id: str,
+    _: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Return live serviceable courier options before an admin dispatches an order."""
+    order = db.query(Order).filter(Order.id == order_id).first()
+    if not order:
+        raise NotFoundError("Order not found")
+    if order.payment_status != "paid":
+        raise HTTPException(status_code=409, detail="Confirm payment before choosing a courier")
+    if order.shipping_awb:
+        raise HTTPException(status_code=409, detail="A courier is already assigned to this shipment")
+    if not order.address:
+        raise HTTPException(status_code=409, detail="Order delivery address is unavailable")
+
+    serviceability = check_serviceability(order.address.pincode, total_weight=0.5)
+    if serviceability.get("error"):
+        raise HTTPException(status_code=502, detail=serviceability["error"])
+    couriers = normalize_courier_options(serviceability)
+    if not couriers:
+        raise HTTPException(status_code=409, detail="Shiprocket returned no courier options for this destination")
+    return {"order_id": order.id, "mock": bool(serviceability.get("mock")), "couriers": couriers}
+
+
 @router.post("/admin/orders/{order_id}/dispatch")
 def dispatch_order(
     order_id: str,
@@ -111,6 +138,18 @@ def dispatch_order(
 
     if order.payment_status != "paid":
         raise HTTPException(status_code=409, detail="Confirm payment before dispatching this order")
+
+    if not order.shipping_awb:
+        if body.courier_id is None:
+            raise HTTPException(status_code=422, detail="Choose an available courier before assigning the AWB")
+        if not order.address:
+            raise HTTPException(status_code=409, detail="Order delivery address is unavailable")
+        serviceability = check_serviceability(order.address.pincode, total_weight=0.5)
+        available_couriers = normalize_courier_options(serviceability)
+        if serviceability.get("error"):
+            raise HTTPException(status_code=502, detail=serviceability["error"])
+        if not any(option["courier_id"] == body.courier_id for option in available_couriers):
+            raise HTTPException(status_code=409, detail="That courier is no longer available. Refresh options and choose again.")
 
     if not order.shipping_shipment_id:
         from app.services.order_service import _book_shiprocket

@@ -459,7 +459,25 @@ export const ordersApi = {
       body: JSON.stringify({ status }),
     });
   },
-  async dispatchShipment(id: string | number, pickupDate: string): Promise<{
+  async courierOptions(id: string | number): Promise<{
+    order_id: string;
+    mock: boolean;
+    couriers: Array<{
+      courier_id: number;
+      courier_name: string;
+      rate: number;
+      etd?: string | null;
+      estimated_delivery_days?: string | number | null;
+      delivery_performance?: number | string | null;
+      pickup_performance?: number | string | null;
+      rating?: number | string | null;
+      recommended: boolean;
+      lowest_rate: boolean;
+    }>;
+  }> {
+    return await fetchApi(`/shipping/admin/orders/${id}/couriers`);
+  },
+  async dispatchShipment(id: string | number, pickupDate: string, courierId?: number): Promise<{
     order_id: string;
     shipment_id: string;
     awb_code: string;
@@ -469,7 +487,7 @@ export const ordersApi = {
   }> {
     return await fetchApi(`/shipping/admin/orders/${id}/dispatch`, {
       method: "POST",
-      body: JSON.stringify({ pickup_date: pickupDate }),
+      body: JSON.stringify({ pickup_date: pickupDate, ...(courierId ? { courier_id: courierId } : {}) }),
     });
   },
 };

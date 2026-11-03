@@ -6,6 +6,7 @@ import Link from "next/link";
 import { createPortal } from "react-dom";
 import { fetchApi, ordersApi, OrderItemRecord } from "@/lib/api";
 
+type CourierOption = { courier_id: number; courier_name: string; rate: number; etd?: string | null; estimated_delivery_days?: string | number | null; delivery_performance?: number | string | null; pickup_performance?: number | string | null; rating?: number | string | null; recommended: boolean; lowest_rate: boolean };
 type NdrCase = { awb: string; order_id: string | null; customer_name?: string | null; ndr_reason?: string | null; ndr_attempt?: number | string | null; ndr_raised_at?: string | null; courier?: string | null; raw_status?: string | null };
 type RtoReceipt = { id: string; order_id: string; status: string; notes?: string | null; shipping_status?: string | null; awb?: string | null; courier?: string | null; received_at?: string | null; items: Array<{ order_item_id: string; product_name: string; size: string; quantity_expected: number; quantity_received: number; quantity_restocked: number }> };
 
@@ -54,6 +55,11 @@ export default function OrdersPage() {
   const [dispatchMessage, setDispatchMessage] = useState("");
   const [dispatchError, setDispatchError] = useState(false);
   const [dispatchingOrderId, setDispatchingOrderId] = useState<string | null>(null);
+  const [courierOptions, setCourierOptions] = useState<CourierOption[]>([]);
+  const [selectedCourierId, setSelectedCourierId] = useState<number | null>(null);
+  const [loadingCourierOptions, setLoadingCourierOptions] = useState(false);
+  const [courierOptionsError, setCourierOptionsError] = useState("");
+  const [courierOptionsMock, setCourierOptionsMock] = useState(false);
   const [manifestUrl, setManifestUrl] = useState("");
   const [minimumPickupDate] = useState(() => new Date(Date.now() - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 10));
   const [pickupDate, setPickupDate] = useState(() => new Date(Date.now() - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 10));
@@ -257,30 +263,35 @@ export default function OrdersPage() {
     }
   };
 
-  const handleDispatchShipment = async (order: OrderRow) => {
-    if (!pickupDate) {
-      setDispatchError(true);
-      setDispatchMessage("Choose a pickup date before dispatching.");
-      return;
-    }
-    if (!window.confirm(`Assign a real Shiprocket courier/AWB and schedule pickup for order ${order.orderNumber} on ${pickupDate}?`)) return;
-
-    setDispatchingOrderId(order.id);
-    setDispatchMessage("");
-    setDispatchError(false);
-    setManifestUrl("");
+  const handleLoadCourierOptions = async (order: OrderRow) => {
+    setLoadingCourierOptions(true); setCourierOptionsError(""); setCourierOptions([]); setSelectedCourierId(null);
     try {
-      const result = await ordersApi.dispatchShipment(order.id, pickupDate);
+      const result = await ordersApi.courierOptions(order.id);
+      setCourierOptions(result.couriers); setCourierOptionsMock(result.mock);
+      if (!result.couriers.length) setCourierOptionsError("Shiprocket returned no couriers for this address.");
+    } catch (error) {
+      setCourierOptionsError(error instanceof Error ? error.message : "Could not load courier options.");
+    } finally { setLoadingCourierOptions(false); }
+  };
+
+  const handleDispatchShipment = async (order: OrderRow) => {
+    if ((!order.awb && selectedCourierId === null) || !pickupDate) return;
+    const courier = courierOptions.find((option) => option.courier_id === selectedCourierId);
+    const action = order.awb
+      ? `schedule pickup with the already assigned courier for order ${order.orderNumber} on ${pickupDate}`
+      : `assign ${courier?.courier_name || "the selected courier"}, create an AWB and schedule pickup for order ${order.orderNumber} on ${pickupDate}`;
+    if (!window.confirm(`Confirm: ${action}?`)) return;
+    setDispatchingOrderId(order.id); setDispatchMessage(""); setDispatchError(false); setManifestUrl("");
+    try {
+      const result = await ordersApi.dispatchShipment(order.id, pickupDate, selectedCourierId ?? undefined);
       setManifestUrl(result.manifest_url);
       setDispatchMessage(`Courier ${result.courier_name} assigned · AWB ${result.awb_code} · pickup scheduled.`);
-      await loadOrders();
+      setCourierOptions([]); setSelectedCourierId(null); await loadOrders();
     } catch (error) {
       setDispatchError(true);
       setDispatchMessage(error instanceof Error ? error.message : "Shiprocket dispatch could not be completed.");
       await loadOrders();
-    } finally {
-      setDispatchingOrderId(null);
-    }
+    } finally { setDispatchingOrderId(null); }
   };
 
   // Filter and Sort Orders
@@ -642,6 +653,10 @@ export default function OrdersPage() {
                                   setDispatchMessage("");
                                   setDispatchError(false);
                                   setManifestUrl("");
+                                  setCourierOptions([]);
+                                  setSelectedCourierId(null);
+                                  setCourierOptionsError("");
+                                  setCourierOptionsMock(false);
                                   setOpenActionId(null);
                                   setActionMenuPosition(null);
                                 }}
@@ -766,25 +781,54 @@ export default function OrdersPage() {
                 {(selectedOrderDetails.rawStatus === "CONFIRMED" || selectedOrderDetails.rawStatus === "PACKED")
                   && selectedOrderDetails.paymentStatus.toLowerCase() === "paid"
                   && !["manifest generated", "shipped", "delivered"].includes(selectedOrderDetails.shippingStatus.toLowerCase()) && (
-                    <div className="space-y-2 pl-6">
-                      <label className="block text-xs font-medium text-foreground" htmlFor="shiprocket-pickup-date">Pickup date</label>
-                      <input
-                        id="shiprocket-pickup-date"
-                        type="date"
-                        min={minimumPickupDate}
-                        value={pickupDate}
-                        onChange={(event) => setPickupDate(event.target.value)}
-                        className="rounded-lg border border-border bg-surface px-3 py-2 text-xs text-foreground"
-                      />
-                      <button
-                        type="button"
-                        disabled={dispatchingOrderId === selectedOrderDetails.id}
-                        onClick={() => void handleDispatchShipment(selectedOrderDetails)}
-                        className="flex items-center gap-2 rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-white transition-opacity disabled:opacity-60"
-                      >
-                        {dispatchingOrderId === selectedOrderDetails.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Truck className="h-3.5 w-3.5" />}
-                        {selectedOrderDetails.awb ? "Schedule pickup & manifest" : "Assign courier, AWB & pickup"}
-                      </button>
+                    <div className="space-y-3 pl-6">
+                      {!selectedOrderDetails.awb ? <>
+                        <p className="text-xs leading-relaxed text-muted-foreground">Compare Shiprocket services for this address, choose one, then create the AWB and pickup.</p>
+                        <button type="button" disabled={loadingCourierOptions || dispatchingOrderId === selectedOrderDetails.id} onClick={() => void handleLoadCourierOptions(selectedOrderDetails)} className="flex items-center gap-2 rounded-lg border border-accent/50 bg-accent/10 px-3 py-2 text-xs font-semibold text-foreground hover:bg-accent/20 disabled:opacity-60">
+                          {loadingCourierOptions ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                          {loadingCourierOptions ? "Checking Shiprocket…" : courierOptions.length ? "Refresh courier options" : "Compare available couriers"}
+                        </button>
+                        {courierOptionsMock && <p className="text-[11px] text-amber-400">Development sample rates only; production dispatch requires live Shiprocket rates.</p>}
+                        {courierOptionsError && <p role="alert" className="text-xs text-red-400">{courierOptionsError}</p>}
+                        {courierOptions.length > 0 && <fieldset className="space-y-2" aria-label="Choose Shiprocket courier">
+                          <legend className="mb-2 text-xs font-semibold text-foreground">Choose a courier</legend>
+                          {courierOptions.map((option) => {
+                            const eta = option.estimated_delivery_days ?? option.etd;
+                            return <label key={option.courier_id} className={`flex cursor-pointer gap-3 rounded-lg border p-3 ${selectedCourierId === option.courier_id ? "border-accent bg-accent/10" : "border-border bg-surface"}`}>
+                              <input type="radio" name={`courier-${selectedOrderDetails.id}`} checked={selectedCourierId === option.courier_id} onChange={() => setSelectedCourierId(option.courier_id)} className="mt-0.5" />
+                              <span className="min-w-0 flex-1">
+                                <span className="flex flex-wrap justify-between gap-2"><span className="text-xs font-semibold text-foreground">{option.courier_name}</span><span className="text-xs font-bold text-foreground">₹{option.rate.toFixed(2)}</span></span>
+                                <span className="mt-1 flex flex-wrap gap-x-3 text-[11px] text-muted-foreground">
+                                  {eta != null && <span>ETA: {String(eta)}</span>}
+                                  {option.delivery_performance != null && <span>Delivery: {String(option.delivery_performance)}%</span>}
+                                  {option.pickup_performance != null && <span>Pickup: {String(option.pickup_performance)}%</span>}
+                                  {option.rating != null && <span>Rating: {String(option.rating)}</span>}
+                                </span>
+                                <span className="mt-1 flex gap-1.5">
+                                  {option.recommended && <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] text-emerald-400">Shiprocket recommended</span>}
+                                  {option.lowest_rate && <span className="rounded-full bg-blue-500/15 px-2 py-0.5 text-[10px] text-blue-400">Lowest rate</span>}
+                                </span>
+                              </span>
+                            </label>;
+                          })}
+                        </fieldset>}
+                        {courierOptions.length > 0 && <>
+                          <label className="block text-xs font-medium text-foreground" htmlFor="shiprocket-pickup-date">Pickup date</label>
+                          <input id="shiprocket-pickup-date" type="date" min={minimumPickupDate} value={pickupDate} onChange={(event) => setPickupDate(event.target.value)} className="rounded-lg border border-border bg-surface px-3 py-2 text-xs text-foreground" />
+                          <button type="button" disabled={dispatchingOrderId === selectedOrderDetails.id || selectedCourierId === null} onClick={() => void handleDispatchShipment(selectedOrderDetails)} className="flex items-center gap-2 rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-white disabled:opacity-60">
+                            {dispatchingOrderId === selectedOrderDetails.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Truck className="h-3.5 w-3.5" />}
+                            Assign selected courier, AWB &amp; pickup
+                          </button>
+                        </>}
+                      </> : <div className="space-y-2">
+                        <p className="text-xs text-muted-foreground">Courier and AWB already assigned. You can schedule its pickup without reassigning it.</p>
+                        <label className="block text-xs font-medium text-foreground" htmlFor="shiprocket-existing-pickup-date">Pickup date</label>
+                        <input id="shiprocket-existing-pickup-date" type="date" min={minimumPickupDate} value={pickupDate} onChange={(event) => setPickupDate(event.target.value)} className="rounded-lg border border-border bg-surface px-3 py-2 text-xs text-foreground" />
+                        <button type="button" disabled={dispatchingOrderId === selectedOrderDetails.id} onClick={() => void handleDispatchShipment(selectedOrderDetails)} className="flex items-center gap-2 rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-white disabled:opacity-60">
+                          {dispatchingOrderId === selectedOrderDetails.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Truck className="h-3.5 w-3.5" />}
+                          Schedule pickup &amp; manifest
+                        </button>
+                      </div>}
                     </div>
                   )}
                 {dispatchMessage && <p role={dispatchError ? "alert" : "status"} className={`break-words pl-6 text-xs ${dispatchError ? "text-red-400" : "text-emerald-400"}`}>{dispatchMessage}</p>}
