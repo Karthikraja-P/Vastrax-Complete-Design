@@ -21,7 +21,7 @@ import { showToast } from "@/lib/toast";
 import StorefrontMobileControls from "@/components/layout/StorefrontMobileControls";
 import StorefrontInstagramLink from "@/components/layout/StorefrontInstagramLink";
 import { useFavorites } from "@/hooks/useFavorites";
-import { storefrontProductGalleryImage, storefrontProductImage } from "@/lib/storefront-images";
+import { getAdminProductImages } from "@/lib/storefront-images";
 
 function resolveSizeChart(value: unknown, gender?: string): SizeChart | undefined {
   if (isSizeChart(value)) {
@@ -134,14 +134,14 @@ function ProductContent() {
     colour: "",
     occasion: "",
     hemLength: "",
-    image: "/product-placeholder.svg",
-    images: ["/product-placeholder.svg"],
+    image: "",
+    images: [],
     rating: 0,
     reviewsCount: 0,
   });
 
-  const galleryImages = product.images?.length ? product.images : [product.image];
-  const activeGalleryImage = galleryImages[activeImageIndex] || product.image;
+  const galleryImages = product.images || [];
+  const activeGalleryImage = galleryImages[activeImageIndex] || "";
   const activeGalleryBackdrop = galleryImageBackdrops[activeGalleryImage] || DEFAULT_PRODUCT_IMAGE_BACKDROP;
   const has3DModel = Boolean(product.model3dUrl || product.model_path);
   const totalSlides = galleryImages.length + Number(has3DModel);
@@ -185,7 +185,6 @@ function ProductContent() {
 
 
 
-  const getFallbackImage = () => "/product-placeholder.svg";
   const getProductSpecificModelUrl = (value?: string) => {
     if (!value) return undefined;
     const filename = value.split(/[?#]/, 1)[0].split("/").pop()?.toLowerCase();
@@ -213,14 +212,8 @@ function ProductContent() {
           if (cancelled) return;
 
           const catName = item.category_name || item.category || "Apparel";
-          const firstImage = item.images?.[0];
-          const uploadedImage = item.image || (typeof firstImage === "string" ? firstImage : firstImage?.s3_url || "") || getFallbackImage();
-          const img = storefrontProductImage(item.id, uploadedImage);
-          const galleryImages = item.images?.length
-            ? item.images.map((image) => typeof image === "string" ? image : image.s3_url || uploadedImage)
-            : [];
-          const allImgs = [img, ...galleryImages.filter((image) => image !== img)]
-            .map((image) => storefrontProductGalleryImage(image));
+          const allImgs = getAdminProductImages(item.images);
+          const img = allImgs[0] || "";
           const modelUrl = getProductSpecificModelUrl(item.model_path || item.model3dUrl);
 
           setProduct({
@@ -235,7 +228,7 @@ function ProductContent() {
             colour: item.colour || "Default",
             occasion: item.occasion || "",
             hemLength: item.hem_length || "",
-            image: storefrontProductGalleryImage(img),
+            image: img,
             images: allImgs,
             rating: Number(item.rating || item.rating_average || 0),
             reviewsCount: Number(item.rating_count || item.reviewsCount || 0),
@@ -260,11 +253,8 @@ function ProductContent() {
 
         const item: ProductItem = allItems[0];
         const catName = item.category_name || item.category || "Apparel";
-        const firstImage = item.images?.[0];
-        const img = item.image || (typeof firstImage === "string" ? firstImage : firstImage?.s3_url || "") || getFallbackImage();
-        const allImgs = (item.images?.length
-          ? item.images.map((image) => typeof image === "string" ? image : image.s3_url || img)
-          : [img]).map((image) => storefrontProductGalleryImage(image));
+        const allImgs = getAdminProductImages(item.images);
+        const img = allImgs[0] || "";
         const modelUrl = getProductSpecificModelUrl(item.model_path || item.model3dUrl);
 
         setProduct({
@@ -279,7 +269,7 @@ function ProductContent() {
           colour: item.colour || "Default",
           occasion: item.occasion || "",
           hemLength: item.hem_length || "",
-          image: storefrontProductGalleryImage(img),
+          image: img,
           images: allImgs,
           rating: Number(item.rating_average || item.rating || 0),
           ratingCount: Number(item.rating_count || item.reviewsCount || 0),
@@ -562,14 +552,14 @@ function ProductContent() {
                   >
                     <Heart className={`w-5 h-5 ${favorites.includes(String(product.id)) ? 'fill-[#e07a3f] text-[#e07a3f]' : ''}`} />
                   </button>
-                  <Link
+                  {product.images.length > 0 && <Link
                     href={"/storefront/product/" + encodeURIComponent(product.id) + "/tryon"}
                     aria-label="Open Virtual Try-On"
                     className="absolute bottom-5 left-1/2 z-30 -translate-x-1/2 inline-flex min-h-12 items-center gap-2 rounded-full border-2 border-white/90 bg-[#783b27] px-5 py-3 text-base font-bold text-white shadow-xl ring-1 ring-black/10 transition-colors hover:bg-[#5e2c1c] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
                   >
                     <Sparkles aria-hidden="true" className="h-5 w-5 text-white" />
                     Virtual Try-On
-                  </Link>
+                  </Link>}
                   {/* Product photo stays unobstructed; use the thumbnail below for 3D. */}
                   {is3DMode ? (
                     <div className="w-full h-full">
@@ -584,7 +574,7 @@ function ProductContent() {
                         className="w-full h-full"
                       />
                     </div>
-                  ) : (
+                  ) : activeGalleryImage ? (
                     <button
                       type="button"
                       onClick={() => {
@@ -605,6 +595,10 @@ function ProductContent() {
                         className="w-full h-full object-contain bg-transparent animate-fade-in"
                       />
                     </button>
+                  ) : (
+                    <div className="relative z-10 flex h-full w-full items-center justify-center bg-[#f5f2ec] px-6 text-center text-sm text-neutral-600">
+                      Product photos are not available right now.
+                    </div>
                   )}
                   {totalSlides > 1 && (
                     <>

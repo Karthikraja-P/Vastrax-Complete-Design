@@ -71,7 +71,7 @@ export function addToCart(newItem: Omit<CartItem, "quantity"> & { quantity?: num
       quantity: qtyToAdd,
       size: targetSize,
       color: targetColor,
-      image: newItem.image || "https://images.unsplash.com/photo-1551028719-00167b16eac5?q=80&w=400&auto=format&fit=crop",
+      image: newItem.image || "",
       variantId: newItem.variantId,
     });
   }

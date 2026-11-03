@@ -18,7 +18,7 @@ import { showToast } from "@/lib/toast";
 import { performSignOut } from "@/lib/auth-utils";
 import StorefrontMobileControls from "@/components/layout/StorefrontMobileControls";
 import StorefrontInstagramLink from "@/components/layout/StorefrontInstagramLink";
-import { storefrontProductGalleryImage, storefrontProductImage } from "@/lib/storefront-images";
+import { getAdminProductImages } from "@/lib/storefront-images";
 
 function CollectionsPageContent({ initialCategory, initialSort, initialSearch }: { initialCategory?: string; initialSort?: string; initialSearch?: string }) {
   const [isAuthOpen, setIsAuthOpen] = useState(false);
@@ -113,11 +113,10 @@ function CollectionsPageContent({ initialCategory, initialSort, initialSearch }:
           ]);
         }
 
-        const mapped = womenData.map((p: ProductItem): StorefrontProduct => {
-          const fallbackImg = "/product-placeholder.svg";
-          const firstImage = p.images?.[0];
-          let img = p.image || (typeof firstImage === "string" ? firstImage : firstImage?.s3_url || "");
-          if (!img || img === "") img = fallbackImg;
+        const mapped = womenData
+          .map((p: ProductItem): StorefrontProduct | null => {
+          const img = getAdminProductImages(p.images)[0];
+          if (!img) return null;
 
           const rawCatId = String(p.categoryId || p.category_id || "");
           const resolvedCatName = catMap.get(rawCatId) || p.category_name || p.category || "Apparel";
@@ -133,7 +132,7 @@ function CollectionsPageContent({ initialCategory, initialSort, initialSearch }:
             originalPrice,
             rating: Number(p.rating_average || p.rating || 0),
             ratingCount: Number(p.rating_count || 0),
-            image: storefrontProductGalleryImage(storefrontProductImage(p.id, img)),
+            image: img,
             gender: p.gender || "",
             isNew: Boolean(p.isNew || p.is_featured),
             categoryId: rawCatId,
@@ -148,7 +147,8 @@ function CollectionsPageContent({ initialCategory, initialSort, initialSearch }:
             variants: p.variants || [],
             created_at: p.created_at
           };
-        });
+        })
+          .filter((product): product is StorefrontProduct => product !== null);
         setProducts(mapped);
       } catch (err) {
         console.error("Failed to fetch products:", err);

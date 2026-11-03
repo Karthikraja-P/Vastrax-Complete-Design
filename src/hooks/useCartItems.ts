@@ -1,5 +1,7 @@
-import { useMemo, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import type { CartItem } from "@/lib/cart";
+import { productsApi } from "@/lib/api";
+import { getAdminProductImages } from "@/lib/storefront-images";
 
 const CART_STORAGE_KEY = "vastrax_cart";
 
@@ -30,5 +32,38 @@ function parseCart(snapshot: string): CartItem[] {
 
 export function useCartItems(): CartItem[] {
   const snapshot = useSyncExternalStore(subscribe, getSnapshot, () => "[]");
-  return useMemo(() => parseCart(snapshot), [snapshot]);
+  const items = useMemo(() => parseCart(snapshot), [snapshot]);
+  const [catalogImages, setCatalogImages] = useState<{ snapshot: string; byProductId: Map<string, string> } | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    if (items.length === 0) {
+      return () => { active = false; };
+    }
+
+    void productsApi.list().then((products) => {
+      if (!active) return;
+      const byProductId = new Map<string, string>();
+      for (const product of products) {
+        const currentAdminImage = getAdminProductImages(product.images)[0] || "";
+        byProductId.set(String(product.id), currentAdminImage);
+      }
+      setCatalogImages({ snapshot, byProductId });
+    }).catch(() => {
+      if (active) setCatalogImages({ snapshot, byProductId: new Map() });
+    });
+
+    return () => { active = false; };
+  }, [items.length, snapshot]);
+
+  return useMemo(() => {
+    if (items.length === 0) return [];
+    if (!catalogImages || catalogImages.snapshot !== snapshot) {
+      return items.map((item) => ({ ...item, image: "" }));
+    }
+    return items.map((item) => ({
+      ...item,
+      image: catalogImages.byProductId.get(String(item.id)) || "",
+    }));
+  }, [catalogImages, items, snapshot]);
 }

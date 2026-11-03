@@ -141,7 +141,6 @@ export default function VirtualTryOnPage() {
 
   const getGarmentImage = (p: TryOnGarment | null) => {
     if (!p) return "/product-placeholder.svg";
-    if (p.image && !p.image.includes("photo-1515347619362")) return p.image;
     if (Array.isArray(p.images) && p.images.length > 0) {
       const url = typeof p.images[0] === "string" ? p.images[0] : p.images[0]?.s3_url || p.images[0]?.url;
       if (url && !url.includes("photo-1515347619362")) return url;
@@ -150,10 +149,7 @@ export default function VirtualTryOnPage() {
   };
 
   const getGarmentImageOptions = (p: TryOnGarment) => {
-    const sources = [
-      ...(Array.isArray(p.images) ? p.images : []),
-      ...(p.image ? [p.image] : []),
-    ];
+    const sources = Array.isArray(p.images) ? p.images : [];
     const options: { url: string; label: string; role?: string }[] = [];
     for (const source of sources) {
       const record = typeof source === "string" ? null : source;

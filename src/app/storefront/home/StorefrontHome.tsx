@@ -18,7 +18,7 @@ import { showToast } from "@/lib/toast";
 import { performSignOut } from "@/lib/auth-utils";
 import StorefrontMobileControls from "@/components/layout/StorefrontMobileControls";
 import StorefrontInstagramLink from "@/components/layout/StorefrontInstagramLink";
-import { storefrontProductImage } from "@/lib/storefront-images";
+import { getAdminProductImages } from "@/lib/storefront-images";
 
 interface StoreCategory {
   id?: string;
@@ -156,15 +156,7 @@ export default function StorefrontHome() {
         const [cats, prods] = await Promise.all([categoriesApi.list().catch(() => []), productsApi.list().catch(() => [])]);
 
         // Helper to extract a valid image url from a product
-        const getProductImage = (p: ProductItem) => {
-          if (!p) return null;
-          const uploaded = p.image && typeof p.image === "string" && p.image.trim()
-            ? p.image
-            : Array.isArray(p.images) && p.images.length > 0
-              ? (typeof p.images[0] === "string" ? p.images[0] : p.images[0]?.s3_url)
-              : null;
-          return storefrontProductImage(p.id, uploaded || undefined);
-        };
+        const getProductImage = (p: ProductItem) => getAdminProductImages(p?.images)[0] || null;
 
         const womenProducts = Array.isArray(prods)
           ? prods.filter((p) => String(p.gender || "").trim().toLowerCase() === "women")

@@ -17,6 +17,7 @@ import { useCartItems } from "@/hooks/useCartItems";
 import { showToast } from "@/lib/toast";
 import StorefrontMobileControls from "@/components/layout/StorefrontMobileControls";
 import StorefrontInstagramLink from "@/components/layout/StorefrontInstagramLink";
+import { getAdminProductImages } from "@/lib/storefront-images";
 
 export default function FavoritesPage() {
   const { data: session, status } = useSession();
@@ -50,11 +51,9 @@ export default function FavoritesPage() {
         const data = await productsApi.list();
         const mapped = data
           .filter((p) => String(p.gender || "").trim().toLowerCase() === "women")
-          .map((p): StorefrontProduct => {
-          const fallbackImg = "/product-placeholder.svg";
-          const firstImage = p.images?.[0];
-          let img = p.image || (typeof firstImage === "string" ? firstImage : firstImage?.s3_url || "");
-          if (!img) img = fallbackImg;
+          .map((p): StorefrontProduct | null => {
+          const img = getAdminProductImages(p.images)[0];
+          if (!img) return null;
 
           return {
             id: p.id,
@@ -66,7 +65,8 @@ export default function FavoritesPage() {
             categoryId: p.categoryId || p.category_id,
             categoryName: p.category_name || p.category || "Apparel",
           };
-        });
+        })
+          .filter((product): product is StorefrontProduct => product !== null);
         setProducts(mapped);
       } catch (err) {
         console.error("Failed to fetch products:", err);

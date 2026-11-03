@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { SITE } from "@/lib/site";
+import { getAdminProductImages } from "@/lib/storefront-images";
 import ProductDetailsClient from "./ProductDetailsClient";
 
 type ProductPageProps = { searchParams: Promise<{ id?: string; product_id?: string }> };
@@ -19,10 +20,10 @@ export async function generateMetadata({ searchParams }: ProductPageProps): Prom
     const backend = (process.env.INTERNAL_BACKEND_URL || "http://127.0.0.1:8090").replace(/\/$/, "");
     const response = await fetch(`${backend}/api/v1/products/${encodeURIComponent(id)}`, { next: { revalidate: 300 } });
     if (!response.ok) throw new Error("Product metadata unavailable");
-    const product = await response.json() as { name?: string; title?: string; description?: string; image?: string; images?: Array<string | { s3_url?: string }> };
+    const product = await response.json() as { name?: string; title?: string; description?: string; images?: unknown };
     const name = product.name || product.title || "Product details";
     const description = String(product.description || `See the ${name} coordinated look, available sizes, and current price from VastraX.`).slice(0, 160);
-    const imageValue = product.image || (typeof product.images?.[0] === "string" ? product.images[0] : product.images?.[0]?.s3_url);
+    const imageValue = getAdminProductImages(product.images)[0];
     const image = imageValue?.startsWith("http") ? imageValue : imageValue ? `${SITE.url}${imageValue.startsWith("/") ? "" : "/"}${imageValue}` : `${SITE.url}/opengraph-image`;
     return {
       title: name,

@@ -9,8 +9,8 @@ import { Header } from "@/components/layout/Header";
 import { CartDrawer } from "@/components/layout/CartDrawer";
 import { StylistDrawer } from "@/components/stylist/StylistDrawer";
 import { performSignOut } from "@/lib/auth-utils";
-import { fetchApi } from "@/lib/api";
-import { storefrontProductImage } from "@/lib/storefront-images";
+import { fetchApi, productsApi } from "@/lib/api";
+import { getAdminProductImages } from "@/lib/storefront-images";
 import { SITE } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
@@ -199,9 +199,10 @@ function CustomerAccountContent() {
       fetchApi<CustomerReturnCase[]>("/orders/my/returns")
         .then((cases) => { if (active) setReturnCases(Array.isArray(cases) ? cases : []); })
         .catch(() => { if (active) setReturnCases([]); });
-      fetchApi<AccountOrderResponse[]>("/orders/my")
-        .then((orders) => {
+      Promise.all([fetchApi<AccountOrderResponse[]>("/orders/my"), productsApi.list()])
+        .then(([orders, products]) => {
         if (!active) return;
+        const currentProductImages = new Map(products.map((product) => [String(product.id), getAdminProductImages(product.images)[0] || ""]));
         setCustomerOrders((Array.isArray(orders) ? orders : []).map((order) => ({
           id: order.id,
           orderNumber: order.id,
@@ -218,7 +219,7 @@ function CustomerAccountContent() {
             quantity: item.quantity,
             variant: `${item.size ? `Size ${item.size} · ` : ""}Qty ${item.quantity}`,
             price: `₹${(Number(item.unit_price || 0) * item.quantity).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`,
-            image: storefrontProductImage(item.product_id, item.image_url || undefined),
+            image: currentProductImages.get(String(item.product_id)) || "",
           })),
         })));
         setOrdersError("");
@@ -655,7 +656,7 @@ function CustomerAccountContent() {
                             <div key={item.id || i} className="rounded-xl border border-border/60 p-3">
                               <div className="flex items-center justify-between gap-4">
                                 <div className="flex items-center gap-4">
-                                  <Image width={1200} height={900} unoptimized src={item.image} alt={item.name} className="w-12 h-16 object-contain rounded-lg border border-border bg-[#f8f7f4] p-0.5" />
+                                  {item.image ? <Image width={1200} height={900} unoptimized src={item.image} alt={item.name} className="w-12 h-16 object-contain rounded-lg border border-border bg-[#f8f7f4] p-0.5" /> : <div className="h-16 w-12 rounded-lg border border-border bg-[#f8f7f4]" aria-label="Product photo unavailable" />}
                                   <div>
                                     <h4 className="text-sm font-semibold text-foreground">{item.name}</h4>
                                     <p className="text-xs text-muted-foreground">{item.variant}</p>
