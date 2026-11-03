@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Optional
 
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import BadRequestError, ForbiddenError, NotFoundError
@@ -198,6 +199,14 @@ class OrderService:
 
     def list_all_orders(self, status_filter: Optional[str] = None) -> list[OrderResponse]:
         q = self.db.query(Order).order_by(Order.placed_at.desc())
+        # Prepaid orders are created before payment confirmation so checkout can
+        # resume safely. Keep abandoned attempts out of the admin order queue,
+        # while retaining COD orders (which remain unpaid until delivery).
+        cod_method = func.lower(func.coalesce(Order.payment_method, ""))
+        q = q.filter(or_(
+            Order.payment_status.in_(("paid", "refunded")),
+            cod_method.in_(("cod", "cash on delivery")),
+        ))
         if status_filter:
             q = q.filter(Order.status == status_filter)
         return [self._to_response(o) for o in q.all()]
