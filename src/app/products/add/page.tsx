@@ -12,7 +12,7 @@ import type { SizeChart } from "@/lib/sizeChart";
 import { useRouter } from "next/navigation";
 import { getSession } from "next-auth/react";
 import { Product3DModal } from "@/components/3d/Product3DModal";
-import { generateThreeDModel } from "@/lib/threeDGeneration";
+import { generateThreeDModel, type ThreeDGenerationJob } from "@/lib/threeDGeneration";
 import PhotoUploadCard from "@/components/products/PhotoUploadCard";
 import { SizeChartEditor } from "@/components/products/SizeChartEditor";
 import AdminTryOnImageGenerator from "@/components/products/AdminTryOnImageGenerator";
@@ -112,6 +112,9 @@ export default function AddProductPage() {
   const [reconstructError, setReconstructError] = useState("");
   const [reconstructResult, setReconstructResult] = useState<string | null>(null);
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
+  const [generatedModelQuality, setGeneratedModelQuality] = useState<NonNullable<ThreeDGenerationJob["quality_report"]> | null>(null);
+  const [generatedModelPreviewed, setGeneratedModelPreviewed] = useState(false);
+  const [generatedModelAccepted, setGeneratedModelAccepted] = useState(false);
   const frontRef = useRef<HTMLInputElement>(null);
   const sideRef = useRef<HTMLInputElement>(null);
   const backRef = useRef<HTMLInputElement>(null);
@@ -262,6 +265,9 @@ export default function AddProductPage() {
     setReconstructStatus("Submitting 3D reconstruction…");
     setReconstructError("");
     setReconstructResult(null);
+    setGeneratedModelQuality(null);
+    setGeneratedModelPreviewed(false);
+    setGeneratedModelAccepted(false);
     try {
       showToast("Sending photos to 3D garment generator service…");
 
@@ -291,7 +297,10 @@ export default function AddProductPage() {
       }
       setModelPath(generatedModelUrl);
       setReconstructResult(generatedModelUrl);
-      setReconstructStatus("3D model ready to preview.");
+      setGeneratedModelQuality(generation.quality_report || null);
+      setGeneratedModelPreviewed(false);
+      setGeneratedModelAccepted(false);
+      setReconstructStatus("Mesh checks passed. Preview it before saving.");
       showToast("Textured Hunyuan 3D model generated.");
     } catch (err: unknown) {
       console.error(err);
@@ -323,6 +332,9 @@ export default function AddProductPage() {
       
       if (data.success) {
         setModelPath(data.url);
+        setGeneratedModelQuality(null);
+        setGeneratedModelPreviewed(false);
+        setGeneratedModelAccepted(false);
         showToast("3D Model uploaded successfully!");
       } else {
         throw new Error(data.error || "Upload failed");
@@ -338,6 +350,11 @@ export default function AddProductPage() {
 
   // ─── Save & Publish ─────────────────────────────────────────
   const handleSave = async (publish: boolean) => {
+    if (generatedModelQuality && (!generatedModelPreviewed || !generatedModelAccepted)) {
+      showToast("Preview the new 3D model and confirm it has no unintended holes before saving.");
+      setActiveTab("3d");
+      return;
+    }
     if (!name.trim()) {
       showToast("Please enter a product name");
       setActiveTab("basic");
@@ -1123,7 +1140,7 @@ export default function AddProductPage() {
                     onChange={handleUploadGlb}
                   />
                   {modelPath && (
-                    <button type="button" onClick={() => { setModelPath(""); setReconstructResult(null); }} className="mb-2 text-xs font-medium text-red-500 hover:underline">
+                    <button type="button" onClick={() => { setModelPath(""); setReconstructResult(null); setGeneratedModelQuality(null); setGeneratedModelPreviewed(false); setGeneratedModelAccepted(false); }} className="mb-2 text-xs font-medium text-red-500 hover:underline">
                       Remove attached 3D model
                     </button>
                   )}
@@ -1142,11 +1159,9 @@ export default function AddProductPage() {
               <div className="bg-accent/5 border border-accent/20 rounded-xl p-4 flex items-start gap-3">
                 <div className="text-xs text-muted-foreground leading-relaxed">
                   <span className="font-semibold text-foreground">
-                    All three photos are required.
+                    Upload clear front, side and back photos.
                   </span>{" "}
-                  Hunyuan currently builds the model from the front photo;
-                  side and back views are collected but do not yet constrain
-                  reconstruction. Review the generated model carefully before saving.
+                  All three views guide shape and texture reconstruction. Keep the garment fully visible against a plain background. Necklines, armholes and hems naturally have open edges; inspect for accidental holes, missing panels or broken seams before saving.
                 </div>
               </div>
 
@@ -1276,9 +1291,14 @@ export default function AddProductPage() {
                     3D Model Ready
                   </h3>
                   <p className="text-xs text-muted-foreground mb-4">
-                    The GLB model has been generated and will be attached to this
-                    product when you publish.
+                    The generated GLB stays as a preview until you save this product.
                   </p>
+                  {generatedModelQuality && (
+                    <div className="mx-auto mb-4 max-w-lg rounded-lg border border-border bg-background p-3 text-left text-xs text-muted-foreground">
+                      <p>Mesh check: {generatedModelQuality.vertices.toLocaleString()} vertices · {generatedModelQuality.faces.toLocaleString()} faces · {generatedModelQuality.boundary_edges.toLocaleString()} open edges · {generatedModelQuality.non_manifold_edges.toLocaleString()} non-manifold edges</p>
+                      <p className="mt-1">Open edges can be normal at necklines, armholes and hems. Rotate the preview and check for unintended holes or missing garment sections.</p>
+                    </div>
+                  )}
                   <button
                     type="button"
                     onClick={() => setIsPreviewModalOpen(true)}
@@ -1287,6 +1307,14 @@ export default function AddProductPage() {
                     <Eye className="w-4 h-4" />
                     Preview 3D Model
                   </button>
+                  {generatedModelQuality && generatedModelPreviewed && (
+                    <label className="mx-auto mt-4 flex max-w-lg cursor-pointer items-start gap-2 text-left text-xs text-foreground">
+                      <input type="checkbox" checked={generatedModelAccepted}
+                        onChange={(event) => setGeneratedModelAccepted(event.target.checked)}
+                        className="mt-0.5 accent-[var(--accent)]" />
+                      <span>I reviewed the model from multiple angles and confirmed it has no unintended holes or missing parts.</span>
+                    </label>
+                  )}
                 </div>
               )}
             </section>
@@ -1296,7 +1324,10 @@ export default function AddProductPage() {
 
       <Product3DModal
         isOpen={isPreviewModalOpen}
-        onClose={() => setIsPreviewModalOpen(false)}
+        onClose={() => {
+          setIsPreviewModalOpen(false);
+          if (generatedModelQuality) setGeneratedModelPreviewed(true);
+        }}
         product={{
           id: "preview",
           name: name || "Garment 3D Model",

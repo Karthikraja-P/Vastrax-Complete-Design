@@ -5,6 +5,10 @@ export interface ThreeDGenerationJob {
   error?: string;
   model_url?: string;
   generation_mode?: string;
+  quality_report?: {
+    vertices: number; faces: number; boundary_edges: number; non_manifold_edges: number;
+    degenerate_faces: number; watertight: boolean; review_required: boolean;
+  };
 }
 
 const POLL_INTERVAL_MS = 3000;

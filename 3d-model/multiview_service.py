@@ -100,6 +100,32 @@ def _multiview_prepare_image(self, image, mask=None):
 Hunyuan3DDiTFlowMatchingPipeline.prepare_image = _multiview_prepare_image
 
 
+def _mesh_quality_report(mesh_path: str) -> dict[str, Any]:
+    """Validate geometry while allowing normal openings at garment edges."""
+    import numpy as np
+    mesh = trimesh.load(mesh_path, force="mesh", process=False)
+    vertices, faces = np.asarray(mesh.vertices), np.asarray(mesh.faces)
+    if len(vertices) < 50 or len(faces) < 50:
+        raise RuntimeError("Generated garment mesh is empty or incomplete.")
+    if not np.isfinite(vertices).all() or not np.isfinite(faces).all():
+        raise RuntimeError("Generated garment mesh contains invalid coordinates.")
+    if not np.isfinite(mesh.extents).all() or np.any(np.asarray(mesh.extents) <= 1e-5):
+        raise RuntimeError("Generated garment mesh has invalid or zero-sized geometry.")
+    areas = np.asarray(mesh.area_faces, dtype=float)
+    degenerate = int(np.count_nonzero(~np.isfinite(areas) | (areas <= 1e-12)))
+    counts = np.bincount(mesh.edges_unique_inverse)
+    boundary = int(np.count_nonzero(counts == 1))
+    non_manifold = int(np.count_nonzero(counts > 2))
+    faces_count, edges_count = int(len(faces)), max(int(len(counts)), 1)
+    if degenerate / max(faces_count, 1) > 0.02:
+        raise RuntimeError(f"Mesh has too many degenerate faces ({degenerate}/{faces_count}); no model was attached.")
+    if non_manifold / edges_count > 0.02:
+        raise RuntimeError(f"Mesh has excessive non-manifold edges ({non_manifold}/{edges_count}); no model was attached.")
+    return {"vertices": int(len(vertices)), "faces": faces_count, "boundary_edges": boundary,
+            "non_manifold_edges": non_manifold, "degenerate_faces": degenerate,
+            "watertight": bool(mesh.is_watertight), "review_required": boundary > 0}
+
+
 def _texture_with_view_references(paint: Hunyuan3DPaintPipeline, mesh_path: str,
                                   images: list[Image.Image], output_obj: str) -> str:
     """Use the front, side and back photos as texture references, not just the front."""
@@ -216,6 +242,7 @@ class MultiViewWorker:
             }, str(final_path))
             if not final_path.is_file() or final_path.stat().st_size < 20:
                 raise RuntimeError("Textured multi-view GLB export failed")
+            quality_report = _mesh_quality_report(str(final_path))
         finally:
             # Texture models consume most of the GPU; release them after each admin job
             # so virtual try-on and the next queued task have room to run.
@@ -223,7 +250,10 @@ class MultiViewWorker:
             self.paint = None
             gc.collect()
             torch.cuda.empty_cache()
-        log.info("Generated multi-view model %s in %.1fs", final_path.name, time.time() - started)
+        log.info("Generated multi-view model %s in %.1fs (faces=%s, open_edges=%s, non_manifold=%s)",
+                 final_path.name, time.time() - started, quality_report["faces"],
+                 quality_report["boundary_edges"], quality_report["non_manifold_edges"])
+        self.last_quality_report = quality_report
         return final_path
 
 
@@ -260,7 +290,13 @@ def generate(payload: dict[str, Any], x_generator_key: str | None = Header(None)
     except Exception as exc:
         log.exception("Multi-view generation failed")
         raise HTTPException(status_code=500, detail=f"Multi-view reconstruction failed: {exc}") from exc
-    return FileResponse(path, media_type="model/gltf-binary", headers={"X-Generation-Mode": "hunyuan_multiview_textured"})
+    report = getattr(worker, "last_quality_report", None)
+    if not report:
+        raise HTTPException(status_code=500, detail="Mesh quality could not be verified; no model was attached.")
+    return FileResponse(path, media_type="model/gltf-binary", headers={
+        "X-Generation-Mode": "hunyuan_multiview_textured",
+        "X-Mesh-Quality": __import__("json").dumps(report, separators=(",", ":")),
+    })
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException, status
 from sqlalchemy.orm import Session
-from app.db.database import SessionLocal, get_db
+from app.db.database import get_db
 from app.middleware.auth import require_admin
 from app.models.user import User
 from app.models.product import Product
@@ -82,6 +82,9 @@ async def _run_generation(job_id: str, product_id: str | None, category_id: str 
                     result = response.json()
                     model_url = result.get("model_url")
                     generation_mode = result.get("generation_mode", "unknown")
+                    quality_report = result.get("quality_report")
+                    if not isinstance(quality_report, dict):
+                        raise RuntimeError("3D service omitted mesh quality report; no model was attached.")
                     if generation_mode != "hunyuan_multiview_textured":
                         raise RuntimeError("The 3D service did not use all uploaded garment views. No model was attached.")
                     if not model_url or not model_url.startswith("/models/3d/"):
@@ -109,21 +112,12 @@ async def _run_generation(job_id: str, product_id: str | None, category_id: str 
             os.replace(temp_path, model_path)
             model_url = f"/results/{job_id}.glb"
 
-            if product_id:
-                db = SessionLocal()
-                try:
-                    product = db.query(Product).filter(Product.id == product_id).first()
-                    if product:
-                        product.model_path = model_url
-                        db.commit()
-                finally:
-                    db.close()
-
             _JOBS[job_id].update(
                 status="completed",
-                message="Textured 3D model is ready to preview.",
+                message="Mesh checks passed. Preview from multiple angles before saving.",
                 model_url=model_url,
                 generation_mode=generation_mode,
+                quality_report=quality_report,
             )
     except Exception as exc:
         logger.exception("3D generation job %s failed: %s", job_id, exc)

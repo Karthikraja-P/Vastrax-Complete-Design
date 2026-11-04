@@ -315,6 +315,7 @@ async def generate_3d(
 
             # 2. Check for active Hunyuan3D neural service on port 8082
             generated = False
+            mesh_quality = None
             try:
                 async with httpx.AsyncClient(timeout=1200.0) as hy_client:
                     encoded_views = {}
@@ -361,7 +362,12 @@ async def generate_3d(
 
                     if hy_res and hy_res.status_code == 200:
                         generation_mode = hy_res.headers.get("X-Generation-Mode", "hunyuan_untextured")
-                        if generation_mode == "hunyuan_multiview_textured" and hy_res.content.startswith(b"glTF"):
+                        try:
+                            mesh_quality = json.loads(hy_res.headers.get("X-Mesh-Quality", ""))
+                        except (TypeError, ValueError):
+                            mesh_quality = None
+                        if (generation_mode == "hunyuan_multiview_textured" and isinstance(mesh_quality, dict)
+                                and hy_res.content.startswith(b"glTF")):
                             with open(dest_path, "wb") as out_f:
                                 out_f.write(hy_res.content)
                             generated = True
@@ -387,7 +393,8 @@ async def generate_3d(
                 "model_url": f"/models/3d/{out_filename}",
                 "filename": out_filename,
                 "generation_mode": generation_mode,
-                "message": "Hunyuan multi-view garment reconstruction generated"
+                "quality_report": mesh_quality,
+                "message": "Mesh check passed; preview the model before saving"
             }
         except HTTPException:
             raise
