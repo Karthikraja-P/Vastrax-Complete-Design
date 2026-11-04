@@ -61,6 +61,10 @@ export default function OrdersPage() {
   const [courierOptionsError, setCourierOptionsError] = useState("");
   const [courierOptionsMock, setCourierOptionsMock] = useState(false);
   const [manifestUrl, setManifestUrl] = useState("");
+  const [shippingLabelUrl, setShippingLabelUrl] = useState("");
+  const [invoiceUrl, setInvoiceUrl] = useState("");
+  const [documentsLoading, setDocumentsLoading] = useState(false);
+  const [documentsError, setDocumentsError] = useState("");
   const [minimumPickupDate] = useState(() => new Date(Date.now() - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 10));
   const [pickupDate, setPickupDate] = useState(() => new Date(Date.now() - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 10));
 
@@ -274,6 +278,16 @@ export default function OrdersPage() {
     } finally { setLoadingCourierOptions(false); }
   };
 
+  const handleGenerateShipmentDocuments = async (order: OrderRow) => {
+    setDocumentsLoading(true); setDocumentsError(""); setShippingLabelUrl(""); setInvoiceUrl("");
+    try {
+      const documents = await ordersApi.shipmentDocuments(order.id);
+      setShippingLabelUrl(documents.label_url); setInvoiceUrl(documents.invoice_url);
+    } catch (error) {
+      setDocumentsError(error instanceof Error ? error.message : "Could not generate the shipment documents.");
+    } finally { setDocumentsLoading(false); }
+  };
+
   const handleDispatchShipment = async (order: OrderRow) => {
     if ((!order.awb && selectedCourierId === null) || !pickupDate) return;
     const courier = courierOptions.find((option) => option.courier_id === selectedCourierId);
@@ -282,11 +296,14 @@ export default function OrdersPage() {
       : `assign ${courier?.courier_name || "the selected courier"}, create an AWB and schedule pickup for order ${order.orderNumber} on ${pickupDate}`;
     if (!window.confirm(`Confirm: ${action}?`)) return;
     setDispatchingOrderId(order.id); setDispatchMessage(""); setDispatchError(false); setManifestUrl("");
+    setDocumentsError(""); setShippingLabelUrl(""); setInvoiceUrl("");
     try {
       const result = await ordersApi.dispatchShipment(order.id, pickupDate, selectedCourierId ?? undefined);
       setManifestUrl(result.manifest_url);
       setDispatchMessage(`Courier ${result.courier_name} assigned · AWB ${result.awb_code} · pickup scheduled.`);
-      setCourierOptions([]); setSelectedCourierId(null); await loadOrders();
+      setCourierOptions([]); setSelectedCourierId(null);
+      await handleGenerateShipmentDocuments(order);
+      await loadOrders();
     } catch (error) {
       setDispatchError(true);
       setDispatchMessage(error instanceof Error ? error.message : "Shiprocket dispatch could not be completed.");
@@ -653,7 +670,11 @@ export default function OrdersPage() {
                                   setDispatchMessage("");
                                   setDispatchError(false);
                                   setManifestUrl("");
+                                  setShippingLabelUrl("");
+                                  setInvoiceUrl("");
+                                  setDocumentsError("");
                                   setCourierOptions([]);
+
                                   setSelectedCourierId(null);
                                   setCourierOptionsError("");
                                   setCourierOptionsMock(false);
@@ -833,6 +854,21 @@ export default function OrdersPage() {
                   )}
                 {dispatchMessage && <p role={dispatchError ? "alert" : "status"} className={`break-words pl-6 text-xs ${dispatchError ? "text-red-400" : "text-emerald-400"}`}>{dispatchMessage}</p>}
                 {manifestUrl && <a href={manifestUrl} target="_blank" rel="noreferrer" className="ml-6 inline-block text-xs font-semibold text-accent underline underline-offset-4">Open Shiprocket manifest</a>}
+                {selectedOrderDetails.awb && (
+                  <div className="space-y-2 pl-6">
+                    {!shippingLabelUrl && !invoiceUrl && (
+                      <button type="button" disabled={documentsLoading} onClick={() => void handleGenerateShipmentDocuments(selectedOrderDetails)} className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-semibold text-foreground hover:bg-surface-hover disabled:opacity-60">
+                        {documentsLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                        {documentsLoading ? "Preparing PDFs…" : "Generate invoice & label"}
+                      </button>
+                    )}
+                    {documentsError && <p role="alert" className="text-xs text-red-400">{documentsError}</p>}
+                    <div className="flex flex-wrap gap-4">
+                      {shippingLabelUrl && <a href={shippingLabelUrl} target="_blank" rel="noreferrer" download className="text-xs font-semibold text-accent underline underline-offset-4">Download shipping label (PDF)</a>}
+                      {invoiceUrl && <a href={invoiceUrl} target="_blank" rel="noreferrer" download className="text-xs font-semibold text-accent underline underline-offset-4">Download invoice (PDF)</a>}
+                    </div>
+                  </div>
+                )}
                 <p className="pl-6 text-[11px] leading-relaxed text-muted-foreground">Courier tracking and delivery status update from Shiprocket events after its tracking webhook is configured.</p>
               </div>
 

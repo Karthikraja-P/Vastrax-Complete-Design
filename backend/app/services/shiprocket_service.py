@@ -326,6 +326,59 @@ def generate_label(shipment_id: str) -> dict:
         "response": "Label generated successfully (Simulated)"
     }
 
+def get_shipment_details(shipment_id: str) -> dict:
+    """Fetch Shiprocket's specific shipment record to resolve its internal order id."""
+    if not str(shipment_id).isdigit():
+        return _failure("A valid Shiprocket shipment id is required", 400)
+    token = get_token()
+    if not token:
+        return _failure("Shiprocket authentication unavailable")
+    try:
+        response = requests.get(
+            f"{API_BASE}/shipments/{shipment_id}",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=15,
+        )
+        data = response.json()
+        data["status"] = response.status_code
+        if response.status_code != 200:
+            data["error"] = data.get("message") or "Shiprocket shipment details could not be loaded"
+        return data
+    except Exception as exc:
+        logger.error("Shiprocket shipment lookup failed: %s", type(exc).__name__)
+        return _failure("Shiprocket shipment details could not be loaded")
+
+
+def generate_invoice(shiprocket_order_id: str) -> dict:
+    """Generate the Shiprocket invoice PDF for its internal order id."""
+    if not str(shiprocket_order_id).isdigit():
+        return _failure("A valid Shiprocket order id is required", 400)
+    token = get_token()
+    if token:
+        try:
+            response = requests.post(
+                f"{API_BASE}/orders/print/invoice",
+                json={"ids": [int(shiprocket_order_id)]},
+                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                timeout=20,
+            )
+            data = response.json()
+            data["status"] = response.status_code
+            if response.status_code != 200:
+                data["error"] = data.get("message") or "Shiprocket invoice generation failed"
+            return data
+        except Exception as exc:
+            logger.error("Shiprocket invoice generation failed: %s", type(exc).__name__)
+            return _failure("Shiprocket invoice generation failed")
+    if _is_production():
+        return _failure("Live Shiprocket invoice generation is unavailable")
+    return {
+        "status": 200,
+        "mock": True,
+        "invoice_url": "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf",
+    }
+
+
 def schedule_pickup(shipment_id: str, pickup_date: str) -> dict:
     """
     Schedule courier pickup for a shipment.

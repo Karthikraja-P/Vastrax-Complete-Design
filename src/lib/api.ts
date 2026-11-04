@@ -477,6 +477,16 @@ export const ordersApi = {
   }> {
     return await fetchApi(`/shipping/admin/orders/${id}/couriers`);
   },
+  async shipmentDocuments(id: string | number): Promise<{
+    order_id: string;
+    shipment_id: string;
+    awb_code: string;
+    label_url: string;
+    invoice_url: string;
+    mock: boolean;
+  }> {
+    return await fetchApi(`/shipping/admin/orders/${id}/documents`, { method: "POST" });
+  },
   async dispatchShipment(id: string | number, pickupDate: string, courierId?: number): Promise<{
     order_id: string;
     shipment_id: string;

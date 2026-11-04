@@ -24,8 +24,10 @@ from app.services.shiprocket_service import (
     cancel_shipment_by_awb,
     assign_awb,
     check_serviceability,
+    generate_invoice,
     generate_label,
     generate_manifest,
+    get_shipment_details,
     get_ndr_shipments,
     normalize_courier_options,
     schedule_pickup,
@@ -195,6 +197,77 @@ def dispatch_order(
         "courier_name": order.shipping_courier,
         "shipping_status": order.shipping_status,
         "manifest_url": manifest_url,
+    }
+
+
+@router.post("/admin/orders/{order_id}/documents")
+def generate_order_shipping_documents(
+    order_id: str,
+    _: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Generate downloadable Shiprocket invoice and label PDFs for a paid order."""
+    order = db.query(Order).filter(Order.id == order_id).first()
+    if not order:
+        raise NotFoundError("Order not found")
+    if order.payment_status != "paid":
+        raise HTTPException(status_code=409, detail="Confirm payment before generating shipment documents")
+    if not order.shipping_shipment_id or not order.shipping_awb:
+        raise HTTPException(status_code=409, detail="Assign a courier and AWB before generating shipment documents")
+
+    label = generate_label(str(order.shipping_shipment_id))
+    label_data = label.get("data") if isinstance(label.get("data"), dict) else {}
+    label_url = label.get("label_url") or label_data.get("label_url")
+    if label.get("error") or label.get("status") != 200 or not label_url:
+        raise HTTPException(status_code=502, detail=label.get("error", "Shiprocket did not return a shipping label"))
+
+    if label.get("mock"):
+        return {
+            "order_id": order.id,
+            "shipment_id": order.shipping_shipment_id,
+            "awb_code": order.shipping_awb,
+            "label_url": label_url,
+            "invoice_url": "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf",
+            "mock": True,
+        }
+
+    details = get_shipment_details(str(order.shipping_shipment_id))
+    if details.get("error") or details.get("status") != 200:
+        raise HTTPException(status_code=502, detail=details.get("error", "Could not resolve the Shiprocket order for its invoice"))
+
+    def find_order_id(value):
+        if isinstance(value, dict):
+            candidate = value.get("order_id")
+            if candidate is not None and str(candidate).isdigit():
+                return str(candidate)
+            for child in value.values():
+                found = find_order_id(child)
+                if found:
+                    return found
+        elif isinstance(value, list):
+            for child in value:
+                found = find_order_id(child)
+                if found:
+                    return found
+        return None
+
+    shiprocket_order_id = find_order_id(details)
+    if not shiprocket_order_id:
+        raise HTTPException(status_code=502, detail="Shiprocket did not return its internal order id for invoice generation")
+
+    invoice = generate_invoice(shiprocket_order_id)
+    invoice_data = invoice.get("data") if isinstance(invoice.get("data"), dict) else {}
+    invoice_url = invoice.get("invoice_url") or invoice_data.get("invoice_url")
+    if invoice.get("error") or invoice.get("status") != 200 or not invoice_url:
+        raise HTTPException(status_code=502, detail=invoice.get("error", "Shiprocket did not return an invoice"))
+
+    return {
+        "order_id": order.id,
+        "shipment_id": order.shipping_shipment_id,
+        "awb_code": order.shipping_awb,
+        "label_url": label_url,
+        "invoice_url": invoice_url,
+        "mock": bool(label.get("mock") or invoice.get("mock")),
     }
 
 
