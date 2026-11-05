@@ -74,7 +74,7 @@ services:
       - SHIPROCKET_PICKUP_LOCATION=${SHIPROCKET_PICKUP_LOCATION:-Primary}
       - SHIPROCKET_WEBHOOK_TOKEN=${SHIPROCKET_WEBHOOK_TOKEN:-}
     volumes:
-      - ./backend/app:/app/app
+      - ./backend/app:/app/app:ro
       - ./backend/vastrax.db:/app/vastrax.db
       - ./backend/user_uploads:/app/user_uploads
       - ./backend/results:/app/results

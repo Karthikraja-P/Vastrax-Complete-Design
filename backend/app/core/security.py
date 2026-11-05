@@ -1,5 +1,6 @@
 """JWT token creation/verification and bcrypt password helpers."""
 from datetime import datetime, timedelta, timezone
+import secrets
 from typing import Optional
 
 import bcrypt
@@ -39,7 +40,9 @@ def create_password_reset_token(user_id: str) -> str:
 
 def create_refresh_token(user_id: str) -> str:
     expire = datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
-    payload = {"sub": user_id, "purpose": "refresh", "exp": expire}
+    # A unique ID prevents two refreshes in the same second from producing
+    # identical JWTs and defeats replay after token rotation.
+    payload = {"sub": user_id, "purpose": "refresh", "jti": secrets.token_urlsafe(16), "exp": expire}
     return jwt.encode(payload, settings.jwt_secret_key, algorithm=ALGORITHM)
 
 

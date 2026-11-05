@@ -2,6 +2,15 @@ import pytest
 from decimal import Decimal
 from types import SimpleNamespace
 from fastapi import HTTPException
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
+
+from app.db.base import Base
+import app.models  # noqa: F401
+from app.core.security import create_refresh_token
+from app.core.exceptions import UnauthorizedError
+from app.models.user import User
+from app.services.auth_service import AuthService
 
 from app.core import rate_limit
 from app.core.exceptions import BadGatewayError
@@ -54,3 +63,25 @@ def test_production_razorpay_failure_does_not_simulate(monkeypatch):
     monkeypatch.setattr(ps.requests, "post", fail_request)
     with pytest.raises(BadGatewayError, match="Razorpay could not create the payment order"):
         ps.PaymentService(db=None)._call_razorpay(SimpleNamespace(id="test-txn", status="created"), Decimal("10"))
+
+
+def test_refresh_token_is_single_use_and_revoked_hash_fails_closed():
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        user = User(id="refresh-user", email="refresh@example.com",
+                    hashed_password="x", role="customer", is_active=True)
+        token = create_refresh_token(user.id)
+        user.refresh_token_hash = AuthService._token_hash(token)
+        db.add(user)
+        db.commit()
+
+        rotated = AuthService(db).refresh(token)
+        assert rotated["refresh_token"] != token
+        with pytest.raises(UnauthorizedError, match="revoked"):
+            AuthService(db).refresh(token)
+
+        user.refresh_token_hash = None
+        db.commit()
+        with pytest.raises(UnauthorizedError, match="revoked"):
+            AuthService(db).refresh(rotated["refresh_token"])

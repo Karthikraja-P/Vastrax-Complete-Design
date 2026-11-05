@@ -282,7 +282,7 @@ class AuthService:
             raise ForbiddenError("Account is disabled")
 
         stored_hash = user.refresh_token_hash or ""
-        if stored_hash and stored_hash != self._token_hash(refresh_token):
+        if not stored_hash or not secrets.compare_digest(stored_hash, self._token_hash(refresh_token)):
             raise UnauthorizedError("Refresh token has been revoked")
 
         new_access = create_access_token({"sub": user.id, "role": user.role})

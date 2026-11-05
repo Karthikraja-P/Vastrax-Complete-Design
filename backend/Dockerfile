@@ -23,7 +23,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app ./app
 
 # Create required directories
-RUN mkdir -p /app/user_uploads /app/results
+RUN mkdir -p /app/user_uploads /app/results \
+    && useradd --uid 1000 --create-home --shell /usr/sbin/nologin vastrax \
+    && chown -R 1000:1000 /app
+
+USER 1000:1000
 
 EXPOSE 8090
 
