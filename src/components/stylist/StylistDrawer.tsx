@@ -445,6 +445,18 @@ export function StylistDrawer({ isOpen: externalIsOpen, onClose: externalOnClose
                       ))}
                     </div>
 
+                    <button
+                      type="button"
+                      aria-label="Ask for general style tips without product recommendations"
+                      onClick={() => handleSend("Give me general style tips only; no product recommendations, please.")}
+                      className="w-full max-w-sm mt-2 py-2.5 px-4 rounded-xl border border-accent/30 bg-accent/5 hover:bg-accent/10 text-sm text-foreground flex items-center justify-between transition-colors cursor-pointer shadow-sm"
+                    >
+                      <span className="flex items-center gap-2 font-medium text-accent">
+                        <Sparkles className="w-4 h-4" /> General style tips
+                      </span>
+                      <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />
+                    </button>
+
                     {/* Keep the first welcome simple while leaving more conversation starters available. */}
                     {activePrompts.length > 3 && <div className="w-full max-w-sm mt-2">
                       <button
