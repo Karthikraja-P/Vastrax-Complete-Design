@@ -13,11 +13,10 @@ from app.services.email_service import send_email
 
 logger = logging.getLogger(__name__)
 
+# VastraX sends the merchant-side packing update. Shiprocket owns carrier milestones
+# (shipped, out for delivery, delivered) to avoid duplicate customer emails.
 STATUS_COPY = {
     "packed": ("Your order is packed", "Your order has been packed and is being prepared for dispatch."),
-    "shipped": ("Your order is on its way", "Your order has been handed to the courier and is on its way."),
-    "out_for_delivery": ("Your order is out for delivery", "The courier is out for delivery with your order."),
-    "delivered": ("Your order was delivered", "Your order has been marked as delivered."),
 }
 
 
