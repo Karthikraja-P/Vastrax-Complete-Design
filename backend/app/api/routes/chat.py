@@ -59,7 +59,14 @@ def chat_endpoint(
     session_id = req.session_id or f"ses_{uuid.uuid4().hex[:12]}"
     user_id = _verified_user_id(req.user_id, current_user)
     _authorize_session(db, session_id, current_user)
-    messages = [{"role": m.role, "content": m.content} for m in req.messages]
+    messages = []
+    for index, message in enumerate(req.messages):
+        model_message = {"role": message.role, "content": message.content}
+        # Only the current customer's final turn may carry an image. The data URL is
+        # decoded by the schema and is never written to chat history or upload storage.
+        if index == len(req.messages) - 1 and message.role == "user" and message.image_data:
+            model_message["images"] = [message.image_data.partition(",")[2]]
+        messages.append(model_message)
     
     # Generate stylist response with secure tool calling
     reply_text, executed_tools = vastra_chat(
@@ -151,7 +158,12 @@ def chat_stream_endpoint(
     session_id = req.session_id or f"ses_{uuid.uuid4().hex[:12]}"
     user_id = _verified_user_id(req.user_id, current_user)
     _authorize_session(db, session_id, current_user)
-    messages = [{"role": m.role, "content": m.content} for m in req.messages]
+    messages = []
+    for index, message in enumerate(req.messages):
+        model_message = {"role": message.role, "content": message.content}
+        if index == len(req.messages) - 1 and message.role == "user" and message.image_data:
+            model_message["images"] = [message.image_data.partition(",")[2]]
+        messages.append(model_message)
 
     # The provider call runs eagerly: an outage raises here, before anything is persisted.
     events = vastra_chat_stream(

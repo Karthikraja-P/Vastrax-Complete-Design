@@ -13,6 +13,7 @@ SHOPPER HELP — ORDERS, SIZE, TRY-ON, AND STYLE:
 - You are the VastraX store assistant as well as a stylist. Help with order updates, product discovery, size charts, virtual try-on, and practical outfit advice.
 - For “where is my order?”, “check my orders”, or order tracking without an order number, use the verified recent-order account context below and call list_my_orders if more detail is needed. For a supplied order number, call get_order_status. Never claim you cannot access the shopper's orders page; the secure account lookup can check their signed-in account. If they are not signed in, explain that they must sign in to the account that placed the order. Do not invent shipping, payment, courier, or delivery updates. The shopper can also open My Account → Orders & Shipment at /storefront/account. If the verified lookup returns zero orders, say none are listed for the signed-in account and suggest checking that they signed in with the account used to place the order.
 - For current product availability or recommendations, use search_products when needed and recommend only published items in the live catalog. Include the [PRODUCT:id] tag for each product you recommend.
+- When a shopper attaches a photo to find a similar item, inspect the garment only (type, visible colour, pattern, and style), then search the published catalog and show only close matches returned by search_products. Describe matches as approximate; never infer the shopper’s body, complexion, age, or fit from the photo.
 - For questions about saved, favorited, or wishlisted items, use only the verified WISHLIST CONTEXT below. Mention specific saved products from that list and include [PRODUCT:id] tags when recommending them. If the list is empty, say you cannot see any saved items yet and invite the shopper to save a product; never invent wishlist contents.
 - For sizing, retrieve the actual product size chart with get_product_details when needed, then compare it with measurements the shopper provides. Use check_inventory before claiming a size is in stock. Do not claim the chart predicts exact fit.
 - For virtual try-on, explain that it is a visual preview, not a fit measurement. Give practical photo guidance when useful: use a clear, well-lit, full-length photo, stand mostly facing the camera with arms slightly away from the body, keep the outfit visible, and avoid other people or objects covering the person. Link them to the product's Virtual Try-On page when relevant.
@@ -219,12 +220,24 @@ _CLIENT_ROLES = ("user", "assistant")
 
 
 def _sanitize_client_messages(messages: list) -> list:
-    """Keep only user/assistant text turns from the client; system and tool turns stay server-side."""
-    return [
-        {"role": m["role"], "content": m["content"]}
-        for m in messages or []
-        if isinstance(m, dict) and m.get("role") in _CLIENT_ROLES and isinstance(m.get("content"), str)
-    ]
+    """Keep user/assistant text; accept one image only on the current user turn."""
+    safe_messages = []
+    for index, message in enumerate(messages or []):
+        if not isinstance(message, dict) or message.get("role") not in _CLIENT_ROLES or not isinstance(message.get("content"), str):
+            continue
+        safe_message = {"role": message["role"], "content": message["content"]}
+        images = message.get("images")
+        if (
+            index == len(messages) - 1
+            and message.get("role") == "user"
+            and isinstance(images, list)
+            and len(images) == 1
+            and isinstance(images[0], str)
+            and len(images[0]) <= 4_194_304
+        ):
+            safe_message["images"] = images
+        safe_messages.append(safe_message)
+    return safe_messages
 
 
 _NO_PRODUCT_REQUEST_PATTERNS = (
@@ -278,9 +291,13 @@ def _apply_stylist_response_constraints(reply: str, messages: list) -> str:
 
 def _relevant_tools(messages: list, tool_definitions: list) -> list:
     """Keep unrelated tool schemas out of the prompt so the model can retain chat history."""
-    latest = next((m.get("content", "") for m in reversed(messages) if m.get("role") == "user"), "")
+    latest_message = next((m for m in reversed(messages) if m.get("role") == "user"), {})
+    latest = latest_message.get("content", "")
     text = latest.lower()
     selected = set()
+
+    if latest_message.get("images"):
+        selected.add("search_products")
 
     if re.search(r"\b(order|shipment|tracking|delivery|shipped|courier|return|exchange|refund|cancel|support|damaged)\b", text):
         selected.update({

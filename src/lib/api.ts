@@ -915,9 +915,12 @@ export const chatApi = {
     contextUrl?: string,
     cartItems?: ChatCartItem[],
     userId?: string,
-    wishlistProductIds?: string[]
+    wishlistProductIds?: string[],
+    imageData?: string
   ): Promise<ChatResponse> {
-    const messagesPayload = [...history, { role: "user", content: message }];
+    const latestMessage: ChatTurn & { image_data?: string } = { role: "user", content: message };
+    if (imageData) latestMessage.image_data = imageData;
+    const messagesPayload = [...history, latestMessage];
     return await fetchApi<ChatResponse>("/chat", {
       method: "POST",
       body: JSON.stringify({

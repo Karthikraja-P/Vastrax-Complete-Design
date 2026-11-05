@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { 
   Sparkles, X, Send, Bot,
   Shirt, RefreshCcw, Loader2, CheckCircle2, Heart, ShoppingBag, Eye,
-  ChevronDown, ChevronRight
+  ChevronDown, ChevronRight, ImagePlus
 } from "lucide-react";
 import { chatApi, fetchApi, ordersApi, type ChatResponse } from "@/lib/api";
 import { useRouter, usePathname } from "next/navigation";
@@ -24,6 +24,51 @@ const STYLIST_OUTAGE_MESSAGE = "Vastra is off hunting for better outfits. Please
 const SESSION_ID_KEY = "vastrax_stylist_session_id";
 const LAST_ACTIVE_KEY = "vastrax_stylist_last_active";
 const SESSION_TIMEOUT_MS = 24 * 60 * 60 * 1000; // 24 hours
+const MAX_STYLIST_IMAGE_BYTES = 3 * 1024 * 1024;
+const MAX_STYLIST_UPLOAD_BYTES = 12 * 1024 * 1024;
+
+async function prepareStylistImage(file: File): Promise<string> {
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+    throw new Error('Choose a JPG, PNG, or WebP photo.');
+  }
+  if (file.size > MAX_STYLIST_UPLOAD_BYTES) {
+    throw new Error('Choose an image smaller than 12 MB.');
+  }
+
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const element = new window.Image();
+      element.onload = () => resolve(element);
+      element.onerror = () => reject(new Error('This image could not be opened.'));
+      element.src = objectUrl;
+    });
+    let scale = Math.min(1, 1280 / Math.max(image.naturalWidth, image.naturalHeight));
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+      canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+      const context = canvas.getContext('2d');
+      if (!context) throw new Error('Your browser could not prepare this image.');
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.82));
+      if (!blob) throw new Error('Your browser could not prepare this image.');
+      if (blob.size <= MAX_STYLIST_IMAGE_BYTES) {
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => typeof reader.result === 'string' ? resolve(reader.result) : reject(new Error('Image processing failed.'));
+          reader.onerror = () => reject(new Error('Image processing failed.'));
+          reader.readAsDataURL(blob);
+        });
+        return dataUrl;
+      }
+      scale *= 0.75;
+    }
+    throw new Error('This photo is too detailed to process. Try a smaller image.');
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
 
 const currentTimeMs = () => Date.now();
 
@@ -57,6 +102,7 @@ interface Message {
   suggestedProducts?: SuggestedProduct[];
   executedTools?: ExecutedTool[];
   isEscalated?: boolean;
+  imagePreview?: string;
 }
 
 interface ActivitySuggestions {
@@ -190,6 +236,9 @@ export function StylistDrawer({ isOpen: externalIsOpen, onClose: externalOnClose
   const [addedToCart, setAddedToCart] = useState<string[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const [attachedImage, setAttachedImage] = useState<string | null>(null);
+  const [imageError, setImageError] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -291,18 +340,24 @@ export function StylistDrawer({ isOpen: externalIsOpen, onClose: externalOnClose
   }, [messages, isTyping]);
 
   const handleSend = async (textToSend?: string) => {
-    const query = textToSend || input;
-    if (!query.trim() || isTyping) return;
+    if (isTyping) return;
+    const imageData = textToSend ? null : attachedImage;
+    const query = (textToSend ?? input).trim() || (imageData ? "Please find VastraX products that look similar to this photo." : "");
+    if (!query) return;
 
+    const userMessageId = `u-${currentTimeMs()}`;
     const userMsg: Message = {
-      id: `u-${currentTimeMs()}`,
+      id: userMessageId,
       sender: "user",
       text: query,
-      timestamp: "Just now"
+      timestamp: "Just now",
+      imagePreview: imageData ?? undefined,
     };
 
     setMessages(prev => [...prev, userMsg]);
     setInput("");
+    setAttachedImage(null);
+    setImageError(null);
     setIsTyping(true);
     const sessionId = touchStylistSession();
 
@@ -324,7 +379,7 @@ export function StylistDrawer({ isOpen: externalIsOpen, onClose: externalOnClose
         color,
         quantity,
       }));
-      const res = await chatApi.sendMessage(query, sessionId, historyPayload, {}, contextUrl, cartContext, userId, favorites);
+      const res = await chatApi.sendMessage(query, sessionId, historyPayload, {}, contextUrl, cartContext, userId, favorites, imageData ?? undefined);
       const { cleanText, chips } = parseTagsFromReply(res.message);
 
       const stylistMsg: Message = {
@@ -349,7 +404,22 @@ export function StylistDrawer({ isOpen: externalIsOpen, onClose: externalOnClose
       };
       setMessages(prev => [...prev, fallbackMsg]);
     } finally {
+      if (imageData) {
+        // Remove the customer's photo from the in-memory chat as soon as processing ends.
+        setMessages(prev => prev.map(message => message.id === userMessageId ? { ...message, imagePreview: undefined } : message));
+      }
       setIsTyping(false);
+    }
+  };
+
+  const handleImageSelected = async (file?: File) => {
+    setImageError(null);
+    if (!file) return;
+    try {
+      setAttachedImage(await prepareStylistImage(file));
+    } catch (error) {
+      setAttachedImage(null);
+      setImageError(error instanceof Error ? error.message : "This image could not be prepared.");
     }
   };
 
@@ -501,6 +571,9 @@ export function StylistDrawer({ isOpen: externalIsOpen, onClose: externalOnClose
                       )}
                       
                       <div>
+                        {msg.imagePreview && (
+                          <Image src={msg.imagePreview} alt="Photo shared temporarily for product matching" width={192} height={192} unoptimized className="mb-2 max-h-48 max-w-48 rounded-xl object-contain" />
+                        )}
                         <div 
                           className={`p-4 rounded-2xl text-sm leading-relaxed whitespace-pre-line ${
                             msg.sender === "user"
@@ -632,24 +705,54 @@ export function StylistDrawer({ isOpen: externalIsOpen, onClose: externalOnClose
 
               {/* Input Bar */}
               <div className="p-4 border-t border-border bg-surface">
+                {attachedImage && (
+                  <div className="mb-2 flex items-center gap-2 rounded-xl border border-border bg-background p-2">
+                    <Image src={attachedImage} alt="Photo ready for temporary product matching" width={48} height={56} unoptimized className="h-14 w-12 rounded-lg object-cover" />
+                    <p className="min-w-0 flex-1 text-xs text-muted-foreground">Photo ready. It is processed for this request and is not saved to your chat or account.</p>
+                    <button type="button" aria-label="Remove attached photo" onClick={() => setAttachedImage(null)} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-accent/10 hover:text-accent">
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                )}
+                {imageError && <p role="status" className="mb-2 px-2 text-xs text-red-500">{imageError}</p>}
                 <form 
                   onSubmit={(e) => {
                     e.preventDefault();
                     handleSend();
                   }}
-                  className="flex items-center gap-2 bg-background border border-border rounded-full px-4 py-2 focus-within:border-accent transition-colors"
+                  className="vx-stylist-composer flex items-center gap-2 bg-background border border-border rounded-full px-3 py-2 focus-within:border-accent transition-colors"
                 >
+                  <input
+                    ref={imageInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    className="hidden"
+                    onChange={(event) => {
+                      void handleImageSelected(event.currentTarget.files?.[0]);
+                      event.currentTarget.value = "";
+                    }}
+                  />
+                  <button
+                    type="button"
+                    aria-label="Attach a photo to find similar products"
+                    title="Attach a photo to find similar products"
+                    disabled={isTyping}
+                    onClick={() => imageInputRef.current?.click()}
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent/10 hover:text-accent disabled:opacity-40"
+                  >
+                    <ImagePlus className="h-4 w-4" />
+                  </button>
                   <input 
                     ref={inputRef}
                     type="text"
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     placeholder="Ask your stylist anything about fit, color, or occasions..."
-                    className="min-w-0 flex-1 appearance-none rounded-none border-0 bg-transparent p-0 text-sm text-foreground shadow-none outline-none ring-0 placeholder:text-muted-foreground focus:border-0 focus:outline-none focus:ring-0"
+                    className="vx-stylist-input min-w-0 flex-1 appearance-none rounded-none border-0 bg-transparent p-0 text-sm text-foreground shadow-none outline-none ring-0 placeholder:text-muted-foreground focus:border-0 focus:outline-none focus:ring-0"
                   />
                   <button 
                     type="submit"
-                    disabled={!input.trim() || isTyping}
+                    disabled={(!input.trim() && !attachedImage) || isTyping}
                     className="w-8 h-8 rounded-full bg-accent hover:bg-accent/90 disabled:opacity-40 text-accent-foreground flex items-center justify-center transition-all shadow-[0_0_10px_rgba(224,122,63,0.3)] shrink-0"
                   >
                     <Send className="w-3.5 h-3.5" />

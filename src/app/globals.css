@@ -136,6 +136,12 @@
   outline-offset: 3px;
 }
 
+/* Keep one visible focus treatment on the stylist composer, not a nested field box. */
+.vx-storefront .vx-stylist-input:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
 .vx-header {
   box-shadow: 0 1px 0 rgb(41 35 31 / 5%);
 }
