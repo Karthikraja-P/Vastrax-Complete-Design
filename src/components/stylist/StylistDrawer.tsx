@@ -20,6 +20,7 @@ type ExecutedTool = NonNullable<ChatResponse["executed_tools"]>[number];
 
 // Shown on any Stylist API failure (MiniMax unconfigured/unavailable); never a fabricated recommendation.
 const STYLIST_OUTAGE_MESSAGE = "Vastra is off hunting for better outfits. Please try again in a bit.";
+const PERSONALIZE_TIPS_PROMPT = "I’d like styling tips tailored to me. Please ask one optional question at a time. I may share my height or height range, preferred fit or garment length, colors I enjoy wearing, and the occasion. I can skip anything. Do not ask about my skin colour or infer personal traits from my photo.";
 
 const SESSION_ID_KEY = "vastrax_stylist_session_id";
 const LAST_ACTIVE_KEY = "vastrax_stylist_last_active";
@@ -514,6 +515,18 @@ export function StylistDrawer({ isOpen: externalIsOpen, onClose: externalOnClose
                         </button>
                       ))}
                     </div>
+
+                    <button
+                      type="button"
+                      aria-label="Get optional style tips tailored to my preferences"
+                      onClick={() => handleSend(PERSONALIZE_TIPS_PROMPT)}
+                      className="w-full max-w-sm mt-2 py-2.5 px-4 rounded-xl border border-border bg-surface/80 hover:bg-surface text-sm text-foreground flex items-center justify-between transition-colors cursor-pointer shadow-sm"
+                    >
+                      <span className="flex items-center gap-2 font-medium text-accent">
+                        <Sparkles className="w-4 h-4" /> Personalize my tips
+                      </span>
+                      <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />
+                    </button>
 
                     <button
                       type="button"
