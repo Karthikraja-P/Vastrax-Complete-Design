@@ -32,6 +32,9 @@ def db():
         ]:
             session.add(Product(id=pid, category_id="cat", name=name, price_mrp=Decimal("200"),
                                 price_selling=Decimal("150"), description=desc,
+                                hem_length="ankle length" if pid == "pub" else None,
+                                product_details="Length: ankle length; sleeves: sleeveless" if pid == "pub" else SECRET_DESC,
+                                how_to_style="Pair with sandals" if pid == "pub" else SECRET_DESC,
                                 is_published=published))
             session.flush()
             session.add(ProductVariant(product_id=pid, sku=f"{pid}-M", size="M", stock_qty=7))
@@ -86,3 +89,64 @@ def test_unpublishing_after_publish_hides_product(db):
     db.commit()
     assert "error" in execute_tool("get_product_details", {"product_id": "pub"}, db=db)
     assert "error" in execute_tool("check_inventory", {"product_id": "pub", "size": "M"}, db=db)
+
+
+def test_catalog_context_includes_structured_garment_facts_and_marks_sizes_unverified(db):
+    from app.services.chat_service import _get_catalog_context
+
+    context = _get_catalog_context(db)
+    assert 'Hem length (exact stored value; do not infer if not specified): "ankle length"' in context
+    assert 'Product details data: "Length: ankle length; sleeves: sleeveless"' in context
+    assert 'How-to-style data: "Pair with sandals"' in context
+    assert "Size options (not stock status; use check_inventory for availability)" in context
+    assert SECRET_NAME not in context
+    assert SECRET_DESC not in context
+
+
+def test_stylist_prompt_prioritizes_current_question_and_prohibits_length_guessing():
+    from app.services.chat_service import _STYLING_RULES, _SYSTEM_PROMPT_TEMPLATE
+
+    prompt = _STYLING_RULES + _SYSTEM_PROMPT_TEMPLATE
+    assert "standalone question on a new/general topic must get a fresh answer" in prompt
+    assert '"maxi" or "frock" does not establish' in prompt
+    assert "Call check_inventory before any current stock or size-availability claim" in prompt
+    assert "never restart with a greeting or generic introduction" in prompt
+    assert "do not name or card a product" in prompt
+    assert "as hard constraints" in prompt
+
+
+@pytest.mark.parametrize("message", [
+    "General tips only; no product recommendation.",
+    "No product recommendations, please.",
+    "Do not recommend any products.",
+])
+def test_explicit_general_advice_request_is_detected(message):
+    from app.services.chat_service import _explicitly_requests_no_products
+
+    assert _explicitly_requests_no_products([{"role": "user", "content": message}])
+
+
+def test_response_constraints_remove_repeated_greeting_products_chips_and_closing_question():
+    from app.services.chat_service import _apply_stylist_response_constraints
+
+    messages = [
+        {"role": "assistant", "content": "Earlier answer"},
+        {"role": "user", "content": "General tips only; no product recommendation."},
+    ]
+    reply = (
+        "Vastra here! Practical tips: try tonal dressing.\n"
+        "Vertical stripes can create a longer line.\n"
+        "Would you like a product suggestion? [PRODUCT:vtx-example] [CHIPS:Browse|Shop]"
+    )
+    cleaned = _apply_stylist_response_constraints(reply, messages)
+    assert cleaned == "Practical tips: try tonal dressing.\nVertical stripes can create a longer line."
+    assert "PRODUCT:" not in cleaned and "CHIPS:" not in cleaned and "?" not in cleaned
+
+
+def test_first_stylist_reply_keeps_welcome():
+    from app.services.chat_service import _apply_stylist_response_constraints
+
+    reply = "Welcome in! How can I help?"
+    assert _apply_stylist_response_constraints(
+        reply, [{"role": "user", "content": "Hello"}]
+    ) == reply

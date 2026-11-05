@@ -13,7 +13,11 @@ from app.core.exceptions import ForbiddenError
 from app.models.chat_message import ChatMessage
 from app.models.product import Product
 from app.schemas.chat import ChatRequest
-from app.services.chat_service import chat as vastra_chat, chat_stream as vastra_chat_stream
+from app.services.chat_service import (
+    _explicitly_requests_no_products,
+    chat as vastra_chat,
+    chat_stream as vastra_chat_stream,
+)
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -76,40 +80,41 @@ def chat_endpoint(
     suggested = []
     seen_ids = set()
     try:
-        import re
-        product_ids = re.findall(r"\[PRODUCT:([^\]]+)\]", reply_text, re.IGNORECASE)
-        # 1. Add explicitly tagged products
-        if product_ids:
-            found_products = db.query(Product).filter(Product.id.in_(product_ids), Product.is_published == True).all()
-            for fp in found_products:
-                if fp.id not in seen_ids:
-                    seen_ids.add(fp.id)
-                    cat_name = fp.category.name if fp.category else "tops"
-                    img_url = fp.images[0].s3_url if fp.images else "https://images.unsplash.com/photo-1598033129183-c4f50c736f10?q=80&w=400&auto=format&fit=crop"
-                    suggested.append({
-                        "id": fp.id,
-                        "name": fp.name,
-                        "price": f"₹{fp.price_selling:,.0f}" if fp.price_selling else "₹1,999",
-                        "image": img_url,
-                        "category": cat_name
-                    })
+        if not _explicitly_requests_no_products(messages):
+            import re
+            product_ids = re.findall(r"\[PRODUCT:([^\]]+)\]", reply_text, re.IGNORECASE)
+            # 1. Add explicitly tagged products
+            if product_ids:
+                found_products = db.query(Product).filter(Product.id.in_(product_ids), Product.is_published == True).all()
+                for fp in found_products:
+                    if fp.id not in seen_ids:
+                        seen_ids.add(fp.id)
+                        cat_name = fp.category.name if fp.category else "tops"
+                        img_url = fp.images[0].s3_url if fp.images else "https://images.unsplash.com/photo-1598033129183-c4f50c736f10?q=80&w=400&auto=format&fit=crop"
+                        suggested.append({
+                            "id": fp.id,
+                            "name": fp.name,
+                            "price": f"₹{fp.price_selling:,.0f}" if fp.price_selling else "₹1,999",
+                            "image": img_url,
+                            "category": cat_name
+                        })
 
-        # 2. Fallback scan: if LLM mentioned published product names without tags, still include them!
-        all_published = db.query(Product).filter(Product.is_published == True).all()
-        reply_lower = reply_text.lower()
-        for p in all_published:
-            if p.id not in seen_ids:
-                if (p.name and len(p.name) > 3 and p.name.lower() in reply_lower) or (p.id and p.id.lower() in reply_lower):
-                    seen_ids.add(p.id)
-                    cat_name = p.category.name if p.category else "tops"
-                    img_url = p.images[0].s3_url if p.images else "https://images.unsplash.com/photo-1598033129183-c4f50c736f10?q=80&w=400&auto=format&fit=crop"
-                    suggested.append({
-                        "id": p.id,
-                        "name": p.name,
-                        "price": f"₹{p.price_selling:,.0f}" if p.price_selling else "₹1,999",
-                        "image": img_url,
-                        "category": cat_name
-                    })
+            # 2. Fallback scan: if LLM mentioned published product names without tags, still include them!
+            all_published = db.query(Product).filter(Product.is_published == True).all()
+            reply_lower = reply_text.lower()
+            for p in all_published:
+                if p.id not in seen_ids:
+                    if (p.name and len(p.name) > 3 and p.name.lower() in reply_lower) or (p.id and p.id.lower() in reply_lower):
+                        seen_ids.add(p.id)
+                        cat_name = p.category.name if p.category else "tops"
+                        img_url = p.images[0].s3_url if p.images else "https://images.unsplash.com/photo-1598033129183-c4f50c736f10?q=80&w=400&auto=format&fit=crop"
+                        suggested.append({
+                            "id": p.id,
+                            "name": p.name,
+                            "price": f"₹{p.price_selling:,.0f}" if p.price_selling else "₹1,999",
+                            "image": img_url,
+                            "category": cat_name
+                        })
     except Exception:
         pass
 

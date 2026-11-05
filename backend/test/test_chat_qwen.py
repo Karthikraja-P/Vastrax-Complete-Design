@@ -43,9 +43,9 @@ def _fake_ollama(monkeypatch, responses):
     return payloads
 
 
-def _call(**kwargs):
+def _call(content="Suggest a beige set", **kwargs):
     return chat_service._call_qwen(
-        [{"role": "user", "content": "Suggest a beige set"}], "You are Vastra", **kwargs
+        [{"role": "user", "content": content}], "You are Vastra", **kwargs
     )
 
 
@@ -68,12 +68,16 @@ def test_qwen_tools_are_authorized_and_followed_up(monkeypatch):
     ])
     seen = []
     monkeypatch.setattr(chat_tools, "execute_tool", lambda name, args, **kw: seen.append((name, args, kw)) or {"stock": 1})
-    reply, executed = _call(db=object(), user_id="u1", session_id="s1")
+    reply, executed = _call(
+        content="Is size M in the beige set in stock?",
+        db=object(), user_id="u1", session_id="s1",
+    )
     assert reply == "Size M is available"
     assert seen[0][0:2] == ("check_inventory", {"product_id": "p1"})
     assert seen[0][2]["user_id"] == "u1"
     assert executed[0]["result"] == {"stock": 1}
-    assert payloads[0]["tools"] == chat_tools.CHAT_TOOLS
+    offered_tools = {tool["function"]["name"] for tool in payloads[0]["tools"]}
+    assert "check_inventory" in offered_tools
     assert payloads[1]["messages"][-1]["role"] == "tool"
     assert payloads[1]["messages"][-1]["tool_name"] == "check_inventory"
     assert "tools" not in payloads[1]
@@ -116,3 +120,14 @@ def test_client_system_and_tool_roles_are_not_forwarded(monkeypatch):
     sent = payloads[0]["messages"]
     assert [message["role"] for message in sent] == ["system", "user"]
     assert "INJECTED" not in json.dumps(sent)
+
+
+def test_explicit_no_product_request_disables_catalog_search_tool(monkeypatch):
+    payloads = _fake_ollama(monkeypatch, [{"message": {"role": "assistant", "content": "Here are general tips."}}])
+    chat_service._call_qwen(
+        [{"role": "user", "content": "General advice only; no product recommendation"}],
+        "You are Vastra",
+        db=object(),
+    )
+    offered = {tool["function"]["name"] for tool in payloads[0].get("tools", [])}
+    assert "search_products" not in offered
